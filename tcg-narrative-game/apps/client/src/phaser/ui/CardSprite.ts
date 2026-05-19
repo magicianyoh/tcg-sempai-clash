@@ -204,6 +204,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
             this.setScale(1.1);
             this.setDepth(100);
             this.background.setStrokeStyle(3, 0xe94560);
+            this.scene.events.emit('hand-card-drag-start', this);
         });
 
         this.on('dragend', () => {
@@ -214,6 +215,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
             this.setScale(1);
             this.setDepth(0);
             this.background.setStrokeStyle(2, 0xffffff);
+            this.scene.events.emit('hand-card-drag-end', this);
         });
 
         // Pointer events for Click vs Drag differentiation
@@ -235,7 +237,12 @@ export class CardSprite extends Phaser.GameObjects.Container {
                 if (pointer.rightButtonReleased()) {
                     this.flip();
                 } else {
-                    this.emit('card-tapped', this.cardId);
+                    const sourceEvent = pointer.event as (MouseEvent & PointerEvent & { ctrlKey?: boolean; metaKey?: boolean; pointerType?: string });
+                    const isDetailTap = sourceEvent.ctrlKey === true
+                        || sourceEvent.metaKey === true
+                        || sourceEvent.pointerType === 'touch'
+                        || (pointer as any).wasTouch === true;
+                    this.emit('card-tapped', this.cardId, isDetailTap);
                 }
             }
         });

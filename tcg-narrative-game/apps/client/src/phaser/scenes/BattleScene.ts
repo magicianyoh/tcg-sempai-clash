@@ -5,16 +5,12 @@ import { FieldSlot, SlotPosition } from '../ui/FieldSlot';
 import { CardDetailOverlay, CardInfo } from '../ui/CardDetailOverlay';
 import { canPlayCard } from '@tcg/game-engine/rules/validation';
 import type {
+    LogEntry,
     MatchState,
     PlayerState,
     TimelineBlock as TimelineBlockData,
 } from '@tcg/shared/types';
 
-// ============================================
-// Types
-// ============================================
-
-// Minimal card data for display
 interface CardDisplayData {
     id: string;
     name: string;
@@ -22,225 +18,226 @@ interface CardDisplayData {
     cost: number;
     description: string;
     backstory?: string;
-    prerequisites?: string[]; // Added for event logic validation
+    image?: string;
+    prerequisites?: string[];
 }
 
-// Card database (simplified)
-const CARD_DB: Record<string, CardDisplayData> = {};
+type BoardView = 'self' | 'opponent';
+type BannerTone = 'turn' | 'event' | 'danger' | 'final' | 'neutral';
 
-// ============================================
-// Battle Scene
-// ============================================
+const CARD_DB: Record<string, CardDisplayData> = {};
 
 export class BattleScene extends Phaser.Scene {
     private ws: WebSocket | null = null;
     private matchState: MatchState | null = null;
-    private myUsername: string = '';
-    private myPlayerIndex: number = 0;
+    private myUsername = '';
+    private myPlayerIndex = 0;
+    private currentView: BoardView = 'self';
 
-    // Layout containers
-    private leftTimelineContainer!: Phaser.GameObjects.Container;
-    private rightTimelineContainer!: Phaser.GameObjects.Container;
+    private background!: Phaser.GameObjects.Rectangle;
+    private boardContainer!: Phaser.GameObjects.Container;
     private handContainer!: Phaser.GameObjects.Container;
     private hudContainer!: Phaser.GameObjects.Container;
+    private bannerLayer!: Phaser.GameObjects.Container;
 
-    // Timeline blocks
-    private myBlocks: TimelineBlock[] = [];
-    private opponentBlocks: TimelineBlock[] = [];
-
-    // Hand cards
+    private currentBlocks: TimelineBlock[] = [];
     private handCards: CardSprite[] = [];
 
-    // UI elements
     private endTurnBtn!: Phaser.GameObjects.Container;
+    private viewToggleBtn!: Phaser.GameObjects.Container;
     private turnIndicator!: Phaser.GameObjects.Text;
-    private myStoryText!: Phaser.GameObjects.Text;
-    private myFillerText!: Phaser.GameObjects.Text;
-    private oppStoryText!: Phaser.GameObjects.Text;
-    private oppFillerText!: Phaser.GameObjects.Text;
     private turnCountText!: Phaser.GameObjects.Text;
+    private playerTitleText!: Phaser.GameObjects.Text;
+    private statText!: Phaser.GameObjects.Text;
+    private opponentStatText!: Phaser.GameObjects.Text;
+    private handLabelText!: Phaser.GameObjects.Text;
+
+    private hasReceivedState = false;
+    private lastLogIndex = 0;
+    private lastActivePlayerId = '';
+    private previousFillerByPlayer: Record<string, number> = {};
+    private bannerQueue: Array<{ title: string; subtitle?: string; tone: BannerTone }> = [];
+    private bannerActive = false;
 
     constructor() {
         super('BattleScene');
     }
 
-    create() {
+    create(): void {
         const { width, height } = this.scale;
         this.myUsername = (window as any).username || 'Player';
 
-        // Background
-        this.add.rectangle(0, 0, width, height, 0x0a0a0f).setOrigin(0);
-
-        // Create layout
+        this.background = this.add.rectangle(0, 0, width, height, 0x000000).setOrigin(0);
         this.createLayout();
         this.createHUD();
+        this.createViewToggleButton();
         this.createEndTurnButton();
         this.setupDragAndDrop();
         this.setupGlobalEvents();
 
-        // Connect
-        this.connectWebSocket();
-
-        // Handle resize
+        this.loadCardCatalog().finally(() => this.connectWebSocket());
         this.scale.on('resize', this.handleResize, this);
     }
 
     private createLayout(): void {
         const { width, height } = this.scale;
-        const timelineY = height * 0.45;
-        const handY = height - 100;
+        this.boardContainer = this.add.container(width / 2, this.getBoardY());
+        this.handContainer = this.add.container(0, height - 108);
+        this.bannerLayer = this.add.container(0, 0).setDepth(2500);
 
-        // Labels
-        this.add.text(width * 0.25, 20, 'JUGADOR 1', {
-            fontSize: '14px', color: '#ffffff',
+        this.handLabelText = this.add.text(width / 2, height - 24, 'MANO', {
+            fontSize: '28px',
+            color: '#ffffff',
+            fontFamily: 'Georgia, serif',
         }).setOrigin(0.5);
-
-        this.add.text(width * 0.75, 20, 'JUGADOR 2', {
-            fontSize: '14px', color: '#ffffff',
-        }).setOrigin(0.5);
-
-        // Divider
-        this.add.line(width / 2, 0, 0, 40, 0, height - 130, 0x444444).setOrigin(0);
-
-        // Hand
-        this.add.text(width / 2, handY - 20, 'MANO', {
-            fontSize: '12px', color: '#666666',
-        }).setOrigin(0.5);
-
-        // Containers
-        this.leftTimelineContainer = this.add.container(width * 0.25, timelineY);
-        this.rightTimelineContainer = this.add.container(width * 0.75, timelineY);
-        this.handContainer = this.add.container(0, handY);
-
-        // Initial blocks
-        this.createInitialBlocks();
-    }
-
-    private createInitialBlocks(): void {
-        const leftBlock = new TimelineBlock(this, {
-            x: 0, y: 0, blockIndex: 0, scale: 1.0, isPlayerBlock: true,
-        });
-        this.leftTimelineContainer.add(leftBlock);
-        this.myBlocks.push(leftBlock);
-
-        const rightBlock = new TimelineBlock(this, {
-            x: 0, y: 0, blockIndex: 0, scale: 1.0, isPlayerBlock: false,
-        });
-        this.rightTimelineContainer.add(rightBlock);
-        this.opponentBlocks.push(rightBlock);
     }
 
     private createHUD(): void {
-        const { width, height } = this.scale;
+        const { width } = this.scale;
         this.hudContainer = this.add.container(0, 0);
 
-        this.turnIndicator = this.add.text(width / 2, 50, 'Conectando...', {
-            fontSize: '20px', color: '#ffffff', fontStyle: 'bold',
+        this.playerTitleText = this.add.text(width / 2, 20, 'PLAYER', {
+            fontSize: '42px',
+            color: '#ffffff',
+            fontFamily: 'Georgia, serif',
+            align: 'center',
+        }).setOrigin(0.5, 0);
+
+        this.turnIndicator = this.add.text(width / 2, 78, 'Conectando...', {
+            fontSize: '18px',
+            color: '#ffffff',
+            fontStyle: 'bold',
         }).setOrigin(0.5);
-        this.hudContainer.add(this.turnIndicator);
 
-        this.turnCountText = this.add.text(width / 2, 75, 'Turno 1', {
-            fontSize: '12px', color: '#888888',
+        this.turnCountText = this.add.text(width / 2, 102, 'Turno 1', {
+            fontSize: '12px',
+            color: '#aab2c2',
         }).setOrigin(0.5);
-        this.hudContainer.add(this.turnCountText);
 
-        const statsY = height - 150;
+        this.statText = this.add.text(18, 18, 'Story: 0\nFiller: 0', {
+            fontSize: '14px',
+            color: '#ffffff',
+            lineSpacing: 5,
+        });
 
-        // Player
-        this.myStoryText = this.add.text(60, statsY, '📜 Story: 0', { fontSize: '12px', color: '#4ecdc4' });
-        this.myFillerText = this.add.text(60, statsY + 20, '📺 Filler: 0', { fontSize: '12px', color: '#e94560' });
-        this.hudContainer.add([this.myStoryText, this.myFillerText]);
+        this.opponentStatText = this.add.text(width - 18, 18, 'Rival\nStory: 0\nFiller: 0', {
+            fontSize: '13px',
+            color: '#aab2c2',
+            align: 'right',
+            lineSpacing: 4,
+        }).setOrigin(1, 0);
 
-        // Opponent
-        this.oppStoryText = this.add.text(width - 120, statsY, '📜 Story: 0', { fontSize: '12px', color: '#4ecdc4' });
-        this.oppFillerText = this.add.text(width - 120, statsY + 20, '📺 Filler: 0', { fontSize: '12px', color: '#e94560' });
-        this.hudContainer.add([this.oppStoryText, this.oppFillerText]);
+        this.hudContainer.add([
+            this.playerTitleText,
+            this.turnIndicator,
+            this.turnCountText,
+            this.statText,
+            this.opponentStatText,
+        ]);
+    }
+
+    private createViewToggleButton(): void {
+        const { width } = this.scale;
+        this.viewToggleBtn = this.add.container(width - 96, 108);
+        const bg = this.add.rectangle(0, 0, 164, 34, 0x111827, 0.96).setStrokeStyle(2, 0xffffff);
+        const text = this.add.text(0, 0, 'VER RIVAL', {
+            fontSize: '12px',
+            color: '#ffffff',
+            fontStyle: 'bold',
+        }).setOrigin(0.5);
+        text.setData('label', true);
+        this.viewToggleBtn.add([bg, text]);
+        this.viewToggleBtn.setSize(164, 34);
+        this.viewToggleBtn.setInteractive({ useHandCursor: true });
+        this.viewToggleBtn.on('pointerdown', () => this.toggleBoardView());
     }
 
     private createEndTurnButton(): void {
         const { width, height } = this.scale;
-        this.endTurnBtn = this.add.container(width / 2, height - 40);
-
-        const bg = this.add.rectangle(0, 0, 140, 40, 0x4ecdc4, 0.9).setStrokeStyle(2, 0x44a08d);
-        const text = this.add.text(0, 0, 'PASAR TURNO', { fontSize: '13px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+        this.endTurnBtn = this.add.container(width / 2, height - 56);
+        const bg = this.add.rectangle(0, 0, 148, 38, 0x4ecdc4, 0.95).setStrokeStyle(2, 0xffffff);
+        const text = this.add.text(0, 0, 'PASAR TURNO', {
+            fontSize: '13px',
+            color: '#001315',
+            fontStyle: 'bold',
+        }).setOrigin(0.5);
 
         this.endTurnBtn.add([bg, text]);
-        this.endTurnBtn.setSize(140, 40);
+        this.endTurnBtn.setSize(148, 38);
         this.endTurnBtn.setInteractive({ useHandCursor: true });
         this.endTurnBtn.on('pointerdown', () => this.sendEndTurn());
     }
 
     private setupDragAndDrop(): void {
-        this.input.on('drag', (pointer: Phaser.Input.Pointer, gameObject: any, dragX: number, dragY: number) => {
+        this.input.on('drag', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dragX: number, dragY: number) => {
             if (gameObject instanceof CardSprite) {
                 gameObject.x = dragX;
                 gameObject.y = dragY;
             }
         });
 
-        this.input.on('dragenter', (pointer: Phaser.Input.Pointer, gameObject: any, dropZone: any) => {
-            if (dropZone.getData('isSlot')) {
-                const slot = dropZone.gameObject as FieldSlot; // Note: dropZone is the container
-                if (slot && (slot as any).highlightValid) {
-                    (slot as any).highlightValid();
-                }
+        this.input.on('dragenter', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropZone: Phaser.GameObjects.GameObject) => {
+            if (gameObject instanceof CardSprite) {
+                this.highlightSpecificDropTarget(gameObject, dropZone);
             }
         });
 
-        this.input.on('dragleave', (pointer: Phaser.Input.Pointer, gameObject: any, dropZone: any) => {
-            if ((dropZone as any).resetHighlight) {
-                (dropZone as any).resetHighlight();
+        this.input.on('dragleave', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) => {
+            if (gameObject instanceof CardSprite) {
+                this.highlightDropTargets(gameObject);
             }
         });
 
-        this.input.on('drop', (pointer: Phaser.Input.Pointer, gameObject: any, dropZone: any) => {
+        this.input.on('drop', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropZone: Phaser.GameObjects.GameObject) => {
             if (gameObject instanceof CardSprite) {
                 this.handleCardDrop(gameObject, dropZone);
-                if ((dropZone as any).resetHighlight) {
-                    (dropZone as any).resetHighlight();
-                }
+                this.clearDropHighlights();
             }
         });
 
-        this.input.on('dragend', (pointer: Phaser.Input.Pointer, gameObject: any, dropped: boolean) => {
-            if (!dropped && gameObject instanceof CardSprite) {
-                // Shake effect on return
-                this.tweens.add({
-                    targets: gameObject,
-                    x: { from: gameObject.x - 5, to: gameObject.x + 5 },
-                    duration: 50,
-                    yoyo: true,
-                    repeat: 2,
-                    onComplete: () => gameObject.resetPosition()
-                });
+        this.input.on('dragend', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropped: boolean) => {
+            if (gameObject instanceof CardSprite) {
+                this.clearDropHighlights();
+                if (!dropped) {
+                    this.tweens.add({
+                        targets: gameObject,
+                        x: { from: gameObject.x - 5, to: gameObject.x + 5 },
+                        duration: 50,
+                        yoyo: true,
+                        repeat: 2,
+                        onComplete: () => gameObject.resetPosition(),
+                    });
+                }
             }
         });
     }
 
     private setupGlobalEvents(): void {
         this.events.on('card-clicked', this.handleFieldCardClick, this);
+        this.events.on('hand-card-drag-start', this.highlightDropTargets, this);
+        this.events.on('hand-card-drag-end', this.clearDropHighlights, this);
     }
 
-    // ============================================
-    // Logic Integration
-    // ============================================
+    private toggleBoardView(): void {
+        if (!this.matchState || this.matchState.activePlayerId !== this.myUsername) return;
+        this.currentView = this.currentView === 'self' ? 'opponent' : 'self';
+        this.updateDisplay();
+    }
 
     private handleCardDrop(card: CardSprite, dropZone: Phaser.GameObjects.GameObject): void {
-        if (!this.matchState || this.matchState.activePlayerId !== this.myUsername) {
+        if (!this.matchState || this.matchState.activePlayerId !== this.myUsername || this.currentView !== 'self') {
             card.resetPosition();
             return;
         }
 
         const cardId = card.getCardId();
-        const dropData = {
-            blockIndex: this.matchState.players[this.myPlayerIndex].board.currentBlockIndex,
-            position: dropZone.getData('slotPosition'),
-            isEventOrb: dropZone.getData('isEventOrb') === true
-        };
+        const dropData = this.getDropData(dropZone);
+        if (!dropData) {
+            card.resetPosition();
+            return;
+        }
 
-        // Check Play via Engine
         const valid = canPlayCard(this.matchState, this.myPlayerIndex, cardId, dropData);
-
         if (!valid.ok) {
             this.showFeedback(card.x, card.y, valid.reasons?.[0] ?? 'Jugada invalida');
             card.resetPosition();
@@ -256,185 +253,191 @@ export class BattleScene extends Phaser.Scene {
         card.setVisible(false);
     }
 
-    private handleFieldCardClick(cardId: string): void {
-        // Since event doesn't pass shift status or slot, we need to adapt 
-        // to CardSprite's emitted: card-tapped(cardId, isShift) if we modify generic emission?
-        // Wait, TimelineBlock emits 'card-clicked'.
-        // My recent change was only to CardSprite.
-        // TimelineBlock should also forward shift key status if possible, but 
-        // TimelineBlock logic for `cardBg.on('pointerdown')` was simple.
-        // I will assume for now it opens detail.
-        // For 'Return to Hand', we need slot context.
-        // Let's assume TimelineBlock needs update to pass context, OR we handle return via separate double click?
-        // Requirement: "Click normal -> Return", "Shift+Click -> Info".
-
-        // I can't update TimelineBlock easily now without risking more edits.
-        // Let's use the 'Shift+Click' logic I added to CardSprite for HAND interaction.
-        // For FIELD, I'll default to Info for now unless I can detect Shift globally.
-
-        const activePointer = this.input.activePointer;
-        const isShift = activePointer.event.shiftKey;
-
-        if (isShift) {
-            this.showCardDetail(cardId);
-        } else {
-            // Try to return to hand (Field Card)
-            // But we don't know which slot from just cardId easily without search.
-            // Let's search my board.
-            const slot = this.findSlotWithCard(cardId);
-            if (slot) {
-                // Found it. Try return.
-                this.sendReturnToHand(slot.blockIndex, slot.position);
-            } else {
-                // Not on board (orb?), show info
-                this.showCardDetail(cardId);
-            }
-        }
-    }
-
-    private findSlotWithCard(cardId: string): { blockIndex: number, position: string } | null {
+    private getDropData(dropZone: Phaser.GameObjects.GameObject): { blockIndex: number; position?: string; isEventOrb?: boolean } | null {
         if (!this.matchState) return null;
         const me = this.matchState.players[this.myPlayerIndex];
+        const blockIndex = me.board.currentBlockIndex;
+        const isEventOrb = dropZone.getData('isEventOrb') === true;
+        const position = dropZone.getData('slotPosition') as string | undefined;
 
-        for (const block of me.board.blocks) {
-            for (const slot of block.slots) {
-                if (slot.cardId === cardId) {
-                    return { blockIndex: block.blockIndex, position: slot.position };
-                }
-            }
+        if (isEventOrb) {
+            return { blockIndex, isEventOrb: true };
+        }
+        if (position) {
+            return { blockIndex, position, isEventOrb: false };
         }
         return null;
     }
 
+    private highlightDropTargets(card: CardSprite): void {
+        this.clearDropHighlights();
+        if (!this.matchState || this.currentView !== 'self' || this.matchState.activePlayerId !== this.myUsername) return;
+
+        const block = this.currentBlocks[0];
+        if (!block) return;
+
+        const cardId = card.getCardId();
+        const currentBlockIndex = this.matchState.players[this.myPlayerIndex].board.currentBlockIndex;
+
+        if (this.isEventType(card.getCardType())) {
+            const valid = canPlayCard(this.matchState, this.myPlayerIndex, cardId, {
+                blockIndex: currentBlockIndex,
+                isEventOrb: true,
+            });
+            if (valid.ok && block.isEventOrbEmpty()) {
+                block.highlightEventOrb(true);
+            }
+            return;
+        }
+
+        for (const slot of block.getSlots()) {
+            if (!slot.isEmpty()) continue;
+            const valid = canPlayCard(this.matchState, this.myPlayerIndex, cardId, {
+                blockIndex: currentBlockIndex,
+                position: slot.getSlotPosition(),
+                isEventOrb: false,
+            });
+            if (valid.ok) {
+                slot.highlightValid();
+            }
+        }
+    }
+
+    private highlightSpecificDropTarget(card: CardSprite, dropZone: Phaser.GameObjects.GameObject): void {
+        if (!this.matchState || this.currentView !== 'self') return;
+        const dropData = this.getDropData(dropZone);
+        if (!dropData) return;
+
+        const valid = canPlayCard(this.matchState, this.myPlayerIndex, card.getCardId(), dropData);
+        if (dropZone instanceof FieldSlot) {
+            valid.ok ? dropZone.highlightValid() : dropZone.highlightInvalid();
+        } else if (dropZone.getData('isEventOrb') === true) {
+            this.currentBlocks[0]?.highlightEventOrb(valid.ok);
+        }
+    }
+
+    private clearDropHighlights(): void {
+        this.currentBlocks.forEach(block => block.clearSlotHighlights());
+    }
+
+    private handleFieldCardClick(
+        cardId: string,
+        pointer?: Phaser.Input.Pointer,
+        blockIndex?: number,
+        position?: SlotPosition | 'event',
+    ): void {
+        const sourceEvent = pointer?.event as (MouseEvent & PointerEvent & { ctrlKey?: boolean; metaKey?: boolean; pointerType?: string }) | undefined;
+        const wantsDetail = sourceEvent?.ctrlKey === true
+            || sourceEvent?.metaKey === true
+            || sourceEvent?.pointerType === 'touch'
+            || (pointer as any)?.wasTouch === true;
+
+        if (wantsDetail || this.currentView === 'opponent' || position === 'event') {
+            this.showCardDetail(cardId);
+            return;
+        }
+
+        if (this.matchState?.activePlayerId === this.myUsername && blockIndex !== undefined && position) {
+            this.sendReturnToHand(blockIndex, position);
+            return;
+        }
+
+        this.showCardDetail(cardId);
+    }
+
     private showFeedback(x: number, y: number, message: string): void {
-        const text = this.add.text(x, y - 50, message, {
+        const text = this.add.text(x, y - 54, message, {
             fontSize: '14px',
-            color: '#ff0000',
+            color: '#ffffff',
             fontStyle: 'bold',
-            backgroundColor: '#000000',
-            padding: { x: 5, y: 5 }
-        }).setOrigin(0.5);
+            backgroundColor: '#e94560',
+            padding: { x: 8, y: 5 },
+        }).setOrigin(0.5).setDepth(2200);
 
         this.tweens.add({
             targets: text,
-            y: y - 80,
+            y: y - 86,
             alpha: 0,
             duration: 1500,
-            onComplete: () => text.destroy()
+            onComplete: () => text.destroy(),
         });
     }
 
-    // ============================================
-    // Card Navigation & Detail
-    // ============================================
-
     private showCardDetail(startCardId: string): void {
-        // Collect all cards (Hand + Board)
+        if (!this.matchState) return;
         const allCards: CardInfo[] = [];
+        const viewed = this.getViewedPlayer();
+        const blockData = this.getCurrentBlockData(viewed);
 
-        // 1. Hand
-        this.handCards.forEach(c => {
-            allCards.push({
-                id: c.getCardId(),
-                name: c.getCardName(),
-                type: c.getCardType(),
-                cost: c.getCost(),
-                description: (c as any).cardDescription,
-                backstory: (c as any).cardBackstory
-            });
-        });
+        if (this.currentView === 'self') {
+            this.handCards.forEach(card => allCards.push(this.getCardDisplayData(card.getCardId())));
+        }
 
-        // 2. Board
-        this.myBlocks.forEach(b => {
-            const slotsData = b.getSlotsData();
-            slotsData.forEach(s => {
-                if (s.cardId) {
-                    const d = this.getCardDisplayData(s.cardId);
-                    allCards.push(d);
-                }
-            });
-            const orb = b.getEventOrb();
-            if (orb && !b.isEventOrbEmpty()) {
-                const eid = orb.getData('cardId');
-                if (eid) allCards.push(this.getCardDisplayData(eid));
+        blockData?.slots.forEach(slot => {
+            if (slot.cardId) {
+                allCards.push(this.getCardDisplayData(slot.cardId));
             }
         });
+        if (blockData?.eventSlot) {
+            allCards.push(this.getCardDisplayData(blockData.eventSlot));
+        }
 
-        const index = allCards.findIndex(c => c.id === startCardId);
-
+        const index = allCards.findIndex(card => card.id === startCardId);
         new CardDetailOverlay(this, {
             cards: allCards,
             startIndex: index !== -1 ? index : 0,
-            onClose: () => { }
+            onClose: () => undefined,
         });
     }
 
-    // ============================================
-    // Event Logic (Conditional Glow)
-    // ============================================
-
-    private highlightActivatableEvents(me: PlayerState): void {
-        const canPlayGlobal = me.canPlayEvents !== false && me.fillerPoints < 10;
-        let anyEventActivatable = false;
-
-        // This is purely visual. Actual validation is in handleCardDrop via engine.
-        // We can reuse 'canPlayCard' logic here roughly.
-
-        for (const card of this.handCards) {
-            const type = card.getCardType();
-            if ((type === 'EVENT' || type === 'EVENT_KEY' || type === 'EVENT_FINAL') && canPlayGlobal) {
-                // Check engine requirement
-                const valid = canPlayCard(this.matchState!, this.myPlayerIndex, card.getCardId(), { isEventOrb: true });
-
-                if (valid.ok) {
-                    card.setActivatable(true);
-                    anyEventActivatable = true;
-                } else {
-                    card.setActivatable(false);
-                }
-            } else {
-                card.setActivatable(false);
-            }
-        }
-
-        if (this.myBlocks.length > 0) {
-            const currentBlock = this.myBlocks[this.myBlocks.length - 1];
-            if (currentBlock.isEventOrbEmpty()) {
-                if (anyEventActivatable) currentBlock.startGlow();
-                else currentBlock.stopGlow();
-            } else {
-                currentBlock.stopGlow();
-            }
+    private async loadCardCatalog(): Promise<void> {
+        try {
+            const response = await fetch('http://localhost:3000/cards');
+            const data = await response.json() as { cards?: Record<string, any[]> };
+            Object.values(data.cards ?? {}).flat().forEach(card => {
+                CARD_DB[card.id] = {
+                    id: card.id,
+                    name: card.name,
+                    type: card.type,
+                    cost: card.cost ?? 0,
+                    description: card.description ?? card.desc ?? '',
+                    backstory: card.backstory,
+                    image: card.image,
+                    prerequisites: card.prereqs ?? card.requirements ?? [],
+                };
+            });
+        } catch (error) {
+            console.warn('Card catalog unavailable, using local fallbacks.', error);
         }
     }
-
-    // ============================================
-    // WebSocket
-    // ============================================
 
     private connectWebSocket(): void {
         const token = (window as any).token;
         this.ws = new WebSocket(`ws://localhost:3000?token=${token}`);
-        this.ws.onopen = () => { this.requestMatchState(); };
-        this.ws.onmessage = (event) => {
+        this.ws.onopen = () => this.requestMatchState();
+        this.ws.onmessage = event => {
             const msg = JSON.parse(event.data);
             this.handleMessage(msg);
         };
-        this.ws.onerror = () => { this.turnIndicator.setText('Error de conexión!'); };
+        this.ws.onerror = () => this.turnIndicator.setText('Error de conexion');
     }
 
     private handleMessage(msg: { type: string; payload: any }): void {
         switch (msg.type) {
-            case 'MATCH_STATE':
+            case 'MATCH_STATE': {
+                const previous = this.matchState;
                 this.matchState = msg.payload.matchState;
+                this.processAnnouncements(previous, this.matchState!);
                 this.updateDisplay();
                 break;
+            }
             case 'MATCH_ENDED':
                 this.showGameOver(msg.payload);
                 break;
             case 'ERROR':
                 console.error('Server error:', msg.payload.message);
-                if (this.matchState) this.updateDisplay(); // Resync
+                this.showFeedback(this.scale.width / 2, this.scale.height / 2, msg.payload.message || 'Error');
+                if (this.matchState) this.updateDisplay();
                 break;
         }
     }
@@ -470,55 +473,99 @@ export class BattleScene extends Phaser.Scene {
     }
 
     private sendEndTurn(): void {
-        if (!this.matchState) return;
+        if (!this.matchState || this.matchState.activePlayerId !== this.myUsername) return;
         this.ws?.send(JSON.stringify({
             type: 'MATCH_ACTION',
             payload: { matchId: this.matchState.matchId, action: { type: 'END_TURN' } },
         }));
     }
 
-    // ============================================
-    // Display Update
-    // ============================================
-
     private updateDisplay(): void {
         if (!this.matchState) return;
         this.myPlayerIndex = this.matchState.playerOrder.indexOf(this.myUsername);
         if (this.myPlayerIndex === -1) this.myPlayerIndex = 0;
+
+        const isMyTurn = this.matchState.activePlayerId === this.myUsername;
+        if (!isMyTurn && this.currentView === 'opponent') {
+            this.currentView = 'self';
+        }
+
         const me = this.matchState.players[this.myPlayerIndex];
         const opp = this.matchState.players[1 - this.myPlayerIndex];
-        const isMyTurn = this.matchState.activePlayerId === this.myUsername;
+        const viewed = this.currentView === 'self' ? me : opp;
 
-        this.turnIndicator.setText(isMyTurn ? '⚔️ TU TURNO' : '⏳ Turno del oponente');
-        this.turnIndicator.setColor(isMyTurn ? '#4ecdc4' : '#888888');
+        this.turnIndicator.setText(isMyTurn ? 'TU TURNO' : 'TURNO DEL OPONENTE');
+        this.turnIndicator.setColor(isMyTurn ? '#4ecdc4' : '#aab2c2');
         this.turnCountText.setText(`Turno ${this.matchState.turnNumber}`);
 
-        this.myStoryText.setText(`📜 Story: ${me.storyPoints ?? me.historyPoints ?? 0}`);
-        this.myFillerText.setText(`📺 Filler: ${me.fillerPoints}`);
-        this.oppStoryText.setText(`📜 Story: ${opp.storyPoints ?? opp.historyPoints ?? 0}`);
-        this.oppFillerText.setText(`📺 Filler: ${opp.fillerPoints}`);
+        const viewedLabel = this.currentView === 'self' ? 'PLAYER 1' : 'PLAYER 2';
+        this.playerTitleText.setText(`${viewedLabel}\n${viewed.username}`);
+        this.playerTitleText.setFontSize(this.scale.width < 680 ? 30 : 42);
 
-        this.renderHand(me.hand, isMyTurn);
-        this.updateTimelineBlocks(me, opp);
-        this.endTurnBtn.setAlpha(isMyTurn ? 1 : 0.5);
+        const summaryPlayer = this.currentView === 'self' ? opp : me;
+        const summaryLabel = this.currentView === 'self' ? 'Rival' : 'Yo';
+        this.statText.setText(`Story: ${viewed.storyPoints ?? viewed.historyPoints ?? 0}\nFiller: ${viewed.fillerPoints}`);
+        this.opponentStatText.setText(`${summaryLabel}\nStory: ${summaryPlayer.storyPoints ?? summaryPlayer.historyPoints ?? 0}\nFiller: ${summaryPlayer.fillerPoints}`);
 
-        if (isMyTurn) this.highlightActivatableEvents(me);
+        this.viewToggleBtn.setVisible(isMyTurn);
+        this.viewToggleBtn.setAlpha(isMyTurn ? 1 : 0.35);
+        this.updateViewToggleLabel();
+
+        this.endTurnBtn.setAlpha(isMyTurn && this.currentView === 'self' ? 1 : 0.45);
+        this.renderViewedBoard(viewed);
+        this.renderHand(me.hand, isMyTurn && this.currentView === 'self');
     }
 
-    private renderHand(hand: string[], isMyTurn: boolean): void {
-        this.handCards.forEach(c => c.destroy());
-        this.handCards = [];
+    private updateViewToggleLabel(): void {
+        const label = this.viewToggleBtn.getAll().find(child => child.getData('label') === true) as Phaser.GameObjects.Text | undefined;
+        label?.setText(this.currentView === 'self' ? 'VER RIVAL' : 'VER MI CAMPO');
+    }
 
+    private renderViewedBoard(player: PlayerState): void {
+        this.boardContainer.removeAll(true);
+        this.currentBlocks = [];
+        this.boardContainer.setPosition(this.scale.width / 2, this.getBoardY());
+
+        const blockData = this.getCurrentBlockData(player);
+        const scale = this.getBoardScale();
+        const block = new TimelineBlock(this, {
+            x: 0,
+            y: 0,
+            blockIndex: blockData?.blockIndex ?? 0,
+            scale,
+            isPlayerBlock: this.currentView === 'self',
+        });
+
+        this.boardContainer.add(block);
+        this.currentBlocks.push(block);
+
+        if (blockData) {
+            this.syncBlockWithState(block, blockData);
+        }
+    }
+
+    private renderHand(hand: string[], interactive: boolean): void {
+        this.handContainer.removeAll(true);
+        this.handCards = [];
+        this.handContainer.setPosition(0, this.scale.height - 108);
+        this.handLabelText.setPosition(this.scale.width / 2, this.scale.height - 24);
+
+        if (this.currentView === 'opponent') {
+            this.handLabelText.setText('MANO OCULTA');
+            return;
+        }
+
+        this.handLabelText.setText('MANO');
         const { width } = this.scale;
-        const cardWidth = CardSprite.DEFAULT_WIDTH;
-        const spacing = 10;
-        const totalWidth = hand.length * (cardWidth + spacing) - spacing;
+        const cardWidth = Math.min(CardSprite.DEFAULT_WIDTH, Math.max(70, (width - 36) / Math.max(hand.length, 1) - 8));
+        const cardHeight = cardWidth * 1.4;
+        const spacing = Math.max(4, Math.min(10, cardWidth * 0.09));
+        const totalWidth = hand.length * cardWidth + Math.max(0, hand.length - 1) * spacing;
         const startX = (width - totalWidth) / 2;
 
         hand.forEach((cardId, index) => {
             const x = startX + index * (cardWidth + spacing) + cardWidth / 2;
-            const y = 80;
-
+            const y = 20;
             const cardData = this.getCardDisplayData(cardId);
             const card = new CardSprite(this, {
                 cardId,
@@ -529,16 +576,14 @@ export class BattleScene extends Phaser.Scene {
                 backstory: cardData.backstory,
                 x,
                 y,
-                interactive: isMyTurn,
+                width: cardWidth,
+                height: cardHeight,
+                interactive,
             });
 
-            // Listen for the specific tap event (from CardSprite logic)
-            card.on('card-tapped', (id: string, isShift: boolean) => {
-                if (isShift) {
+            card.on('card-tapped', (id: string, wantsDetail: boolean) => {
+                if (wantsDetail || !interactive) {
                     this.showCardDetail(id);
-                } else {
-                    // Tap on hand card -> Select/Inspect (Standard tap behaviour)
-                    // Currently does nothing as drag is main interaction
                 }
             });
 
@@ -547,42 +592,183 @@ export class BattleScene extends Phaser.Scene {
         });
     }
 
-    private updateTimelineBlocks(me: PlayerState, opp: PlayerState): void {
-        if (me.board.blocks) {
-            for (const blockData of me.board.blocks) {
-                const block = this.myBlocks[blockData.blockIndex];
-                if (block) this.syncBlockWithState(block, blockData);
-            }
-        }
-        if (opp.board && opp.board.blocks) {
-            for (const blockData of opp.board.blocks) {
-                const block = this.opponentBlocks[blockData.blockIndex];
-                if (block) this.syncBlockWithState(block, blockData);
-            }
-        }
-    }
-
     private syncBlockWithState(block: TimelineBlock, data: TimelineBlockData): void {
         for (const slotData of data.slots) {
-            const slot = block.getSlot(slotData.position as SlotPosition);
-            if (slot && !slot.isEmpty()) {
-                continue;
-            }
-
             if (slotData.cardId) {
                 const cardData = this.getCardDisplayData(slotData.cardId);
                 block.placeCard(
                     slotData.position as SlotPosition,
                     slotData.cardId,
                     cardData.name,
-                    slotData.cardType || cardData.type
+                    slotData.cardType || cardData.type,
                 );
             }
         }
-        if (data.eventSlot && block.isEventOrbEmpty()) {
+        if (data.eventSlot) {
             const cardData = this.getCardDisplayData(data.eventSlot);
             block.placeEvent(data.eventSlot, cardData.name);
         }
+    }
+
+    private getViewedPlayer(): PlayerState {
+        const index = this.currentView === 'self' ? this.myPlayerIndex : 1 - this.myPlayerIndex;
+        return this.matchState!.players[index];
+    }
+
+    private getCurrentBlockData(player: PlayerState): TimelineBlockData | undefined {
+        return player.board.blocks[player.board.currentBlockIndex] ?? player.board.blocks[player.board.blocks.length - 1];
+    }
+
+    private getBoardY(): number {
+        const { height } = this.scale;
+        return Phaser.Math.Clamp(height * 0.48, 275, Math.max(275, height - 235));
+    }
+
+    private getBoardScale(): number {
+        const { width, height } = this.scale;
+        return Phaser.Math.Clamp(Math.min(width / 470, (height - 230) / 470), 0.64, 1.08);
+    }
+
+    private processAnnouncements(previous: MatchState | null, next: MatchState): void {
+        if (this.lastLogIndex > next.log.length) {
+            this.lastLogIndex = 0;
+        }
+
+        if (!this.hasReceivedState) {
+            this.hasReceivedState = true;
+            this.lastLogIndex = next.log.length;
+            this.lastActivePlayerId = next.activePlayerId;
+            next.players.forEach(player => {
+                this.previousFillerByPlayer[player.username] = player.fillerPoints;
+            });
+            this.enqueueBanner('CAMBIO DE TURNO', `Turno de ${next.activePlayerId}`, 'turn');
+            return;
+        }
+
+        const newEntries = next.log.slice(this.lastLogIndex);
+        this.lastLogIndex = next.log.length;
+        newEntries.forEach(entry => this.announceLogEntry(entry));
+
+        if (previous) {
+            next.players.forEach(player => {
+                const prevFiller = this.previousFillerByPlayer[player.username] ?? previous.players.find(p => p.username === player.username)?.fillerPoints ?? 0;
+                if (prevFiller < 10 && player.fillerPoints >= 10) {
+                    this.enqueueBanner('ARCO DE RELLENO', `${player.username} llego a 10 Filler`, 'danger');
+                }
+                this.previousFillerByPlayer[player.username] = player.fillerPoints;
+            });
+        }
+
+        const hasTurnLog = newEntries.some(entry => entry.action === 'turn_start');
+        if (!hasTurnLog && this.lastActivePlayerId !== next.activePlayerId) {
+            this.enqueueBanner('CAMBIO DE TURNO', `Turno de ${next.activePlayerId}`, 'turn');
+        }
+        this.lastActivePlayerId = next.activePlayerId;
+    }
+
+    private announceLogEntry(entry: LogEntry): void {
+        switch (entry.action) {
+            case 'turn_start':
+                this.enqueueBanner('CAMBIO DE TURNO', `Turno de ${entry.player}`, 'turn');
+                break;
+            case 'play_card': {
+                const card = this.findCardFromLog(entry.details);
+                if (card?.type === 'FILLER') {
+                    this.enqueueBanner('ARCO DE RELLENO', `${entry.player} jugo ${card.name}`, 'danger');
+                } else {
+                    this.enqueueBanner('CARTA JUGADA', `${entry.player}: ${card?.name ?? entry.details ?? ''}`, 'neutral');
+                }
+                break;
+            }
+            case 'event_complete': {
+                const card = this.findCardFromLog(entry.details);
+                if (card?.type === 'EVENT_FINAL') {
+                    this.enqueueBanner('ARCO FINAL', `${entry.player}: ${card.name}`, 'final');
+                } else {
+                    this.enqueueBanner('EVENTO JUGADO', `${entry.player}: ${card?.name ?? entry.details ?? ''}`, 'event');
+                }
+                break;
+            }
+            case 'victory':
+                this.enqueueBanner('VICTORIA', `${entry.player} gana la partida`, 'final');
+                break;
+        }
+    }
+
+    private enqueueBanner(title: string, subtitle: string | undefined, tone: BannerTone): void {
+        this.bannerQueue.push({ title, subtitle, tone });
+        if (!this.bannerActive) {
+            this.playNextBanner();
+        }
+    }
+
+    private playNextBanner(): void {
+        const next = this.bannerQueue.shift();
+        if (!next) {
+            this.bannerActive = false;
+            return;
+        }
+        this.bannerActive = true;
+
+        const { width, height } = this.scale;
+        const color = this.getBannerColor(next.tone);
+        const container = this.add.container(width / 2, height / 2).setDepth(2600);
+        const bg = this.add.rectangle(0, 0, Math.min(width * 0.9, 620), 106, 0x000000, 0.88)
+            .setStrokeStyle(4, color);
+        const title = this.add.text(0, -18, next.title, {
+            fontSize: width < 620 ? '28px' : '40px',
+            color: '#ffffff',
+            fontStyle: 'bold',
+            align: 'center',
+        }).setOrigin(0.5);
+        const subtitle = this.add.text(0, 26, next.subtitle ?? '', {
+            fontSize: width < 620 ? '13px' : '16px',
+            color: '#d7dee9',
+            align: 'center',
+            wordWrap: { width: Math.min(width * 0.82, 560) },
+        }).setOrigin(0.5);
+
+        container.add([bg, title, subtitle]);
+        container.setAlpha(0).setScale(0.86);
+        this.bannerLayer.add(container);
+
+        this.tweens.add({
+            targets: container,
+            alpha: 1,
+            scale: 1,
+            duration: 170,
+            ease: 'Back.Out',
+            onComplete: () => {
+                this.time.delayedCall(1050, () => {
+                    this.tweens.add({
+                        targets: container,
+                        alpha: 0,
+                        y: container.y - 22,
+                        duration: 220,
+                        onComplete: () => {
+                            container.destroy();
+                            this.playNextBanner();
+                        },
+                    });
+                });
+            },
+        });
+    }
+
+    private getBannerColor(tone: BannerTone): number {
+        switch (tone) {
+            case 'turn': return 0x4ecdc4;
+            case 'event': return 0x2ecc71;
+            case 'danger': return 0xe94560;
+            case 'final': return 0xffd166;
+            default: return 0xffffff;
+        }
+    }
+
+    private findCardFromLog(details?: string): CardDisplayData | undefined {
+        if (!details) return undefined;
+        const cleanName = details.split('@')[0].trim();
+        return Object.values(CARD_DB).find(card => card.name === cleanName);
     }
 
     private getCardDisplayData(cardId: string): CardDisplayData {
@@ -594,30 +780,49 @@ export class BattleScene extends Phaser.Scene {
             name: name || cardId,
             type: this.inferType(cardId),
             cost: 1,
-            description: 'Efecto de ' + name,
-            backstory: '...',
-            prerequisites: []
+            description: 'Efecto de ' + (name || cardId),
+            backstory: 'Sin lore cargado.',
+            prerequisites: [],
         };
     }
 
     private inferType(cardId: string): string {
         if (cardId.includes('protagonist')) return 'PROTAGONIST';
-        if (cardId.includes('interest') || cardId.includes('teammate') || cardId.includes('friend')) return 'PERSONAJE';
         if (cardId.includes('final')) return 'EVENT_FINAL';
-        if (cardId.includes('training') || cardId.includes('tournament') || cardId.includes('arc')) return 'EVENT';
+        if (cardId.includes('event') || cardId.includes('training') || cardId.includes('tournament') || cardId.includes('arc')) return 'EVENT';
         if (cardId.includes('filler')) return 'FILLER';
         if (cardId.includes('dojo') || cardId.includes('school') || cardId.includes('arena')) return 'LOCATION';
+        if (cardId.includes('item')) return 'ITEM';
         return 'PERSONAJE';
+    }
+
+    private isEventType(type: string): boolean {
+        return type === 'EVENT' || type === 'EVENT_KEY' || type === 'EVENT_FINAL';
     }
 
     private showGameOver(payload: { winner: string; reason: string }): void {
         const { width, height } = this.scale;
         const isWinner = payload.winner === this.myUsername;
-        this.add.rectangle(0, 0, width, height, 0x000000, 0.85).setOrigin(0);
-        this.add.text(width / 2, height / 2 - 50, isWinner ? '🎉 ¡VICTORIA!' : '💀 DERROTA', { fontSize: '48px', color: isWinner ? '#4ecdc4' : '#e94560', fontStyle: 'bold' }).setOrigin(0.5);
-        this.add.text(width / 2, height / 2 + 20, `Razón: ${payload.reason}`, { fontSize: '16px', color: '#888888' }).setOrigin(0.5);
+        this.add.rectangle(0, 0, width, height, 0x000000, 0.9).setOrigin(0).setDepth(2800);
+        this.add.text(width / 2, height / 2 - 44, isWinner ? 'VICTORIA' : 'DERROTA', {
+            fontSize: '48px',
+            color: isWinner ? '#4ecdc4' : '#e94560',
+            fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(2801);
+        this.add.text(width / 2, height / 2 + 18, `Razon: ${payload.reason}`, {
+            fontSize: '16px',
+            color: '#d7dee9',
+        }).setOrigin(0.5).setDepth(2801);
     }
 
-    private handleResize(): void { }
-    update(): void { }
+    private handleResize(gameSize: Phaser.Structs.Size): void {
+        this.background.setSize(gameSize.width, gameSize.height);
+        if (this.matchState) {
+            this.updateDisplay();
+        }
+    }
+
+    update(): void {
+        return;
+    }
 }

@@ -9,7 +9,7 @@ export interface FieldSlotConfig {
     width: number;
     height: number;
     position: SlotPosition;
-    slotId: string; // e.g., "p1_block0_top"
+    slotId: string;
 }
 
 export class FieldSlot extends Phaser.GameObjects.Container {
@@ -19,7 +19,7 @@ export class FieldSlot extends Phaser.GameObjects.Container {
 
     private slotPosition: SlotPosition;
     private slotId: string;
-    private isOccupied: boolean = false;
+    private isOccupied = false;
     private currentCardId: string | null = null;
 
     constructor(scene: Phaser.Scene, config: FieldSlotConfig) {
@@ -28,33 +28,32 @@ export class FieldSlot extends Phaser.GameObjects.Container {
         this.slotPosition = config.position;
         this.slotId = config.slotId;
 
-        // 1. Glow graphic (behind bg)
         this.glow = scene.add.graphics();
+        this.glow.setData('slotChrome', true);
         this.add(this.glow);
 
-        // 2. Background
         this.background = scene.add.rectangle(
-            0, 0,
-            config.width, config.height,
-            0x1a1a2e,
-            0.6
-        ).setStrokeStyle(2, 0x666666);
+            0,
+            0,
+            config.width,
+            config.height,
+            0x000000,
+            0.35
+        ).setStrokeStyle(3, 0xffffff);
+        this.background.setData('slotChrome', true);
         this.add(this.background);
 
-        // 3. Label (e.g. "SLOT")
-        this.label = scene.add.text(0, 0, 'VACÍO', {
-            fontSize: '10px',
-            color: '#444444',
-            align: 'center'
+        this.label = scene.add.text(0, 0, 'SLOT', {
+            fontSize: '18px',
+            color: '#ffffff',
+            fontFamily: 'Georgia, serif',
+            align: 'center',
         }).setOrigin(0.5);
+        this.label.setData('slotChrome', true);
         this.add(this.label);
 
         this.setSize(config.width, config.height);
-
-        // Setup interaction
         this.setInteractive({ dropZone: true });
-
-        // Data for phaser's drop system
         this.setData('isSlot', true);
         this.setData('slotPosition', this.slotPosition);
         this.setData('slotId', this.slotId);
@@ -62,23 +61,19 @@ export class FieldSlot extends Phaser.GameObjects.Container {
         scene.add.existing(this);
     }
 
-    // ============================================
-    // State Management
-    // ============================================
-
     setOccupied(isOccupied: boolean, cardId?: string): void {
         this.isOccupied = isOccupied;
         this.currentCardId = cardId || null;
         this.label.setVisible(!isOccupied);
 
-        // Update visual state if occupied
         if (isOccupied) {
             this.background.setStrokeStyle(2, 0x4ecdc4);
-            this.background.setFillStyle(0x1a1a2e, 0); // Transparent to show card bg
+            this.background.setFillStyle(0x000000, 0);
         } else {
-            this.background.setStrokeStyle(2, 0x666666);
-            this.background.setFillStyle(0x1a1a2e, 0.6);
+            this.background.setStrokeStyle(3, 0xffffff);
+            this.background.setFillStyle(0x000000, 0.35);
         }
+        this.glow.clear();
     }
 
     isEmpty(): boolean {
@@ -93,16 +88,12 @@ export class FieldSlot extends Phaser.GameObjects.Container {
         return this.currentCardId;
     }
 
-    // ============================================
-    // Visual Feedback
-    // ============================================
-
     highlightValid(): void {
         if (this.isOccupied) return;
 
-        this.background.setStrokeStyle(3, 0x00ff00);
+        this.background.setStrokeStyle(5, 0x4ecdc4);
         this.glow.clear();
-        this.glow.fillStyle(0x00ff00, 0.3);
+        this.glow.fillStyle(0x4ecdc4, 0.35);
         this.glow.fillRect(
             -this.width / 2 - 5,
             -this.height / 2 - 5,
@@ -113,15 +104,14 @@ export class FieldSlot extends Phaser.GameObjects.Container {
 
     highlightInvalid(): void {
         if (this.isOccupied) return;
-
-        this.background.setStrokeStyle(3, 0xff0000);
+        this.background.setStrokeStyle(5, 0xe94560);
     }
 
     resetHighlight(): void {
         if (this.isOccupied) {
             this.background.setStrokeStyle(2, 0x4ecdc4);
         } else {
-            this.background.setStrokeStyle(2, 0x666666);
+            this.background.setStrokeStyle(3, 0xffffff);
         }
         this.glow.clear();
     }
