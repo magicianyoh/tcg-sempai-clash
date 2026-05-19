@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TCG Narrative Game</title>
+    <link rel="stylesheet" href="./src/ui/ui.css" />
+  </head>
+  <body>
+    <!-- UI Layers -->
+    <div id="ui-layer">
+        <div id="login-container">
+            <!-- Auth UI injected here or separate page -->
+            <input type="text" id="username" placeholder="Username" />
+            <input type="password" id="password" placeholder="Password" />
+            <button id="login-btn">Login</button>
+        </div>
+        <div id="lobby-container" style="display:none;">
+            <button id="find-match-btn">Find Match</button>
+        </div>
+        <div id="battle-ui" style="display:none;">
+            <!-- HUD -->
+        </div>
+    </div>
+    
+    <!-- Phaser container -->
+    <div id="game-container"></div>
+    
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

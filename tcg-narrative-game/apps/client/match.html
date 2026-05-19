@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCG Narrative - Find Match</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        .header {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            background: linear-gradient(45deg, #e94560, #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .nav-btns {
+            display: flex;
+            gap: 10px;
+        }
+
+        .nav-btn {
+            padding: 8px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: transparent;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .panel h2 {
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+        }
+
+        .match-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .match-btn {
+            padding: 30px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            background: transparent;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .match-btn:hover:not(:disabled) {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .match-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .match-btn.quick {
+            border-color: #e94560;
+        }
+
+        .match-btn.quick:hover:not(:disabled) {
+            background: rgba(233, 69, 96, 0.1);
+        }
+
+        .match-btn.create {
+            border-color: #4ecdc4;
+        }
+
+        .match-btn.create:hover:not(:disabled) {
+            background: rgba(78, 205, 196, 0.1);
+        }
+
+        .match-btn .icon {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .match-btn .title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .match-btn .desc {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        /* Lobby Section */
+        .lobby-section {
+            display: none;
+        }
+
+        .lobby-section.active {
+            display: block;
+        }
+
+        .join-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .join-input {
+            flex: 1;
+            padding: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            color: #fff;
+            font-size: 1.2rem;
+            text-align: center;
+            letter-spacing: 5px;
+            text-transform: uppercase;
+        }
+
+        .join-btn {
+            padding: 14px 30px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .join-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        /* Lobby State */
+        .lobby-info {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 15px;
+            padding: 20px;
+        }
+
+        .lobby-code {
+            text-align: center;
+            font-size: 2rem;
+            font-weight: bold;
+            letter-spacing: 8px;
+            color: #4ecdc4;
+            margin-bottom: 20px;
+        }
+
+        .lobby-players {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .player-slot {
+            flex: 1;
+            max-width: 200px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .player-slot.ready {
+            border-color: #4ecdc4;
+            background: rgba(78, 205, 196, 0.1);
+        }
+
+        .player-slot.empty {
+            border-style: dashed;
+            opacity: 0.5;
+        }
+
+        .player-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .player-status {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .lobby-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .ready-btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .ready-btn.is-ready {
+            background: linear-gradient(45deg, #27ae60, #2ecc71);
+        }
+
+        .leave-btn {
+            padding: 12px 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            background: transparent;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        /* Queue Status */
+        .queue-status {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .queue-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #e94560;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .queue-text {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+
+        .queue-timer {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .cancel-btn {
+            margin-top: 20px;
+            padding: 12px 30px;
+            border: 1px solid #e94560;
+            border-radius: 10px;
+            background: transparent;
+            color: #e94560;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .cancel-btn:hover {
+            background: rgba(233, 69, 96, 0.1);
+        }
+
+        .message {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+
+        .message.error {
+            color: #e94560;
+        }
+
+        .message.success {
+            color: #4ecdc4;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Find Match</h1>
+        <div class="nav-btns">
+            <button class="nav-btn" id="deck-btn">Edit Deck</button>
+            <button class="nav-btn" id="logout-btn">Logout</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Main Options -->
+        <div class="panel" id="main-options">
+            <h2>Choose Game Mode</h2>
+            <div class="match-options">
+                <button class="match-btn quick" id="quick-match-btn">
+                    <div class="icon">⚡</div>
+                    <div class="title">Quick Match</div>
+                    <div class="desc">Find an opponent automatically</div>
+                </button>
+                <button class="match-btn create" id="create-lobby-btn">
+                    <div class="icon">🎮</div>
+                    <div class="title">Create Lobby</div>
+                    <div class="desc">Get a code to invite a friend</div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Join Lobby -->
+        <div class="panel lobby-section" id="join-section">
+            <h2>Join a Lobby</h2>
+            <div class="join-form">
+                <input type="text" class="join-input" id="lobby-code-input" placeholder="ENTER CODE" maxlength="6">
+                <button class="join-btn" id="join-btn">Join</button>
+            </div>
+            <p class="message" id="join-message"></p>
+        </div>
+
+        <!-- Queue Status -->
+        <div class="panel hidden" id="queue-panel">
+            <div class="queue-status">
+                <div class="queue-spinner"></div>
+                <div class="queue-text">Searching for opponent...</div>
+                <div class="queue-timer" id="queue-timer">0:00</div>
+                <button class="cancel-btn" id="cancel-queue-btn">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Lobby View -->
+        <div class="panel hidden" id="lobby-panel">
+            <h2>Lobby</h2>
+            <div class="lobby-info">
+                <div class="lobby-code" id="lobby-display-code">------</div>
+                <div class="lobby-players" id="lobby-players">
+                    <div class="player-slot empty">
+                        <div class="player-name">Waiting...</div>
+                        <div class="player-status">-</div>
+                    </div>
+                    <div class="player-slot empty">
+                        <div class="player-name">Waiting...</div>
+                        <div class="player-status">-</div>
+                    </div>
+                </div>
+                <div class="lobby-actions">
+                    <button class="ready-btn" id="ready-btn">Ready</button>
+                    <button class="leave-btn" id="leave-btn">Leave</button>
+                </div>
+            </div>
+            <p class="message" id="lobby-message"></p>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000';
+        const WS_URL = 'ws://localhost:3000';
+
+        // State
+        let ws = null;
+        let currentLobby = null;
+        let queueStartTime = null;
+        let queueTimer = null;
+        let isReady = false;
+
+        // Auth check
+        const token = localStorage.getItem('token');
+        const username = localStorage.getItem('username');
+        const activeDeckId = localStorage.getItem('activeDeckId');
+
+        if (!token) {
+            window.location.href = '/auth.html';
+        }
+
+        if (!activeDeckId) {
+            alert('Please create a deck first!');
+            window.location.href = '/build.html';
+        }
+
+        // Navigation
+        document.getElementById('deck-btn').addEventListener('click', () => {
+            window.location.href = '/build.html';
+        });
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            if (ws) ws.close();
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            window.location.href = '/auth.html';
+        });
+
+        // Connect WebSocket
+        function connectWS() {
+            return new Promise((resolve, reject) => {
+                ws = new WebSocket(`${WS_URL}?token=${token}`);
+
+                ws.onopen = () => {
+                    console.log('WS Connected');
+                    resolve();
+                };
+
+                ws.onmessage = (event) => {
+                    const msg = JSON.parse(event.data);
+                    handleWSMessage(msg);
+                };
+
+                ws.onerror = (err) => {
+                    console.error('WS Error', err);
+                    reject(err);
+                };
+
+                ws.onclose = () => {
+                    console.log('WS Disconnected');
+                };
+            });
+        }
+
+        // Handle WS messages
+        function handleWSMessage(msg) {
+            console.log('WS Message:', msg);
+
+            switch (msg.type) {
+                case 'AUTH_OK':
+                    console.log('Authenticated as', msg.payload.username);
+                    break;
+
+                case 'ERROR':
+                    showError(msg.payload.message);
+                    break;
+
+                case 'LOBBY_STATE':
+                    currentLobby = msg.payload.lobby;
+                    showLobby();
+                    break;
+
+                case 'MATCH_FOUND':
+                    console.log('Match found!', msg.payload.matchId);
+                    localStorage.setItem('currentMatchId', msg.payload.matchId);
+                    window.location.href = `/battle.html?matchId=${msg.payload.matchId}`;
+                    break;
+
+                case 'MATCH_STATE':
+                    // Initial state, redirect to battle
+                    if (msg.payload.matchState?.matchId) {
+                        localStorage.setItem('currentMatchId', msg.payload.matchState.matchId);
+                        window.location.href = `/battle.html?matchId=${msg.payload.matchState.matchId}`;
+                    }
+                    break;
+            }
+        }
+
+        function showError(message) {
+            alert('Error: ' + message);
+        }
+
+        // Quick Match
+        document.getElementById('quick-match-btn').addEventListener('click', async () => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                await connectWS();
+            }
+
+            ws.send(JSON.stringify({
+                type: 'MATCHMAKE_QUEUE',
+                payload: {
+                    formatId: 'standard',
+                    deckId: activeDeckId
+                }
+            }));
+
+            document.getElementById('main-options').classList.add('hidden');
+            document.getElementById('join-section').classList.add('hidden');
+            document.getElementById('queue-panel').classList.remove('hidden');
+            startQueueTimer();
+        });
+
+        // Cancel Queue
+        document.getElementById('cancel-queue-btn').addEventListener('click', () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'MATCHMAKE_CANCEL', payload: {} }));
+            }
+            stopQueueTimer();
+            document.getElementById('queue-panel').classList.add('hidden');
+            document.getElementById('main-options').classList.remove('hidden');
+            document.getElementById('join-section').classList.remove('hidden');
+        });
+
+        // Queue Timer
+        function startQueueTimer() {
+            queueStartTime = Date.now();
+            queueTimer = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - queueStartTime) / 1000);
+                const mins = Math.floor(elapsed / 60);
+                const secs = elapsed % 60;
+                document.getElementById('queue-timer').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+
+        function stopQueueTimer() {
+            if (queueTimer) clearInterval(queueTimer);
+            queueTimer = null;
+        }
+
+        // Create Lobby
+        document.getElementById('create-lobby-btn').addEventListener('click', async () => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                await connectWS();
+            }
+
+            ws.send(JSON.stringify({
+                type: 'LOBBY_CREATE',
+                payload: { formatId: 'standard' }
+            }));
+        });
+
+        // Join Lobby
+        document.getElementById('join-btn').addEventListener('click', async () => {
+            const code = document.getElementById('lobby-code-input').value.toUpperCase().trim();
+            if (code.length !== 6) {
+                document.getElementById('join-message').textContent = 'Code must be 6 characters';
+                document.getElementById('join-message').className = 'message error';
+                return;
+            }
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                await connectWS();
+            }
+
+            ws.send(JSON.stringify({
+                type: 'LOBBY_JOIN',
+                payload: { code }
+            }));
+        });
+
+        // Show Lobby
+        function showLobby() {
+            document.getElementById('main-options').classList.add('hidden');
+            document.getElementById('join-section').classList.add('hidden');
+            document.getElementById('queue-panel').classList.add('hidden');
+            document.getElementById('lobby-panel').classList.remove('hidden');
+
+            document.getElementById('lobby-display-code').textContent = currentLobby.code;
+
+            const playersEl = document.getElementById('lobby-players');
+            playersEl.innerHTML = '';
+
+            for (let i = 0; i < 2; i++) {
+                const player = currentLobby.players[i];
+                if (player) {
+                    const slot = document.createElement('div');
+                    slot.className = 'player-slot' + (player.ready ? ' ready' : '');
+                    slot.innerHTML = `
+                        <div class="player-name">${player.username}</div>
+                        <div class="player-status">${player.ready ? '✓ Ready' : 'Waiting...'}</div>
+                    `;
+                    playersEl.appendChild(slot);
+
+                    if (player.username === username) {
+                        isReady = player.ready;
+                        updateReadyButton();
+                    }
+                } else {
+                    const slot = document.createElement('div');
+                    slot.className = 'player-slot empty';
+                    slot.innerHTML = `
+                        <div class="player-name">Waiting...</div>
+                        <div class="player-status">-</div>
+                    `;
+                    playersEl.appendChild(slot);
+                }
+            }
+        }
+
+        function updateReadyButton() {
+            const btn = document.getElementById('ready-btn');
+            btn.textContent = isReady ? '✓ Ready!' : 'Ready';
+            btn.classList.toggle('is-ready', isReady);
+        }
+
+        // Ready Button
+        document.getElementById('ready-btn').addEventListener('click', () => {
+            if (!currentLobby) return;
+
+            ws.send(JSON.stringify({
+                type: 'LOBBY_READY',
+                payload: {
+                    lobbyId: currentLobby.lobbyId,
+                    deckId: activeDeckId
+                }
+            }));
+        });
+
+        // Leave Lobby
+        document.getElementById('leave-btn').addEventListener('click', () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'LOBBY_LEAVE', payload: {} }));
+            }
+            currentLobby = null;
+            isReady = false;
+            document.getElementById('lobby-panel').classList.add('hidden');
+            document.getElementById('main-options').classList.remove('hidden');
+            document.getElementById('join-section').classList.remove('hidden');
+        });
+
+        // Show join section by default
+        document.getElementById('join-section').classList.add('lobby-section', 'active');
+
+        // Auto connect on load
+        connectWS().catch(err => {
+            console.error('Failed to connect:', err);
+        });
+    </script>
+</body>
+
+</html>

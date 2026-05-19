@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCG Narrative - Deck Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        .header {
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            background: linear-gradient(45deg, #e94560, #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 1.4rem;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logout-btn {
+            padding: 8px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: transparent;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 15px;
+            display: grid;
+            grid-template-columns: 230px 1fr 280px;
+            gap: 15px;
+            height: calc(100vh - 70px);
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .panel h2 {
+            margin-bottom: 12px;
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* Archetypes */
+        .archetype-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .archetype-btn {
+            padding: 12px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            background: transparent;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: left;
+        }
+
+        .archetype-btn:hover {
+            border-color: #e94560;
+            background: rgba(233, 69, 96, 0.1);
+        }
+
+        .archetype-btn.selected {
+            border-color: #e94560;
+            background: rgba(233, 69, 96, 0.2);
+        }
+
+        .archetype-btn .name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .archetype-btn .desc {
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 3px;
+        }
+
+        /* Type Filters */
+        .filter-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .filter-tab {
+            padding: 6px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .filter-tab:hover,
+        .filter-tab.active {
+            background: rgba(78, 205, 196, 0.2);
+            border-color: #4ecdc4;
+            color: #fff;
+        }
+
+        /* Cards Grid */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 10px;
+        }
+
+        .card {
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            min-height: 100px;
+        }
+
+        .card:hover {
+            border-color: #4ecdc4;
+            transform: translateY(-2px);
+        }
+
+        .card.selected {
+            border-color: #4ecdc4;
+            background: rgba(78, 205, 196, 0.1);
+        }
+
+        .card.in-deck {
+            opacity: 0.4;
+        }
+
+        .card .type-badge {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 0.55rem;
+            text-transform: uppercase;
+        }
+
+        .card .type-badge.protagonist {
+            background: #e94560;
+        }
+
+        .card .type-badge.personaje,
+        .card .type-badge.character {
+            background: #3498db;
+        }
+
+        .card .type-badge.item {
+            background: #f39c12;
+        }
+
+        .card .type-badge.location {
+            background: #9b59b6;
+        }
+
+        .card .type-badge.event,
+        .card .type-badge.event_key {
+            background: #2ecc71;
+        }
+
+        .card .type-badge.event_final {
+            background: #ffd700;
+            color: #000;
+        }
+
+        .card .type-badge.filler {
+            background: #7f8c8d;
+        }
+
+        .card .name {
+            font-weight: 600;
+            font-size: 0.8rem;
+            margin-bottom: 4px;
+            margin-top: 18px;
+        }
+
+        .card .cost {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            width: 20px;
+            height: 20px;
+            background: #e94560;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+
+        .card .desc {
+            font-size: 0.65rem;
+            color: rgba(255, 255, 255, 0.5);
+            line-height: 1.2;
+        }
+
+        .card .count {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.7rem;
+        }
+
+        /* Deck Panel */
+        .deck-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .deck-count {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .deck-count.complete {
+            color: #4ecdc4;
+        }
+
+        .deck-count.over {
+            color: #e94560;
+        }
+
+        .deck-select-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .deck-dropdown {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-size: 0.85rem;
+        }
+
+        .deck-dropdown option {
+            background: #1a1a2e;
+        }
+
+        .load-btn {
+            padding: 8px 12px;
+            border: 1px solid #4ecdc4;
+            border-radius: 6px;
+            background: transparent;
+            color: #4ecdc4;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .load-btn:hover {
+            background: rgba(78, 205, 196, 0.1);
+        }
+
+        .deck-name-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.2);
+            color: #fff;
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+        }
+
+        .deck-list {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            max-height: calc(100vh - 420px);
+            overflow-y: auto;
+        }
+
+        .deck-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            font-size: 0.8rem;
+        }
+
+        .bg-selector {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+            overflow-x: auto;
+            padding-bottom: 5px;
+        }
+
+        .bg-option {
+            width: 40px;
+            height: 40px;
+            border-radius: 6px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            background-size: cover;
+            background-position: center;
+            flex-shrink: 0;
+            background-color: #333;
+        }
+
+        .bg-option.selected {
+            border-color: #4ecdc4;
+            box-shadow: 0 0 5px #4ecdc4;
+        }
+
+        .deck-item .remove-btn {
+            background: #e94560;
+            border: none;
+            color: #fff;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 0.7rem;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .save-btn,
+        .continue-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .save-btn {
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+            color: #fff;
+        }
+
+        .save-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+        }
+
+        .save-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .continue-btn {
+            background: linear-gradient(45deg, #e94560, #ff6b6b);
+            color: #fff;
+            display: none;
+        }
+
+        .continue-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .message {
+            text-align: center;
+            margin-top: 8px;
+            font-size: 0.8rem;
+        }
+
+        .message.success {
+            color: #4ecdc4;
+        }
+
+        .message.error {
+            color: #e94560;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Deck Builder</h1>
+        <div class="user-info">
+            <span id="username-display">Player</span>
+            <button class="logout-btn" id="logout-btn">Logout</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="panel" id="archetype-panel">
+            <h2>Arquetipo</h2>
+            <div class="archetype-list" id="archetype-list"></div>
+        </div>
+
+        <div class="panel" id="cards-panel">
+            <h2>Cartas Disponibles <span id="cards-count">(0)</span></h2>
+            <div class="filter-tabs" id="filter-tabs">
+                <button class="filter-tab active" data-type="ALL">Todas</button>
+                <button class="filter-tab" data-type="PROTAGONIST">Protagonista</button>
+                <button class="filter-tab" data-type="PERSONAJE">Personaje</button>
+                <button class="filter-tab" data-type="ITEM">Objeto</button>
+                <button class="filter-tab" data-type="LOCATION">Locación</button>
+                <button class="filter-tab" data-type="EVENT">Evento</button>
+            </div>
+            <div class="cards-grid" id="cards-grid">
+                <p style="color: rgba(255,255,255,0.5); grid-column: 1/-1; text-align: center;">
+                    Selecciona un arquetipo
+                </p>
+            </div>
+        </div>
+
+        <div class="panel" id="deck-panel">
+            <div class="deck-header">
+                <h2>Tu Mazo</h2>
+                <span class="deck-count" id="deck-count">0/20</span>
+            </div>
+            <div class="deck-select-row">
+                <select class="deck-dropdown" id="deck-dropdown">
+                    <option value="">--- Nuevo Mazo ---</option>
+                </select>
+                <button class="load-btn" id="load-btn">Cargar</button>
+            </div>
+            <input type="text" class="deck-name-input" id="deck-name" placeholder="Nombre del mazo..." value="Mi Mazo">
+
+            <!-- Background Selector -->
+            <div style="margin-bottom: 5px; font-size: 0.8rem; color: rgba(255,255,255,0.7);">Fondo de Tablero:</div>
+            <div class="bg-selector" id="bg-selector">
+                <!-- Populated by JS -->
+            </div>
+
+            <div class="deck-list" id="deck-list">
+                <p style="color: rgba(255,255,255,0.5); text-align: center;">
+                    Haz clic en las cartas para agregarlas
+                </p>
+            </div>
+            <div class="btn-row">
+                <button class="save-btn" id="save-btn" disabled>Guardar</button>
+                <button class="continue-btn" id="continue-btn">Jugar →</button>
+            </div>
+            <p class="message" id="message"></p>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000';
+        const DECK_SIZE = 20;
+        const MAX_COPIES = 3;
+
+        // Archetypes
+        const ARCHETYPES = {
+            SHONEN: { name: '🔥 Shonen', desc: 'Poder de la amistad y batallas épicas' },
+            MECHA: { name: '🤖 Mecha', desc: 'Robots gigantes y pilotos' },
+            HAREM_INVERSO: { name: '💕 Harem Inverso', desc: 'Triángulos amorosos' },
+            SLICE_OF_LIFE: { name: '🌸 Slice of Life', desc: 'Momentos cotidianos' },
+            SHOJO: { name: '🌹 Shojo', desc: 'Romance y vida escolar' },
+            HAREM: { name: '👥 Harem', desc: 'Múltiples intereses' },
+            ISEKAI: { name: '🌍 Isekai', desc: 'Nuevo mundo, protagonista OP' },
+            SURVIVAL_GAME: { name: '💀 Survival Game', desc: 'Juegos de muerte' },
+            SPOKON: { name: '🏆 Spokon', desc: 'Deportes y entrenamiento' },
+            KAIJU: { name: '🦖 Kaiju', desc: 'Monstruos gigantes' },
+        };
+
+        let selectedArchetype = null;
+        let selectedTypeFilter = 'ALL';
+        let deckCards = [];
+        let savedDecks = [];
+        let currentEditingDeckId = null;
+        let selectedBackground = 'bg_01'; // Default
+
+        const BACKGROUNDS = ['bg_01', 'bg_02', 'bg_03', 'bg_04']; // IDs corresponding to assets/backgrounds
+
+        // Auth check
+        const token = localStorage.getItem('token');
+        const username = localStorage.getItem('username');
+        if (!token) {
+            window.location.href = '/auth.html';
+        }
+        document.getElementById('username-display').textContent = username;
+
+        // Logout
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            window.location.href = '/auth.html';
+        });
+
+        // Card database
+        const CARDS = {
+            SHONEN: [
+                { id: 'shonen-protagonist', name: 'Protagonista Shonen', type: 'PROTAGONIST', cost: 0, desc: 'El héroe de sangre caliente', maxCopies: 1, backstory: 'Nacido en una aldea remota...' },
+                { id: 'shonen-master', name: 'Maestro Sabio', type: 'PERSONAJE', cost: 2, desc: 'El mentor que entrena al protagonista', affinity: ['shonen-protagonist'] },
+                { id: 'shonen-rival', name: 'Rival Eterno', type: 'PERSONAJE', cost: 2, desc: 'Empuja al protagonista a mejorar', affinity: ['shonen-protagonist'] },
+                { id: 'shonen-teammate-a', name: 'Compañero Leal A', type: 'PERSONAJE', cost: 1, desc: 'Siempre al lado del héroe' },
+                { id: 'shonen-teammate-b', name: 'Compañero Leal B', type: 'PERSONAJE', cost: 1, desc: 'Otro miembro del equipo' },
+                { id: 'shonen-villain', name: 'Villano del Arco', type: 'PERSONAJE', cost: 3, desc: 'Un enemigo poderoso' },
+                { id: 'shonen-katana', name: 'Katana Legendaria', type: 'ITEM', cost: 2, desc: '+1 story al completar evento' },
+                { id: 'shonen-scroll', name: 'Pergamino Secreto', type: 'ITEM', cost: 1, desc: 'Robar 1 carta' },
+                { id: 'shonen-training', name: 'Arco de Entrenamiento', type: 'EVENT', cost: 2, desc: '+2 story points' },
+                { id: 'shonen-tournament', name: 'Arco de Torneo', type: 'EVENT', cost: 3, desc: '+2 story points', prereqs: ['shonen-training'] },
+                { id: 'shonen-rescue', name: 'Arco de Rescate', type: 'EVENT', cost: 2, desc: '+1 story, robar 1' },
+                { id: 'shonen-power-up', name: 'Despertar del Poder', type: 'EVENT', cost: 2, desc: '+2 story points', prereqs: ['shonen-tournament'] },
+                { id: 'shonen-dojo', name: 'Dojo de Entrenamiento', type: 'LOCATION', cost: 1, desc: 'Lugar para entrenar' },
+                { id: 'shonen-arena', name: 'Arena de Batalla', type: 'LOCATION', cost: 2, desc: 'Donde se hacen los campeones' },
+                { id: 'shonen-filler-beach', name: 'Episodio de Playa', type: 'FILLER', cost: 0, desc: '+1 filler' },
+                { id: 'shonen-filler-recap', name: 'Recap', type: 'FILLER', cost: 0, desc: '+1 filler' },
+                { id: 'shonen-final', name: 'Poder del Nakama', type: 'EVENT_FINAL', cost: 4, desc: 'Victoria si story>=8, filler<4', maxCopies: 1, prereqs: ['shonen-power-up'] },
+            ],
+            MECHA: [
+                { id: 'mecha-protagonist', name: 'Piloto Protagonista', type: 'PROTAGONIST', cost: 0, desc: 'El piloto elegido', maxCopies: 1 },
+                { id: 'mecha-pilot', name: 'Piloto As', type: 'PERSONAJE', cost: 2, desc: 'Piloto experto de mecha', affinity: ['mecha-protagonist'] },
+                { id: 'mecha-mechanic', name: 'Mecánico Genio', type: 'PERSONAJE', cost: 2, desc: 'Mantiene los mechas funcionando' },
+                { id: 'mecha-commander', name: 'Comandante', type: 'PERSONAJE', cost: 3, desc: 'Estratega de la flota' },
+                { id: 'mecha-unit', name: 'Mecha Gigante', type: 'ITEM', cost: 4, desc: 'Robot poderoso' },
+                { id: 'mecha-support-unit', name: 'Mecha de Apoyo', type: 'ITEM', cost: 2, desc: 'Unidad de soporte' },
+                { id: 'mecha-pilot-training', name: 'Entrenamiento de Piloto', type: 'EVENT', cost: 2, desc: '+1 story' },
+                { id: 'mecha-invasion', name: 'Invasión Alien', type: 'EVENT', cost: 3, desc: '+3 story si piloto+mecha', prereqs: ['mecha-pilot-training'] },
+                { id: 'mecha-defense', name: 'Defensa de la Ciudad', type: 'EVENT', cost: 2, desc: '+2 story' },
+                { id: 'mecha-upgrade', name: 'Upgrade de Mecha', type: 'EVENT', cost: 2, desc: '+1 story, robar 1' },
+                { id: 'mecha-base', name: 'Base Militar', type: 'LOCATION', cost: 2, desc: 'HQ de los mechas' },
+                { id: 'mecha-city', name: 'Neo Tokyo', type: 'LOCATION', cost: 2, desc: 'Ciudad a proteger' },
+                { id: 'mecha-filler-angst', name: 'Angustia del Piloto', type: 'FILLER', cost: 0, desc: '+1 filler' },
+                { id: 'mecha-final', name: 'Misión Final', type: 'EVENT_FINAL', cost: 5, desc: 'Victoria si story>=8, piloto+mecha', maxCopies: 1, prereqs: ['mecha-invasion'] },
+            ],
+            HAREM_INVERSO: [
+                { id: 'harem-inv-protagonist', name: 'Protagonista Densa', type: 'PROTAGONIST', cost: 0, desc: 'Atrae a todos sin darse cuenta', maxCopies: 1 },
+                { id: 'harem-inv-interest-a', name: 'Transferido Misterioso', type: 'PERSONAJE', cost: 2, desc: 'Llegada nueva con secretos', affinity: ['harem-inv-protagonist'] },
+                { id: 'harem-inv-interest-b', name: 'Amigo de Infancia', type: 'PERSONAJE', cost: 1, desc: 'Siempre estuvo ahí', affinity: ['harem-inv-protagonist'] },
+                { id: 'harem-inv-interest-c', name: 'Presidente Estudiantil', type: 'PERSONAJE', cost: 2, desc: 'Estricto pero cariñoso', affinity: ['harem-inv-protagonist'] },
+                { id: 'harem-inv-misunderstanding', name: 'Malentendido', type: 'EVENT', cost: 1, desc: '+1 filler al oponente' },
+                { id: 'harem-inv-confession', name: 'Confesión', type: 'EVENT', cost: 2, desc: '+2 story' },
+                { id: 'harem-inv-school', name: 'Preparatoria', type: 'LOCATION', cost: 1, desc: 'Donde todo pasa' },
+                { id: 'harem-inv-filler-bath', name: 'Aguas Termales', type: 'FILLER', cost: 0, desc: '+1 filler' },
+                { id: 'harem-inv-final', name: 'Elección Final', type: 'EVENT_FINAL', cost: 4, desc: 'Victoria si story>=7, 3 intereses', maxCopies: 1 },
+            ],
+            SLICE_OF_LIFE: [
+                { id: 'slice-protagonist', name: 'Estudiante Ordinario', type: 'PROTAGONIST', cost: 0, desc: 'Estudiante normal de secundaria', maxCopies: 1 },
+                { id: 'slice-friend-a', name: 'Mejor Amigo', type: 'PERSONAJE', cost: 1, desc: 'Siempre ahí para ayudar', affinity: ['slice-protagonist'] },
+                { id: 'slice-friend-b', name: 'Amigo Enérgico', type: 'PERSONAJE', cost: 1, desc: 'Trae emoción a todo' },
+                { id: 'slice-president', name: 'Presidente del Club', type: 'PERSONAJE', cost: 2, desc: 'Líder del club' },
+                { id: 'slice-festival', name: 'Festival Escolar', type: 'EVENT', cost: 3, desc: '+2 story en escuela' },
+                { id: 'slice-exams', name: 'Exámenes Finales', type: 'EVENT', cost: 2, desc: '+2 story' },
+                { id: 'slice-trip', name: 'Viaje de Clase', type: 'EVENT', cost: 2, desc: '+1 story, robar 1' },
+                { id: 'slice-school', name: 'Campus Escolar', type: 'LOCATION', cost: 1, desc: 'Donde se hacen recuerdos' },
+                { id: 'slice-clubroom', name: 'Sala del Club', type: 'LOCATION', cost: 1, desc: 'Hogar del club' },
+                { id: 'slice-filler-nap', name: 'Tarde Perezosa', type: 'FILLER', cost: 0, desc: '+1 filler' },
+                { id: 'slice-final', name: 'Día de Graduación', type: 'EVENT_FINAL', cost: 4, desc: 'Victoria si story>=7, protagonista+escuela', maxCopies: 1 },
+            ],
+            SHOJO: [
+                { id: 'shojo-protagonist', name: 'Heroína Romántica', type: 'PROTAGONIST', cost: 0, desc: 'Sueña con el amor verdadero', maxCopies: 1 },
+                { id: 'shojo-love-a', name: 'Chico Popular', type: 'PERSONAJE', cost: 2, desc: 'El más guapo de la escuela', affinity: ['shojo-protagonist'] },
+                { id: 'shojo-love-b', name: 'Chico Tímido', type: 'PERSONAJE', cost: 1, desc: 'Callado pero dulce', affinity: ['shojo-protagonist'] },
+                { id: 'shojo-rival', name: 'Rival en Amor', type: 'PERSONAJE', cost: 2, desc: 'Compite por el mismo chico' },
+                { id: 'shojo-bff', name: 'Mejor Amiga', type: 'PERSONAJE', cost: 1, desc: 'Siempre da buenos consejos' },
+                { id: 'shojo-first-date', name: 'Primera Cita', type: 'EVENT', cost: 2, desc: '+2 story' },
+                { id: 'shojo-heartbreak', name: 'Corazón Roto', type: 'EVENT', cost: 1, desc: '+1 story, +1 filler' },
+                { id: 'shojo-confession', name: 'Confesión Bajo Sakura', type: 'EVENT', cost: 3, desc: '+3 story', prereqs: ['shojo-first-date'] },
+                { id: 'shojo-school', name: 'Academia Shoujo', type: 'LOCATION', cost: 1, desc: 'Donde nacen romances' },
+                { id: 'shojo-park', name: 'Parque de Cerezos', type: 'LOCATION', cost: 2, desc: 'Lugar romántico' },
+                { id: 'shojo-filler-shopping', name: 'Día de Compras', type: 'FILLER', cost: 0, desc: '+1 filler' },
+                { id: 'shojo-final', name: 'Amor Eterno', type: 'EVENT_FINAL', cost: 4, desc: 'Victoria si story>=7, 2 personajes con afinidad', maxCopies: 1, prereqs: ['shojo-confession'] },
+            ],
+            HAREM: [
+                { id: 'harem-protagonist', name: 'Protagonista Denso', type: 'PROTAGONIST', cost: 0, desc: 'No nota las señales obvias', maxCopies: 1 },
+                { id: 'harem-girl-a', name: 'Tsundere', type: 'PERSONAJE', cost: 2, desc: 'No es que le gustes ni nada', affinity: ['harem-protagonist'] },
+                { id: 'harem-girl-b', name: 'Yandere', type: 'PERSONAJE', cost: 2, desc: 'Te ama... demasiado', affinity: ['harem-protagonist'] },
+                { id: 'harem-girl-c', name: 'Kuudere', type: 'PERSONAJE', cost: 1, desc: 'Fría por fuera, cálida por dentro', affinity: ['harem-protagonist'] },
+                { id: 'harem-girl-d', name: 'Deredere', type: 'PERSONAJE', cost: 1, desc: 'Abiertamente cariñosa', affinity: ['harem-protagonist'] },
+                { id: 'harem-accident', name: 'Accidente Conveniente', type: 'EVENT', cost: 1, desc: 'Situación embarazosa, +1 story' },
+                { id: 'harem-jealousy', name: 'Guerra de Celos', type: 'EVENT', cost: 2, desc: '+2 story si 3+ intereses' },
+                { id: 'harem-date', name: 'Cita Grupal', type: 'EVENT', cost: 2, desc: '+1 story por cada interés' },
+                { id: 'harem-school', name: 'Academia Mixta', type: 'LOCATION', cost: 1, desc: 'Epicentro del harem' },
+                { id: 'harem-filler-beach', name: 'Episodio de Playa', type: 'FILLER', cost: 0, desc: '+1 filler' },
+                { id: 'harem-final', name: 'La Elección', type: 'EVENT_FINAL', cost: 4, desc: 'Victoria si story>=7, 4 intereses en campo', maxCopies: 1 },
+            ],
+            ISEKAI: [
+                { id: 'isekai-protagonist', name: 'Reencarnado OP', type: 'PROTAGONIST', cost: 0, desc: 'Murió y renació con poderes', maxCopies: 1 },
+                { id: 'isekai-waifu', name: 'Waifu Elfa', type: 'PERSONAJE', cost: 2, desc: 'Sigue al héroe ciegamente', affinity: ['isekai-protagonist'] },
+                { id: 'isekai-guild', name: 'Líder del Gremio', type: 'PERSONAJE', cost: 2, desc: 'Da misiones importantes' },
+                { id: 'isekai-demon', name: 'Rey Demonio', type: 'PERSONAJE', cost: 4, desc: 'Enemigo final' },
+                { id: 'isekai-cheat', name: 'Habilidad Cheat', type: 'ITEM', cost: 3, desc: 'Poder roto' },
+                { id: 'isekai-summoned', name: 'Invocación al Otro Mundo', type: 'EVENT', cost: 2, desc: '+2 story' },
+                { id: 'isekai-dungeon', name: 'Dungeon Legendaria', type: 'EVENT', cost: 3, desc: '+3 story', prereqs: ['isekai-summoned'] },
+                { id: 'isekai-demon-battle', name: 'Batalla contra Demonio', type: 'EVENT', cost: 3, desc: '+2 story' },
+                { id: 'isekai-village', name: 'Aldea del Comienzo', type: 'LOCATION', cost: 1, desc: 'Donde todo empieza' },
+                { id: 'isekai-castle', name: 'Castillo del Demonio', type: 'LOCATION', cost: 3, desc: 'Fortaleza final' },
+                { id: 'isekai-filler-bath', name: 'Escena de Baño', type: 'FILLER', cost: 0, desc: '+1 filler' },
+                { id: 'isekai-final', name: 'El Héroe del Otro Mundo', type: 'EVENT_FINAL', cost: 5, desc: 'Victoria si story>=8, derrotaste al demonio', maxCopies: 1, prereqs: ['isekai-dungeon'] },
+            ],
+            SURVIVAL_GAME: [
+                { id: 'survival-protagonist', name: 'Sobreviviente', type: 'PROTAGONIST', cost: 0, desc: 'Hará lo que sea para vivir', maxCopies: 1 },
+                { id: 'survival-ally', name: 'Aliado Temporal', type: 'PERSONAJE', cost: 2, desc: 'Por ahora son aliados...', affinity: ['survival-protagonist'] },
+                { id: 'survival-hunter', name: 'Cazador Despiadado', type: 'PERSONAJE', cost: 3, desc: 'Mata sin piedad' },
+                { id: 'survival-mastermind', name: 'Mente Maestra', type: 'PERSONAJE', cost: 3, desc: 'Creó el juego' },
+                { id: 'survival-weapon', name: 'Arma Oculta', type: 'ITEM', cost: 2, desc: '+1 story, +1 filler al rival' },
+                { id: 'survival-trap', name: 'Trampa Mortal', type: 'EVENT', cost: 2, desc: '+2 filler al oponente' },
+                { id: 'survival-alliance', name: 'Alianza Temporal', type: 'EVENT', cost: 2, desc: '+2 story si tienes aliado' },
+                { id: 'survival-betrayal', name: 'Traición', type: 'EVENT', cost: 3, desc: '+3 story, +2 filler a ti' },
+                { id: 'survival-arena', name: 'Arena de la Muerte', type: 'LOCATION', cost: 2, desc: 'Donde mueren los jugadores' },
+                { id: 'survival-hideout', name: 'Escondite Secreto', type: 'LOCATION', cost: 1, desc: 'Refugio temporal' },
+                { id: 'survival-filler-flashback', name: 'Flashback Trágico', type: 'FILLER', cost: 0, desc: '+1 filler' },
+                { id: 'survival-final', name: 'Último Superviviente', type: 'EVENT_FINAL', cost: 5, desc: 'Victoria si story>=8, oponente tiene >=6 filler', maxCopies: 1 },
+            ],
+            SPOKON: [
+                { id: 'spokon-protagonist', name: 'Atleta Novato', type: 'PROTAGONIST', cost: 0, desc: 'Talento bruto sin pulir', maxCopies: 1 },
+                { id: 'spokon-coach', name: 'Entrenador Estricto', type: 'PERSONAJE', cost: 2, desc: 'Te llevará al límite', affinity: ['spokon-protagonist'] },
+                { id: 'spokon-teammate', name: 'Compañero de Equipo', type: 'PERSONAJE', cost: 1, desc: 'Juntos son más fuertes' },
+                { id: 'spokon-rival', name: 'Rival de Otra Escuela', type: 'PERSONAJE', cost: 2, desc: 'El objetivo a vencer' },
+                { id: 'spokon-captain', name: 'Capitán del Equipo', type: 'PERSONAJE', cost: 2, desc: 'Líder inspirador' },
+                { id: 'spokon-training', name: 'Entrenamiento Infernal', type: 'EVENT', cost: 2, desc: '+2 story' },
+                { id: 'spokon-match', name: 'Partido Clasificatorio', type: 'EVENT', cost: 2, desc: '+2 story', prereqs: ['spokon-training'] },
+                { id: 'spokon-semifinal', name: 'Semifinal', type: 'EVENT', cost: 3, desc: '+3 story', prereqs: ['spokon-match'] },
+                { id: 'spokon-gym', name: 'Gimnasio', type: 'LOCATION', cost: 1, desc: 'Lugar de entrenamiento' },
+                { id: 'spokon-stadium', name: 'Estadio Nacional', type: 'LOCATION', cost: 3, desc: 'La final se juega aquí' },
+                { id: 'spokon-filler-practice', name: 'Práctica Aburrida', type: 'FILLER', cost: 0, desc: '+1 filler' },
+                { id: 'spokon-final', name: 'Campeones', type: 'EVENT_FINAL', cost: 5, desc: 'Victoria si story>=9, equipo completo', maxCopies: 1, prereqs: ['spokon-semifinal'] },
+            ],
+            KAIJU: [
+                { id: 'kaiju-protagonist', name: 'Piloto Kaiju', type: 'PROTAGONIST', cost: 0, desc: 'Elegido para pilotar al monstruo', maxCopies: 1 },
+                { id: 'kaiju-partner', name: 'Co-piloto', type: 'PERSONAJE', cost: 2, desc: 'Sincronización mental requerida', affinity: ['kaiju-protagonist'] },
+                { id: 'kaiju-scientist', name: 'Científico Loco', type: 'PERSONAJE', cost: 2, desc: 'Estudia a los Kaiju' },
+                { id: 'kaiju-commander', name: 'General', type: 'PERSONAJE', cost: 3, desc: 'Lidera la defensa' },
+                { id: 'kaiju-mech', name: 'Mecha Anti-Kaiju', type: 'ITEM', cost: 4, desc: 'Arma definitiva' },
+                { id: 'kaiju-attack', name: 'Ataque de Kaiju', type: 'EVENT', cost: 2, desc: '+2 filler al oponente, +1 story' },
+                { id: 'kaiju-battle', name: 'Batalla Épica', type: 'EVENT', cost: 3, desc: '+3 story si tienes mecha' },
+                { id: 'kaiju-breach', name: 'Brecha Dimensional', type: 'EVENT', cost: 2, desc: '+2 story' },
+                { id: 'kaiju-base', name: 'Base Subterránea', type: 'LOCATION', cost: 2, desc: 'Comando central' },
+                { id: 'kaiju-city', name: 'Ciudad en Ruinas', type: 'LOCATION', cost: 2, desc: 'Escenario de batalla' },
+                { id: 'kaiju-filler-training', name: 'Simulación', type: 'FILLER', cost: 0, desc: '+1 filler' },
+                { id: 'kaiju-final', name: 'Defeating the Alpha', type: 'EVENT_FINAL', cost: 5, desc: 'Victoria si story>=8, mecha + piloto', maxCopies: 1, prereqs: ['kaiju-battle'] },
+            ],
+        };
+
+        // Render archetype buttons
+        function renderArchetypes() {
+            const list = document.getElementById('archetype-list');
+            list.innerHTML = Object.entries(ARCHETYPES).map(([key, arch]) => `
+                <button class="archetype-btn" data-archetype="${key}">
+                    <div class="name">${arch.name}</div>
+                    <div class="desc">${arch.desc}</div>
+                </button>
+            `).join('');
+
+            list.querySelectorAll('.archetype-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.archetype-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    selectedArchetype = btn.dataset.archetype;
+                    deckCards = [];
+                    currentEditingDeckId = null;
+                    renderCards();
+                    renderDeck();
+                });
+            });
+        }
+
+        // Filter tabs
+        document.querySelectorAll('.filter-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                selectedTypeFilter = tab.dataset.type;
+                renderCards();
+            });
+        });
+
+        // Render cards
+        function renderCards() {
+            const grid = document.getElementById('cards-grid');
+            let cards = CARDS[selectedArchetype] || [];
+
+            // Apply filter
+            if (selectedTypeFilter !== 'ALL') {
+                cards = cards.filter(c => {
+                    if (selectedTypeFilter === 'EVENT') {
+                        return c.type === 'EVENT' || c.type === 'EVENT_KEY' || c.type === 'EVENT_FINAL';
+                    }
+                    if (selectedTypeFilter === 'PERSONAJE') {
+                        return c.type === 'PERSONAJE' || c.type === 'CHARACTER';
+                    }
+                    return c.type === selectedTypeFilter;
+                });
+            }
+
+            document.getElementById('cards-count').textContent = `(${cards.length})`;
+
+            if (!selectedArchetype) {
+                grid.innerHTML = '<p style="color: rgba(255,255,255,0.5); grid-column: 1/-1; text-align: center;">Selecciona un arquetipo</p>';
+                return;
+            }
+
+            grid.innerHTML = cards.map(card => {
+                const countInDeck = deckCards.filter(id => id === card.id).length;
+                const maxCopies = card.maxCopies || MAX_COPIES;
+                const isMax = countInDeck >= maxCopies;
+
+                return `
+                    <div class="card ${isMax ? 'in-deck' : ''}" data-id="${card.id}">
+                        <span class="cost">${card.cost}</span>
+                        <span class="type-badge ${card.type.toLowerCase()}">${card.type.replace('_', ' ')}</span>
+                        <div class="name">${card.name}</div>
+                        <div class="desc">${card.desc}</div>
+                        ${countInDeck > 0 ? `<span class="count">${countInDeck}/${maxCopies}</span>` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            grid.querySelectorAll('.card').forEach(cardEl => {
+                cardEl.addEventListener('click', () => addToDeck(cardEl.dataset.id));
+            });
+        }
+
+        function addToDeck(cardId) {
+            if (!selectedArchetype) return;
+            const card = CARDS[selectedArchetype].find(c => c.id === cardId);
+            if (!card) return;
+
+            const countInDeck = deckCards.filter(id => id === cardId).length;
+            const maxCopies = card.maxCopies || MAX_COPIES;
+
+            if (countInDeck >= maxCopies || deckCards.length >= DECK_SIZE) return;
+
+            deckCards.push(cardId);
+            renderCards();
+            renderDeck();
+        }
+
+        function removeFromDeck(index) {
+            deckCards.splice(index, 1);
+            renderCards();
+            renderDeck();
+        }
+
+        function renderDeck() {
+            const listEl = document.getElementById('deck-list');
+            const countEl = document.getElementById('deck-count');
+            const saveBtn = document.getElementById('save-btn');
+
+            countEl.textContent = `${deckCards.length}/${DECK_SIZE}`;
+            countEl.className = 'deck-count';
+            if (deckCards.length === DECK_SIZE) countEl.classList.add('complete');
+            if (deckCards.length > DECK_SIZE) countEl.classList.add('over');
+
+            saveBtn.disabled = deckCards.length !== DECK_SIZE;
+
+            if (deckCards.length === 0) {
+                listEl.innerHTML = '<p style="color: rgba(255,255,255,0.5); text-align: center;">Haz clic en las cartas</p>';
+                return;
+            }
+
+            const grouped = {};
+            deckCards.forEach((id, index) => {
+                if (!grouped[id]) grouped[id] = { id, indices: [] };
+                grouped[id].indices.push(index);
+            });
+
+            listEl.innerHTML = Object.values(grouped).map(g => {
+                const card = CARDS[selectedArchetype]?.find(c => c.id === g.id);
+                return `
+                    <div class="deck-item">
+                        <span>${g.indices.length}x ${card?.name || g.id}</span>
+                        <button class="remove-btn" data-index="${g.indices[g.indices.length - 1]}">−</button>
+                    </div>
+                `;
+            }).join('');
+
+            listEl.querySelectorAll('.remove-btn').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    e.stopPropagation();
+                    removeFromDeck(parseInt(btn.dataset.index));
+                });
+            });
+        }
+
+        // Render Backgrounds
+        function renderBackgrounds() {
+            const container = document.getElementById('bg-selector');
+            container.innerHTML = BACKGROUNDS.map(bg => `
+                <div class="bg-option ${bg === selectedBackground ? 'selected' : ''}" 
+                     data-bg="${bg}"
+                     style="background-image: url('/assets/backgrounds/${bg}.svg')">
+                </div>
+            `).join('');
+
+            container.querySelectorAll('.bg-option').forEach(el => {
+                el.addEventListener('click', () => {
+                    selectedBackground = el.dataset.bg;
+                    renderBackgrounds();
+                });
+            });
+        }
+
+        // Load decks
+        async function loadUserDecks() {
+            try {
+                const res = await fetch(`${API_URL}/decks`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    savedDecks = data.decks || [];
+                    renderDeckDropdown();
+                }
+            } catch (err) {
+                console.error('Failed to load decks:', err);
+            }
+        }
+
+        function renderDeckDropdown() {
+            const dropdown = document.getElementById('deck-dropdown');
+            dropdown.innerHTML = '<option value="">--- Nuevo Mazo ---</option>' +
+                savedDecks.map(d => `<option value="${d.id}">${d.name} (${d.archetypeId})</option>`).join('');
+        }
+
+        document.getElementById('load-btn').addEventListener('click', () => {
+            const deckId = document.getElementById('deck-dropdown').value;
+            if (!deckId) {
+                deckCards = [];
+                currentEditingDeckId = null;
+                renderCards();
+                renderDeck();
+                return;
+            }
+
+            const deck = savedDecks.find(d => d.id === deckId);
+            if (deck) {
+                selectedArchetype = deck.archetypeId;
+                document.querySelectorAll('.archetype-btn').forEach(b => {
+                    b.classList.toggle('selected', b.dataset.archetype === selectedArchetype);
+                });
+                deckCards = [...deck.cards];
+                currentEditingDeckId = deckId;
+                document.getElementById('deck-name').value = deck.name;
+                selectedBackground = deck.backgroundId || 'bg_01';
+                renderCards();
+                renderDeck();
+                renderBackgrounds();
+            }
+        });
+
+        // Save deck
+        document.getElementById('save-btn').addEventListener('click', async () => {
+            const name = document.getElementById('deck-name').value || 'Mi Mazo';
+            const messageEl = document.getElementById('message');
+            const saveBtn = document.getElementById('save-btn');
+
+            saveBtn.disabled = true;
+            messageEl.textContent = '';
+
+            try {
+                const method = currentEditingDeckId ? 'PUT' : 'POST';
+                const url = currentEditingDeckId ? `${API_URL}/decks/${currentEditingDeckId}` : `${API_URL}/decks`;
+
+                const res = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        name,
+                        archetypeId: selectedArchetype,
+                        cardIds: deckCards,
+                        backgroundId: selectedBackground
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error al guardar');
+
+                messageEl.textContent = '¡Mazo guardado!';
+                messageEl.className = 'message success';
+                localStorage.setItem('activeDeckId', data.deck.id);
+                document.getElementById('continue-btn').style.display = 'block';
+                loadUserDecks();
+
+            } catch (err) {
+                messageEl.textContent = err.message;
+                messageEl.className = 'message error';
+            } finally {
+                saveBtn.disabled = deckCards.length !== DECK_SIZE;
+            }
+        });
+
+        document.getElementById('continue-btn').addEventListener('click', () => {
+            window.location.href = '/match.html';
+        });
+
+        // Init
+        renderArchetypes();
+        renderBackgrounds();
+        loadUserDecks();
+        if (localStorage.getItem('activeDeckId')) {
+            document.getElementById('continue-btn').style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>

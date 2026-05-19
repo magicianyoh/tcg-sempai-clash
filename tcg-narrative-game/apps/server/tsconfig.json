@@ -1,0 +1,31 @@
+{
+    "compilerOptions": {
+        "target": "ES2020",
+        "module": "commonjs",
+        "outDir": "./dist",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "declaration": true,
+        "baseUrl": ".",
+        "paths": {
+            "@tcg/shared/*": [
+                "../../packages/shared/*"
+            ],
+            "@tcg/game-engine/*": [
+                "../../packages/game-engine/src/*"
+            ]
+        }
+    },
+    "include": [
+        "src/**/*",
+        "../../packages/shared/**/*",
+        "../../packages/game-engine/src/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}

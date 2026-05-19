@@ -1,0 +1,24 @@
+{
+    "name": "tcg-server",
+    "version": "1.0.0",
+    "main": "dist/index.js",
+    "scripts": {
+        "dev": "ts-node -r tsconfig-paths/register src/index.ts",
+        "build": "tsc"
+    },
+    "dependencies": {
+        "fastify": "^4.0.0",
+        "@fastify/websocket": "^7.1.0",
+        "@fastify/cors": "^8.0.0",
+        "@fastify/jwt": "^7.0.0",
+        "argon2": "^0.30.0",
+        "ws": "^8.0.0"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0",
+        "ts-node": "^10.0.0",
+        "tsconfig-paths": "^4.0.0",
+        "@types/node": "^18.0.0",
+        "@types/ws": "^8.0.0"
+    }
+}
