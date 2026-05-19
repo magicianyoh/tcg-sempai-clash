@@ -5,6 +5,8 @@ import { authRoutes } from './http/auth.routes';
 import { deckRoutes } from './http/deck.routes';
 import { wsGateway } from './ws/ws.gateway';
 import { CARDS } from '@tcg/game-engine/content/cards';
+import { matchService, CpuDifficulty } from './ws/match.service';
+import { GAME_CONSTANTS } from '@tcg/shared/constants';
 
 const server = Fastify({ logger: true });
 
@@ -43,6 +45,42 @@ server.get('/cards', async () => {
     }
 
     return { cards: cardsByArchetype };
+});
+
+server.post('/cpu-match', async (request, reply) => {
+    try {
+        await request.jwtVerify();
+    } catch (err) {
+        return reply.code(401).send({ error: 'Unauthorized' });
+    }
+
+    const user = request.user as { username: string };
+    const body = request.body as {
+        deckId?: string;
+        cpuArchetypeId?: string;
+        difficulty?: CpuDifficulty;
+        formatId?: string;
+    };
+
+    const deckId = body?.deckId;
+    const cpuArchetypeId = body?.cpuArchetypeId;
+    const difficulty = body?.difficulty || 'normal';
+    const formatId = body?.formatId || GAME_CONSTANTS.DEFAULT_FORMAT;
+
+    if (!deckId || !cpuArchetypeId) {
+        return reply.code(400).send({ error: 'Missing required fields: deckId, cpuArchetypeId' });
+    }
+
+    if (!['easy', 'normal', 'hard'].includes(difficulty)) {
+        return reply.code(400).send({ error: 'Invalid difficulty' });
+    }
+
+    try {
+        const match = matchService.createCpuMatch(user.username, deckId, cpuArchetypeId, difficulty, formatId);
+        return reply.code(201).send({ matchId: match.matchId, matchState: match });
+    } catch (err: any) {
+        return reply.code(400).send({ error: err.message || 'Could not create CPU match' });
+    }
 });
 
 const start = async () => {

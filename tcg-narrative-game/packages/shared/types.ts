@@ -241,6 +241,13 @@ export interface MatchState {
     winner?: string;
     winReason?: 'final_event' | 'opponent_filler' | 'surrender' | 'timeout';
 
+    // CPU opponent metadata
+    cpuOpponent?: {
+        username: string;
+        archetypeId: ArchetypeId | string;
+        difficulty: 'easy' | 'normal' | 'hard';
+    };
+
     // Log
     log: LogEntry[];
 }

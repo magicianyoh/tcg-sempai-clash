@@ -116,6 +116,14 @@
             background: rgba(78, 205, 196, 0.1);
         }
 
+        .match-btn.cpu {
+            border-color: #f39c12;
+        }
+
+        .match-btn.cpu:hover:not(:disabled) {
+            background: rgba(243, 156, 18, 0.1);
+        }
+
         .match-btn .icon {
             font-size: 2.5rem;
             margin-bottom: 10px;
@@ -174,6 +182,55 @@
 
         .join-btn:hover {
             transform: translateY(-2px);
+        }
+
+        .cpu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .field-label {
+            display: block;
+            margin-bottom: 8px;
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 0.85rem;
+        }
+
+        .select-input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        .select-input option {
+            background: #1a1a2e;
+        }
+
+        .cpu-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .start-cpu-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(45deg, #f39c12, #e67e22);
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .start-cpu-btn:disabled {
+            opacity: 0.6;
+            cursor: wait;
         }
 
         /* Lobby State */
@@ -350,7 +407,47 @@
                     <div class="title">Create Lobby</div>
                     <div class="desc">Get a code to invite a friend</div>
                 </button>
+                <button class="match-btn cpu" id="cpu-match-btn">
+                    <div class="icon">CPU</div>
+                    <div class="title">Vs CPU</div>
+                    <div class="desc">Pick archetype and difficulty</div>
+                </button>
             </div>
+        </div>
+
+        <!-- CPU Match -->
+        <div class="panel hidden" id="cpu-panel">
+            <h2>Play Against CPU</h2>
+            <div class="cpu-grid">
+                <div>
+                    <label class="field-label" for="cpu-archetype">CPU Archetype</label>
+                    <select class="select-input" id="cpu-archetype">
+                        <option value="SHONEN">Shonen</option>
+                        <option value="MECHA">Mecha</option>
+                        <option value="HAREM_INVERSO">Harem Inverso</option>
+                        <option value="SLICE_OF_LIFE">Slice of Life</option>
+                        <option value="SHOJO">Shojo</option>
+                        <option value="HAREM">Harem</option>
+                        <option value="ISEKAI">Isekai</option>
+                        <option value="SURVIVAL_GAME">Survival Game</option>
+                        <option value="SPOKON">Spokon</option>
+                        <option value="KAIJU">Kaiju</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="field-label" for="cpu-difficulty">Difficulty</label>
+                    <select class="select-input" id="cpu-difficulty">
+                        <option value="easy">Easy - 1 play per turn</option>
+                        <option value="normal" selected>Normal - 2 plays per turn</option>
+                        <option value="hard">Hard - 3 plays per turn</option>
+                    </select>
+                </div>
+            </div>
+            <div class="cpu-actions">
+                <button class="leave-btn" id="cpu-back-btn">Back</button>
+                <button class="start-cpu-btn" id="start-cpu-btn">Start CPU Match</button>
+            </div>
+            <p class="message" id="cpu-message"></p>
         </div>
 
         <!-- Join Lobby -->
@@ -527,6 +624,58 @@
             document.getElementById('queue-panel').classList.add('hidden');
             document.getElementById('main-options').classList.remove('hidden');
             document.getElementById('join-section').classList.remove('hidden');
+        });
+
+        // CPU Match
+        document.getElementById('cpu-match-btn').addEventListener('click', () => {
+            document.getElementById('main-options').classList.add('hidden');
+            document.getElementById('join-section').classList.add('hidden');
+            document.getElementById('cpu-panel').classList.remove('hidden');
+        });
+
+        document.getElementById('cpu-back-btn').addEventListener('click', () => {
+            document.getElementById('cpu-panel').classList.add('hidden');
+            document.getElementById('main-options').classList.remove('hidden');
+            document.getElementById('join-section').classList.remove('hidden');
+            document.getElementById('cpu-message').textContent = '';
+        });
+
+        document.getElementById('start-cpu-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('start-cpu-btn');
+            const messageEl = document.getElementById('cpu-message');
+            const cpuArchetypeId = document.getElementById('cpu-archetype').value;
+            const difficulty = document.getElementById('cpu-difficulty').value;
+
+            btn.disabled = true;
+            messageEl.textContent = 'Creating CPU match...';
+            messageEl.className = 'message';
+
+            try {
+                const res = await fetch(`${API_URL}/cpu-match`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        deckId: activeDeckId,
+                        cpuArchetypeId,
+                        difficulty,
+                        formatId: 'standard'
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not create CPU match');
+
+                localStorage.setItem('currentMatchId', data.matchId);
+                window.location.href = `/battle.html?matchId=${data.matchId}`;
+            } catch (err) {
+                messageEl.textContent = err.message;
+                messageEl.className = 'message error';
+            } finally {
+                btn.disabled = false;
+            }
         });
 
         // Queue Timer
