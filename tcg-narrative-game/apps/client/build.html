@@ -846,6 +846,26 @@
             });
         }
 
+        async function loadCardCatalog() {
+            const messageEl = document.getElementById('message');
+
+            try {
+                const res = await fetch(`${API_URL}/cards`);
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'No se pudo cargar el catalogo');
+                }
+
+                Object.keys(CARDS).forEach(key => delete CARDS[key]);
+                Object.assign(CARDS, data.cards || {});
+            } catch (err) {
+                console.error('Failed to load card catalog:', err);
+                messageEl.textContent = err.message || 'No se pudo cargar el catalogo';
+                messageEl.className = 'message error';
+            }
+        }
+
         // Load decks
         async function loadUserDecks() {
             try {
@@ -943,12 +963,17 @@
         });
 
         // Init
-        renderArchetypes();
-        renderBackgrounds();
-        loadUserDecks();
-        if (localStorage.getItem('activeDeckId')) {
-            document.getElementById('continue-btn').style.display = 'block';
+        async function init() {
+            await loadCardCatalog();
+            renderArchetypes();
+            renderBackgrounds();
+            await loadUserDecks();
+            if (localStorage.getItem('activeDeckId')) {
+                document.getElementById('continue-btn').style.display = 'block';
+            }
         }
+
+        init();
     </script>
 </body>
 

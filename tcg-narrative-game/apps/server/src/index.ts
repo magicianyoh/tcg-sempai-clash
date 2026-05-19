@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import { authRoutes } from './http/auth.routes';
 import { deckRoutes } from './http/deck.routes';
 import { wsGateway } from './ws/ws.gateway';
+import { CARDS } from '@tcg/game-engine/content/cards';
 
 const server = Fastify({ logger: true });
 
@@ -19,6 +20,29 @@ server.register(deckRoutes);
 
 server.get('/health', async () => {
     return { status: 'ok', timestamp: Date.now() };
+});
+
+server.get('/cards', async () => {
+    const cardsByArchetype: Record<string, unknown[]> = {};
+
+    for (const card of Object.values(CARDS)) {
+        if (!cardsByArchetype[card.archetype]) {
+            cardsByArchetype[card.archetype] = [];
+        }
+
+        cardsByArchetype[card.archetype].push({
+            id: card.id,
+            name: card.name,
+            type: card.type,
+            cost: card.cost,
+            desc: card.description,
+            backstory: card.backstory,
+            maxCopies: card.maxCopies,
+            prereqs: card.eventPrerequisites,
+        });
+    }
+
+    return { cards: cardsByArchetype };
 });
 
 const start = async () => {

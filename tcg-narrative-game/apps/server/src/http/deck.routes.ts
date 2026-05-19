@@ -12,11 +12,13 @@ interface CreateDeckBody {
     name: string;
     archetypeId: string;
     cardIds: string[];
+    backgroundId?: string;
 }
 
 interface UpdateDeckBody {
     name?: string;
     cardIds?: string[];
+    backgroundId?: string;
 }
 
 interface DeckParams {
@@ -100,7 +102,7 @@ export async function deckRoutes(fastify: FastifyInstance) {
     // POST /decks - Create new deck
     fastify.post<{ Body: CreateDeckBody }>('/decks', async (request, reply) => {
         const user = request.user as { username: string };
-        const { name, archetypeId, cardIds } = request.body;
+        const { name, archetypeId, cardIds, backgroundId } = request.body;
 
         if (!name || !archetypeId || !cardIds) {
             return reply.code(400).send({ error: 'Missing required fields: name, archetypeId, cardIds' });
@@ -115,6 +117,7 @@ export async function deckRoutes(fastify: FastifyInstance) {
             name,
             archetypeId,
             cards: cardIds,
+            backgroundId,
         });
 
         // Set as active deck
@@ -127,7 +130,7 @@ export async function deckRoutes(fastify: FastifyInstance) {
     fastify.put<{ Params: DeckParams; Body: UpdateDeckBody }>('/decks/:id', async (request, reply) => {
         const user = request.user as { username: string };
         const { id } = request.params;
-        const { name, cardIds } = request.body;
+        const { name, cardIds, backgroundId } = request.body;
 
         if (!store.isUserDeck(user.username, id)) {
             return reply.code(404).send({ error: 'Deck not found' });
@@ -149,6 +152,7 @@ export async function deckRoutes(fastify: FastifyInstance) {
         const updated = store.updateDeck(id, {
             ...(name && { name }),
             ...(cardIds && { cards: cardIds }),
+            ...(backgroundId && { backgroundId }),
         });
 
         return { deck: updated };
