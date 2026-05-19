@@ -3,7 +3,7 @@ import { ARCHETYPES, GAME_CONSTANTS, SLOT_POSITIONS } from '@tcg/shared/constant
 import { MatchActionType } from '@tcg/shared/protocol';
 import { store } from '../store/memory.store';
 import { CARDS } from '@tcg/game-engine/content/cards';
-import { canPlayCard, canReturnToHand } from '@tcg/game-engine/rules/validation';
+import { canPlayCard, canReturnToHand, evaluateRequirements } from '@tcg/game-engine/rules/validation';
 import { resolveEffects } from '@tcg/game-engine/rules/effect';
 import { chooseCpuPlay } from './cpu.strategy';
 
@@ -414,8 +414,6 @@ export class MatchService {
         isEventActivation: boolean = false
     ) {
         const player = match.players[playerIndex];
-        const opponent = match.players[1 - playerIndex];
-
         // Find card
         const handIndex = player.hand.indexOf(cardId);
         if (handIndex === -1) throw new Error('Card not in hand');
@@ -436,9 +434,6 @@ export class MatchService {
         // Remove from hand
         player.hand.splice(handIndex, 1);
 
-        // Execute Effects
-        resolveEffects(match, playerIndex, cardId);
-
         // Place Visually on Board logic
         // If event activation -> place in event slot
         // If normal card -> place in slot
@@ -449,35 +444,13 @@ export class MatchService {
             const block = player.board.blocks[targetBlockIndex];
             if (block) {
                 block.eventSlot = cardId;
-
-                // If it requires strict completion (legacy), check reqs.
-                // But validation said OK, so we assume placing IS activating or satisfying.
-                // In new logic: Events are instant effects?
-                // Or do they wait?
-                // Current logic: Immediate effect + completion.
-
-                // Mark event as completed
-                if (!player.completedEvents) player.completedEvents = [];
-                player.completedEvents.push(cardId);
-
-                block.eventCompleted = true; // Mark block done
-
-                const storyGain = 5; // Base
-                player.storyPoints += storyGain;
-                opponent.fillerPoints += 2;
-
-                this.addLog(match, player.username, 'event_complete', `${card.name}`);
-
-                // Move to discard? Or kept on board?
-                // Phase 2 usually keeps it visible.
-                // Let's keep it in eventSlot. 
-
-                // Check block progression
-                if (this.isBlockComplete(block)) {
-                    this.advanceToNextBlock(player);
-                }
+                block.eventSubmitted = true;
+                block.eventCompleted = false;
+                this.addLog(match, player.username, 'event_prepared', `${card.name}`);
             }
         } else if (slotPosition) {
+            resolveEffects(match, playerIndex, cardId);
+
             const block = player.board.blocks[targetBlockIndex];
             const slot = block.slots.find(s => s.position === slotPosition);
             if (slot) {
@@ -517,6 +490,10 @@ export class MatchService {
     // End turn
     private handleEndTurn(match: MatchState, currentPlayerIndex: number): void {
         const player = match.players[currentPlayerIndex];
+        this.resolvePreparedEvent(match, currentPlayerIndex);
+
+        this.checkVictory(match);
+        if (match.winner) return;
 
         // Decrement blocked turns
         if (player.eventsBlockedTurns > 0) {
@@ -553,6 +530,49 @@ export class MatchService {
         }
 
         this.addLog(match, match.activePlayerId, 'turn_start', `Turn ${match.turnNumber}`);
+    }
+
+    private resolvePreparedEvent(match: MatchState, playerIndex: number): void {
+        const player = match.players[playerIndex];
+        const opponent = match.players[1 - playerIndex];
+        const block = player.board.blocks[player.board.currentBlockIndex];
+        const cardId = block?.eventSlot;
+        if (!block || !cardId || block.eventCompleted) return;
+
+        const card = CARDS[cardId];
+        if (!card) return;
+
+        const validation = card.requirements?.length
+            ? evaluateRequirements(match, playerIndex, card.requirements)
+            : { ok: true, reasons: [] };
+
+        if (!validation.ok) {
+            this.addLog(match, player.username, 'event_waiting', `${card.name}: ${validation.reasons?.[0] || 'missing requirements'}`);
+            return;
+        }
+
+        resolveEffects(match, playerIndex, cardId);
+
+        if (!player.completedEvents) player.completedEvents = [];
+        if (!player.completedEvents.includes(cardId)) {
+            player.completedEvents.push(cardId);
+        }
+
+        block.eventCompleted = true;
+        block.eventSubmitted = false;
+
+        const storyGain = 5;
+        player.storyPoints += storyGain;
+        player.historyPoints = player.storyPoints;
+        opponent.fillerPoints += 2;
+
+        this.addLog(match, player.username, 'event_complete', `${card.name}`);
+
+        if (card.type === CardType.EVENT_FINAL) {
+            player.finalEventPlayed = true;
+        } else {
+            this.advanceToNextBlock(player);
+        }
     }
 
     // Check if a block is complete (all slots filled and event done)

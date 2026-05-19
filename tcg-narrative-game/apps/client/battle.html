@@ -36,6 +36,11 @@
             border-left: 1px solid rgba(255, 255, 255, 0.22);
             z-index: 10;
             overflow: hidden;
+            transition: transform 180ms ease;
+        }
+
+        .anime-log-panel.closed {
+            transform: translateX(100%);
         }
 
         .anime-log-title {
@@ -66,10 +71,10 @@
         }
 
         .anime-log-toggle {
-            display: none;
+            display: block;
             position: fixed;
-            right: 14px;
-            bottom: 18px;
+            top: 14px;
+            right: 348px;
             z-index: 11;
             padding: 10px 14px;
             border: 1px solid rgba(255, 255, 255, 0.45);
@@ -77,6 +82,12 @@
             background: rgba(0, 0, 0, 0.86);
             color: #fff;
             font-weight: 700;
+            cursor: pointer;
+            transition: right 180ms ease;
+        }
+
+        .anime-log-toggle.closed {
+            right: 14px;
         }
 
         @media (max-width: 919px) {
@@ -88,11 +99,14 @@
                 border-left: none;
                 border-top: 1px solid rgba(255, 255, 255, 0.25);
                 transform: translateY(100%);
-                transition: transform 180ms ease;
             }
 
             .anime-log-panel.open {
                 transform: translateY(0);
+            }
+
+            .anime-log-panel.closed {
+                transform: translateY(100%);
             }
 
             .anime-log-content {
@@ -100,7 +114,9 @@
             }
 
             .anime-log-toggle {
-                display: block;
+                top: auto;
+                right: 14px;
+                bottom: 18px;
             }
         }
     </style>

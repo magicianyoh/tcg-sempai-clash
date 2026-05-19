@@ -178,11 +178,22 @@ export class BattleScene extends Phaser.Scene {
         const toggle = document.createElement('button');
         toggle.className = 'anime-log-toggle';
         toggle.type = 'button';
-        toggle.textContent = 'Log';
+        this.narrativeDrawerOpen = window.innerWidth >= 920;
+
+        const syncLogToggle = () => {
+            const isMobile = window.innerWidth < 920;
+            panel.classList.toggle('open', isMobile && this.narrativeDrawerOpen);
+            panel.classList.toggle('closed', !this.narrativeDrawerOpen);
+            toggle.classList.toggle('closed', !this.narrativeDrawerOpen);
+            toggle.textContent = this.narrativeDrawerOpen ? 'Ocultar log' : 'Ver log';
+        };
+
         toggle.addEventListener('click', () => {
             this.narrativeDrawerOpen = !this.narrativeDrawerOpen;
-            panel.classList.toggle('open', this.narrativeDrawerOpen);
+            syncLogToggle();
         });
+        window.addEventListener('resize', syncLogToggle);
+        syncLogToggle();
 
         document.body.appendChild(panel);
         document.body.appendChild(toggle);
@@ -192,6 +203,8 @@ export class BattleScene extends Phaser.Scene {
 
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyNarrativeLog());
         this.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroyNarrativeLog());
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener('resize', syncLogToggle));
+        this.events.once(Phaser.Scenes.Events.DESTROY, () => window.removeEventListener('resize', syncLogToggle));
     }
 
     private destroyNarrativeLog(): void {
@@ -506,8 +519,8 @@ export class BattleScene extends Phaser.Scene {
             case 'MATCH_STATE': {
                 const previous = this.matchState;
                 this.matchState = msg.payload.matchState;
-                this.updateDisplay();
                 this.processAnnouncements(previous, this.matchState!);
+                this.updateDisplay();
                 break;
             }
             case 'MATCH_ENDED':
@@ -789,6 +802,11 @@ export class BattleScene extends Phaser.Scene {
                 }
                 break;
             }
+            case 'event_prepared': {
+                const card = this.findCardFromLog(entry.details);
+                this.enqueueBanner('EVENTO PREPARADO', `${card?.name ?? entry.details ?? ''} se activa al pasar turno`, 'event');
+                break;
+            }
             case 'event_complete': {
                 const card = this.findCardFromLog(entry.details);
                 this.animateEventResolution(entry, card);
@@ -828,24 +846,75 @@ export class BattleScene extends Phaser.Scene {
         switch (entry.action) {
             case 'match_started':
             case 'cpu_match_started':
-                return `El capitulo abre con ${this.escapeHtml(entry.details ?? 'un duelo nuevo')}.`;
+                return this.pickNarrative(entry, [
+                    `El capitulo abre con ${this.escapeHtml(entry.details ?? 'un duelo nuevo')}.`,
+                    `La placa de titulo cae sobre ${this.escapeHtml(entry.details ?? 'un enfrentamiento nuevo')}.`,
+                    `Empieza la escena: ${this.escapeHtml(entry.details ?? 'dos destinos chocan')}.`,
+                ]);
             case 'turn_start':
-                return `La camara vuelve a ${player}; el turno ${entry.turn} empieza con tension.`;
+                return this.pickNarrative(entry, [
+                    `La camara vuelve a ${player}; el turno ${entry.turn} empieza con tension.`,
+                    `${player} toma el foco y el tablero respira antes de la proxima jugada.`,
+                    `Cambio de plano: ${player} entra en accion.`,
+                    `${player} escucha el tema principal subir de volumen.`,
+                ]);
             case 'play_card':
-                return `${player} pone en escena ${cardName}.`;
+                return this.pickNarrative(entry, [
+                    `${player} pone en escena ${cardName}.`,
+                    `${player} baja ${cardName} y cambia el ritmo del episodio.`,
+                    `${cardName} entra al campo bajo la mirada de ${player}.`,
+                    `${player} revela ${cardName}; la escena gana peso.`,
+                ]);
+            case 'event_prepared':
+                return this.pickNarrative(entry, [
+                    `${player} deja listo ${cardName}; el arco espera el cierre del turno.`,
+                    `${cardName} queda cargado en el centro, a punto de disparar la siguiente fase.`,
+                    `${player} reune las piezas para ${cardName}, pero la resolucion espera.`,
+                ]);
+            case 'event_waiting':
+                return this.pickNarrative(entry, [
+                    `${cardName} todavia no encuentra todos sus requisitos.`,
+                    `El arco intenta avanzar, pero ${cardName} queda suspendido.`,
+                    `${player} mantiene ${cardName} preparado mientras falta una condicion.`,
+                ]);
             case 'event_complete':
                 return card?.type === 'EVENT_FINAL'
-                    ? `${player} desata ${cardName} y empuja la historia al arco final.`
-                    : `${player} conecta las piezas y juega ${cardName}.`;
+                    ? this.pickNarrative(entry, [
+                        `${player} desata ${cardName} y empuja la historia al arco final.`,
+                        `${cardName} rompe el limite: ${player} entra en el ultimo arco.`,
+                        `Todo el campo tiembla cuando ${player} activa ${cardName}.`,
+                    ])
+                    : this.pickNarrative(entry, [
+                        `${player} conecta las piezas y juega ${cardName}.`,
+                        `${cardName} se resuelve al cierre del turno y abre un nuevo arco.`,
+                        `Los requisitos encajan; ${player} hace avanzar la historia con ${cardName}.`,
+                    ]);
             case 'return_to_hand':
-                return `${player} retira ${cardName} antes de que la escena se cierre.`;
+                return this.pickNarrative(entry, [
+                    `${player} retira ${cardName} antes de que la escena se cierre.`,
+                    `${cardName} vuelve a la mano de ${player}.`,
+                    `${player} reescribe la escena y recupera ${cardName}.`,
+                ]);
             case 'cpu_decision':
-                return `${player} calcula su siguiente corte: ${this.escapeHtml(entry.details ?? '')}.`;
+                return this.pickNarrative(entry, [
+                    `${player} calcula su siguiente corte: ${this.escapeHtml(entry.details ?? '')}.`,
+                    `${player} procesa el campo y elige: ${this.escapeHtml(entry.details ?? '')}.`,
+                    `La CPU marca su intencion: ${this.escapeHtml(entry.details ?? '')}.`,
+                ]);
             case 'victory':
-                return `${player} alcanza el cierre del episodio.`;
+                return this.pickNarrative(entry, [
+                    `${player} alcanza el cierre del episodio.`,
+                    `El ending empieza para ${player}.`,
+                    `${player} firma el final de la temporada.`,
+                ]);
             default:
                 return null;
         }
+    }
+
+    private pickNarrative(entry: LogEntry, variants: string[]): string {
+        const seed = (entry.timestamp || 0) + entry.turn * 17 + entry.action.length * 31 + (entry.details?.length || 0);
+        return variants[Math.abs(seed) % variants.length];
     }
 
     private escapeHtml(value: string): string {
@@ -891,7 +960,8 @@ export class BattleScene extends Phaser.Scene {
     }
 
     private animateRequirementsToOrb(player: PlayerState, card: CardDisplayData): void {
-        const blockData = this.getCurrentBlockData(player);
+        const blockData = player.board.blocks.find(block => block.eventSlot === card.id)
+            ?? this.getCurrentBlockData(player);
         const block = this.currentBlocks[0];
         const orb = block?.getEventOrbWorldPosition();
         if (!blockData || !block || !orb) return;
@@ -1055,7 +1125,7 @@ export class BattleScene extends Phaser.Scene {
 
     private findCardFromLog(details?: string): CardDisplayData | undefined {
         if (!details) return undefined;
-        const cleanName = details.split('@')[0].trim();
+        const cleanName = details.split('@')[0].split(':')[0].trim();
         return Object.values(CARD_DB).find(card => card.name === cleanName);
     }
 
