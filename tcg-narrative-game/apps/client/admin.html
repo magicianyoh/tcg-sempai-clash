@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sempai Clash Admin</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            background: #090b10;
+            color: #f5f7fb;
+            font-family: "Segoe UI", system-ui, sans-serif;
+        }
+
+        button,
+        input,
+        select,
+        textarea {
+            font: inherit;
+        }
+
+        .shell {
+            min-height: 100vh;
+            display: grid;
+            grid-template-rows: auto 1fr;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            background: #0f131c;
+        }
+
+        h1 {
+            font-size: 1.1rem;
+            letter-spacing: 0.02em;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .tab,
+        .btn {
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 6px;
+            background: #151b27;
+            color: #fff;
+            padding: 8px 11px;
+            cursor: pointer;
+        }
+
+        .tab.active,
+        .btn.primary {
+            border-color: #4ecdc4;
+            background: #173438;
+        }
+
+        .btn.danger {
+            border-color: #e94560;
+            background: #39141d;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 14px;
+            padding: 14px;
+            min-height: 0;
+        }
+
+        .panel {
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: #0f131c;
+            border-radius: 8px;
+            padding: 14px;
+            min-height: 0;
+            overflow: auto;
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        .login {
+            max-width: 380px;
+            margin: 12vh auto;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        label {
+            display: grid;
+            gap: 5px;
+            color: rgba(255, 255, 255, 0.76);
+            font-size: 0.78rem;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.13);
+            border-radius: 6px;
+            background: #090b10;
+            color: #fff;
+            padding: 8px;
+        }
+
+        textarea {
+            min-height: 92px;
+            resize: vertical;
+            font-family: Consolas, monospace;
+        }
+
+        .card-list,
+        .user-list {
+            display: grid;
+            gap: 7px;
+            margin-top: 10px;
+        }
+
+        .row {
+            display: grid;
+            gap: 3px;
+            padding: 9px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            background: #111722;
+            cursor: pointer;
+        }
+
+        .row.active {
+            border-color: #4ecdc4;
+            background: #102a2d;
+        }
+
+        .meta {
+            color: rgba(255, 255, 255, 0.58);
+            font-size: 0.72rem;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .message {
+            margin-top: 10px;
+            color: #4ecdc4;
+            min-height: 20px;
+        }
+
+        .message.error {
+            color: #ff6b6b;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        @media (max-width: 900px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="login-view" class="login panel">
+        <h1>Admin Panel</h1>
+        <div style="height: 14px"></div>
+        <label>Usuario
+            <input id="admin-username" autocomplete="username" value="admin">
+        </label>
+        <div style="height: 10px"></div>
+        <label>Contraseña
+            <input id="admin-password" type="password" autocomplete="current-password" value="admin1234">
+        </label>
+        <div class="actions">
+            <button id="login-btn" class="btn primary">Entrar</button>
+        </div>
+        <p id="login-message" class="message"></p>
+    </div>
+
+    <div id="app-view" class="shell hidden">
+        <header>
+            <h1>Sempai Clash Admin</h1>
+            <nav class="tabs">
+                <button class="tab active" data-tab="cards">Cartas</button>
+                <button class="tab" data-tab="import">Importar CSV</button>
+                <button class="tab" data-tab="users">Usuarios</button>
+                <button class="tab" data-tab="ui">UI / FX</button>
+                <button id="logout-btn" class="tab">Salir</button>
+            </nav>
+        </header>
+
+        <main class="layout">
+            <aside class="panel">
+                <div id="cards-tools">
+                    <div class="grid">
+                        <label>Buscar
+                            <input id="card-search" placeholder="Nombre o id">
+                        </label>
+                        <label>Orden
+                            <select id="card-sort">
+                                <option value="name">Nombre</option>
+                                <option value="type">Categoria</option>
+                                <option value="archetype">Arquetipo</option>
+                            </select>
+                        </label>
+                        <label>Categoria
+                            <select id="type-filter"></select>
+                        </label>
+                        <label>Arquetipo
+                            <select id="archetype-filter"></select>
+                        </label>
+                    </div>
+                    <div id="card-list" class="card-list"></div>
+                </div>
+            </aside>
+
+            <section class="panel section active" id="cards-section">
+                <h2>Editar carta</h2>
+                <div style="height: 12px"></div>
+                <form id="card-form" class="grid">
+                    <label>ID
+                        <input id="card-id" disabled>
+                    </label>
+                    <label>Nombre
+                        <input id="card-name">
+                    </label>
+                    <label>Categoria
+                        <input id="card-type">
+                    </label>
+                    <label>Arquetipo
+                        <input id="card-archetype">
+                    </label>
+                    <label>Costo
+                        <input id="card-cost" type="number">
+                    </label>
+                    <label>Imagen
+                        <input id="card-image" placeholder="url o asset id">
+                    </label>
+                    <label>Sonido al jugar
+                        <input id="card-sound" placeholder="url de audio o asset id">
+                    </label>
+                    <label>Max copias
+                        <input id="card-max" type="number">
+                    </label>
+                    <label style="grid-column: 1 / -1;">Descripción
+                        <textarea id="card-description"></textarea>
+                    </label>
+                    <label>Likes
+                        <textarea id="card-likes" placeholder="ids separados por coma"></textarea>
+                    </label>
+                    <label>Dislikes
+                        <textarea id="card-dislikes" placeholder="ids separados por coma"></textarea>
+                    </label>
+                    <label>Requisitos JSON
+                        <textarea id="card-requirements"></textarea>
+                    </label>
+                    <label>Efectos JSON
+                        <textarea id="card-effects"></textarea>
+                    </label>
+                </form>
+                <div class="actions">
+                    <button id="save-card-btn" class="btn primary">Guardar carta</button>
+                </div>
+                <p id="card-message" class="message"></p>
+            </section>
+
+            <section class="panel section" id="import-section">
+                <h2>Importar cartas por CSV</h2>
+                <p class="meta" style="margin: 8px 0 12px;">Columnas soportadas: id,name,type,archetype,cost,description,image,sound,likes,dislikes,tags,prereqs,requirements,effects,maxCopies. `requirements` y `effects` aceptan JSON.</p>
+                <input id="csv-file" type="file" accept=".csv,text/csv">
+                <div style="height: 10px"></div>
+                <textarea id="csv-text" style="min-height: 260px;" placeholder="id,name,type,archetype,cost,description"></textarea>
+                <div class="actions">
+                    <button id="import-btn" class="btn primary">Importar</button>
+                </div>
+                <p id="import-message" class="message"></p>
+            </section>
+
+            <section class="panel section" id="users-section">
+                <h2>Usuarios</h2>
+                <div class="grid" style="margin-top: 12px;">
+                    <label>Nuevo usuario
+                        <input id="new-user">
+                    </label>
+                    <label>Contraseña
+                        <input id="new-password" type="password">
+                    </label>
+                </div>
+                <div class="actions">
+                    <button id="create-user-btn" class="btn primary">Crear usuario</button>
+                </div>
+                <div id="user-list" class="user-list"></div>
+                <p id="user-message" class="message"></p>
+            </section>
+
+            <section class="panel section" id="ui-section">
+                <h2>UI / Sonidos / Efectos</h2>
+                <div class="grid" style="margin-top: 12px;">
+                    <label>Imagen victoria
+                        <input id="victoryImage">
+                    </label>
+                    <label>Sonido victoria
+                        <input id="victorySound">
+                    </label>
+                    <label>Imagen derrota
+                        <input id="defeatImage">
+                    </label>
+                    <label>Sonido derrota
+                        <input id="defeatSound">
+                    </label>
+                    <label>Efecto al jugar carta
+                        <input id="playCardEffect">
+                    </label>
+                    <label>Sonido al jugar carta
+                        <input id="playCardSound">
+                    </label>
+                    <label>Efecto cambio fase/arco
+                        <input id="phaseAdvanceEffect">
+                    </label>
+                    <label>Sonido cambio fase/arco
+                        <input id="phaseAdvanceSound">
+                    </label>
+                </div>
+                <div class="actions">
+                    <button id="save-ui-btn" class="btn primary">Guardar UI</button>
+                </div>
+                <p id="ui-message" class="message"></p>
+            </section>
+        </main>
+    </div>
+
+    <script type="module" src="/src/admin.ts"></script>
+</body>
+
+</html>

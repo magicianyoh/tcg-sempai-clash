@@ -13,6 +13,16 @@ export default defineConfig({
         }
     },
     build: {
-        outDir: 'dist'
+        outDir: 'dist',
+        rollupOptions: {
+            input: {
+                main: path.resolve(__dirname, 'index.html'),
+                auth: path.resolve(__dirname, 'auth.html'),
+                build: path.resolve(__dirname, 'build.html'),
+                match: path.resolve(__dirname, 'match.html'),
+                battle: path.resolve(__dirname, 'battle.html'),
+                admin: path.resolve(__dirname, 'admin.html'),
+            },
+        },
     }
 });

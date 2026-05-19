@@ -12,6 +12,17 @@ export interface User {
     activeDeckId?: string;
 }
 
+export interface AdminUiSettings {
+    victoryImage: string;
+    victorySound: string;
+    defeatImage: string;
+    defeatSound: string;
+    playCardEffect: string;
+    playCardSound: string;
+    phaseAdvanceEffect: string;
+    phaseAdvanceSound: string;
+}
+
 // ============================================
 // Memory Store
 // ============================================
@@ -34,6 +45,17 @@ export class MemoryStore {
     // Quick Match Queue: formatId -> [{ username, deckId }]
     private queues: Map<string, Array<{ username: string; deckId: string }>> = new Map();
 
+    private adminUiSettings: AdminUiSettings = {
+        victoryImage: '',
+        victorySound: '',
+        defeatImage: '',
+        defeatSound: '',
+        playCardEffect: 'spark',
+        playCardSound: '',
+        phaseAdvanceEffect: 'arc-burst',
+        phaseAdvanceSound: '',
+    };
+
     // ========== User Methods ==========
 
     createUser(username: string, passwordHash: string): User {
@@ -53,6 +75,29 @@ export class MemoryStore {
             if (user.id === id) return user;
         }
         return undefined;
+    }
+
+    listUsers(): User[] {
+        return Array.from(this.users.values());
+    }
+
+    deleteUser(username: string): boolean {
+        if (!this.users.has(username)) return false;
+
+        const deckIds = this.decksByUser.get(username) || [];
+        deckIds.forEach(deckId => this.decks.delete(deckId));
+        this.decksByUser.delete(username);
+        this.users.delete(username);
+        this.removeFromAllQueues(username);
+        return true;
+    }
+
+    updateUserPassword(username: string, passwordHash: string): User | undefined {
+        const user = this.users.get(username);
+        if (!user) return undefined;
+        user.passwordHash = passwordHash;
+        this.users.set(username, user);
+        return user;
     }
 
     setActiveDeck(username: string, deckId: string): void {
@@ -207,6 +252,18 @@ export class MemoryStore {
         for (const [formatId] of this.queues.entries()) {
             this.removeFromQueue(formatId, username);
         }
+    }
+
+    getAdminUiSettings(): AdminUiSettings {
+        return { ...this.adminUiSettings };
+    }
+
+    updateAdminUiSettings(updates: Partial<AdminUiSettings>): AdminUiSettings {
+        this.adminUiSettings = {
+            ...this.adminUiSettings,
+            ...updates,
+        };
+        return this.getAdminUiSettings();
     }
 }
 

@@ -3,10 +3,12 @@ import jwt from '@fastify/jwt';
 import cors from '@fastify/cors';
 import { authRoutes } from './http/auth.routes';
 import { deckRoutes } from './http/deck.routes';
+import { adminRoutes } from './http/admin.routes';
 import { wsGateway } from './ws/ws.gateway';
 import { CARDS } from '@tcg/game-engine/content/cards';
 import { matchService, CpuDifficulty } from './ws/match.service';
 import { GAME_CONSTANTS } from '@tcg/shared/constants';
+import { store } from './store/memory.store';
 
 const server = Fastify({ logger: true });
 
@@ -19,9 +21,14 @@ server.register(jwt, { secret: 'supersecret' });
 // HTTP Routes
 server.register(authRoutes);
 server.register(deckRoutes);
+server.register(adminRoutes);
 
 server.get('/health', async () => {
     return { status: 'ok', timestamp: Date.now() };
+});
+
+server.get('/ui-settings', async () => {
+    return { settings: store.getAdminUiSettings() };
 });
 
 server.get('/cards', async () => {
@@ -40,10 +47,13 @@ server.get('/cards', async () => {
             desc: card.description,
             backstory: card.backstory,
             image: card.image,
+            sound: (card as any).sound,
             maxCopies: card.maxCopies,
             prereqs: card.eventPrerequisites,
             requirements: card.requirements,
             effects: card.effects,
+            likes: card.likesData?.likes || [],
+            dislikes: card.likesData?.dislikes || [],
             tags: card.tags,
         });
     }

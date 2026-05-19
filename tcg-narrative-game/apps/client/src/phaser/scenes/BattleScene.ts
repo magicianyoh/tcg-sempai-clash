@@ -19,6 +19,7 @@ interface CardDisplayData {
     description: string;
     backstory?: string;
     image?: string;
+    sound?: string;
     prereqs?: string[];
     requirements?: Array<{
         type: string;
@@ -45,6 +46,17 @@ type FieldTheme = {
     bg: number;
     accent: number;
     secondary: number;
+};
+
+type UiSettings = {
+    victoryImage: string;
+    victorySound: string;
+    defeatImage: string;
+    defeatSound: string;
+    playCardEffect: string;
+    playCardSound: string;
+    phaseAdvanceEffect: string;
+    phaseAdvanceSound: string;
 };
 
 const CARD_DB: Record<string, CardDisplayData> = {};
@@ -91,6 +103,16 @@ export class BattleScene extends Phaser.Scene {
     private narrativeContent: HTMLDivElement | null = null;
     private narrativeToggle: HTMLButtonElement | null = null;
     private narrativeDrawerOpen = false;
+    private uiSettings: UiSettings = {
+        victoryImage: '',
+        victorySound: '',
+        defeatImage: '',
+        defeatSound: '',
+        playCardEffect: 'spark',
+        playCardSound: '',
+        phaseAdvanceEffect: 'arc-burst',
+        phaseAdvanceSound: '',
+    };
 
     constructor() {
         super('BattleScene');
@@ -109,7 +131,7 @@ export class BattleScene extends Phaser.Scene {
         this.setupDragAndDrop();
         this.setupGlobalEvents();
 
-        this.loadCardCatalog().finally(() => this.connectWebSocket());
+        Promise.all([this.loadCardCatalog(), this.loadUiSettings()]).finally(() => this.connectWebSocket());
         this.scale.on('resize', this.handleResize, this);
     }
 
@@ -492,6 +514,7 @@ export class BattleScene extends Phaser.Scene {
                     description: card.description ?? card.desc ?? '',
                     backstory: card.backstory,
                     image: card.image,
+                    sound: card.sound,
                     prereqs: card.prereqs ?? [],
                     requirements: card.requirements ?? [],
                     effects: card.effects ?? [],
@@ -500,6 +523,19 @@ export class BattleScene extends Phaser.Scene {
             });
         } catch (error) {
             console.warn('Card catalog unavailable, using local fallbacks.', error);
+        }
+    }
+
+    private async loadUiSettings(): Promise<void> {
+        try {
+            const response = await fetch('http://localhost:3000/ui-settings');
+            const data = await response.json() as { settings?: Partial<UiSettings> };
+            this.uiSettings = {
+                ...this.uiSettings,
+                ...(data.settings || {}),
+            };
+        } catch (error) {
+            console.warn('UI settings unavailable, using defaults.', error);
         }
     }
 
@@ -795,6 +831,7 @@ export class BattleScene extends Phaser.Scene {
                 break;
             case 'play_card': {
                 const card = this.findCardFromLog(entry.details);
+                this.playConfiguredSound(card?.sound || this.uiSettings.playCardSound);
                 if (card?.type === 'FILLER') {
                     this.enqueueBanner('ARCO DE RELLENO', `${entry.player} jugo ${card.name}`, 'danger');
                 } else {
@@ -804,11 +841,13 @@ export class BattleScene extends Phaser.Scene {
             }
             case 'event_prepared': {
                 const card = this.findCardFromLog(entry.details);
+                this.playConfiguredSound(card?.sound || this.uiSettings.playCardSound);
                 this.enqueueBanner('EVENTO PREPARADO', `${card?.name ?? entry.details ?? ''} se activa al pasar turno`, 'event');
                 break;
             }
             case 'event_complete': {
                 const card = this.findCardFromLog(entry.details);
+                this.playConfiguredSound(this.uiSettings.phaseAdvanceSound);
                 this.animateEventResolution(entry, card);
                 this.time.delayedCall(760, () => {
                     if (card?.type === 'EVENT_FINAL') {
@@ -1053,6 +1092,17 @@ export class BattleScene extends Phaser.Scene {
         });
     }
 
+    private playConfiguredSound(source?: string): void {
+        if (!source) return;
+        try {
+            const audio = new Audio(source);
+            audio.volume = 0.75;
+            void audio.play().catch(() => undefined);
+        } catch {
+            // Ignore invalid or browser-blocked audio URLs.
+        }
+    }
+
     private enqueueBanner(title: string, subtitle: string | undefined, tone: BannerTone): void {
         this.bannerQueue.push({ title, subtitle, tone });
         if (!this.bannerActive) {
@@ -1164,7 +1214,10 @@ export class BattleScene extends Phaser.Scene {
     private showGameOver(payload: { winner: string; reason: string }): void {
         const { width, height } = this.scale;
         const isWinner = payload.winner === this.myUsername;
+        const configuredImage = isWinner ? this.uiSettings.victoryImage : this.uiSettings.defeatImage;
+        this.playConfiguredSound(isWinner ? this.uiSettings.victorySound : this.uiSettings.defeatSound);
         this.add.rectangle(0, 0, width, height, 0x000000, 0.9).setOrigin(0).setDepth(2800);
+        if (configuredImage) this.addConfiguredEndImage(configuredImage, width / 2, height / 2 - 126);
         this.add.text(width / 2, height / 2 - 44, isWinner ? 'VICTORIA' : 'DERROTA', {
             fontSize: '48px',
             color: isWinner ? '#4ecdc4' : '#e94560',
@@ -1173,6 +1226,32 @@ export class BattleScene extends Phaser.Scene {
         this.add.text(width / 2, height / 2 + 18, `Razon: ${payload.reason}`, {
             fontSize: '16px',
             color: '#d7dee9',
+        }).setOrigin(0.5).setDepth(2801);
+    }
+
+    private addConfiguredEndImage(source: string, x: number, y: number): void {
+        if (/^(https?:\/\/|\/|data:image\/)/.test(source)) {
+            const key = `admin-end-${btoa(source).replace(/[^a-z0-9]/gi, '').slice(0, 28)}`;
+            const addImage = () => {
+                const image = this.add.image(x, y, key).setDepth(2801);
+                image.setDisplaySize(Math.min(320, this.scale.width - 60), 120);
+            };
+
+            if (this.textures.exists(key)) {
+                addImage();
+            } else {
+                this.load.image(key, source);
+                this.load.once(Phaser.Loader.Events.COMPLETE, addImage);
+                this.load.start();
+            }
+            return;
+        }
+
+        this.add.text(x, y, source, {
+            fontSize: '14px',
+            color: '#aab2c2',
+            align: 'center',
+            wordWrap: { width: Math.min(560, this.scale.width - 40) },
         }).setOrigin(0.5).setDepth(2801);
     }
 
