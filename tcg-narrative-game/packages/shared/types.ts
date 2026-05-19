@@ -176,6 +176,7 @@ export interface BoardState {
 export interface PlayerState {
     id: string;
     username: string;
+    backgroundId?: string;        // Field theme/color selected in the deck builder
 
     // Cards
     deck: string[];               // Remaining deck (card IDs)

@@ -108,6 +108,7 @@ function createPlayerState(username: string, deck: DeckData): PlayerState {
     return {
         id: username,
         username,
+        backgroundId: deck.backgroundId,
         deck: shuffledDeck,
         hand,
         discard: [],

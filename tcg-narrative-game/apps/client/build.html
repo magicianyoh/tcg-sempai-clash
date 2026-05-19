@@ -342,22 +342,48 @@
 
         .bg-selector {
             display: flex;
-            gap: 5px;
+            gap: 8px;
             margin-bottom: 10px;
             overflow-x: auto;
             padding-bottom: 5px;
         }
 
         .bg-option {
-            width: 40px;
-            height: 40px;
+            min-width: 96px;
+            height: 56px;
             border-radius: 6px;
             border: 2px solid transparent;
             cursor: pointer;
-            background-size: cover;
-            background-position: center;
             flex-shrink: 0;
-            background-color: #333;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bg-option::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, var(--theme-a), var(--theme-b));
+            opacity: 0.82;
+        }
+
+        .bg-option span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .bg-option .theme-name {
+            font-size: 0.68rem;
+            font-weight: 700;
+        }
+
+        .bg-option .theme-sub {
+            font-size: 0.55rem;
+            color: rgba(255, 255, 255, 0.75);
         }
 
         .bg-option.selected {
@@ -480,7 +506,7 @@
             <input type="text" class="deck-name-input" id="deck-name" placeholder="Nombre del mazo..." value="Mi Mazo">
 
             <!-- Background Selector -->
-            <div style="margin-bottom: 5px; font-size: 0.8rem; color: rgba(255,255,255,0.7);">Fondo de Tablero:</div>
+            <div style="margin-bottom: 5px; font-size: 0.8rem; color: rgba(255,255,255,0.7);">Tema del campo:</div>
             <div class="bg-selector" id="bg-selector">
                 <!-- Populated by JS -->
             </div>
@@ -524,7 +550,12 @@
         let currentEditingDeckId = null;
         let selectedBackground = 'bg_01'; // Default
 
-        const BACKGROUNDS = ['bg_01', 'bg_02', 'bg_03', 'bg_04']; // IDs corresponding to assets/backgrounds
+        const FIELD_THEMES = [
+            { id: 'bg_01', name: 'Neon Clash', sub: 'Cian / Rojo', a: '#020609', b: '#4ecdc4' },
+            { id: 'bg_02', name: 'Crimson Arc', sub: 'Rojo / Dorado', a: '#140508', b: '#ff5a76' },
+            { id: 'bg_03', name: 'Golden Stage', sub: 'Dorado / Verde', a: '#111008', b: '#ffd166' },
+            { id: 'bg_04', name: 'Violet Night', sub: 'Violeta / Azul', a: '#090615', b: '#9b5de5' },
+        ];
 
         // Auth check
         const token = localStorage.getItem('token');
@@ -831,11 +862,14 @@
         // Render Backgrounds
         function renderBackgrounds() {
             const container = document.getElementById('bg-selector');
-            container.innerHTML = BACKGROUNDS.map(bg => `
-                <div class="bg-option ${bg === selectedBackground ? 'selected' : ''}" 
-                     data-bg="${bg}"
-                     style="background-image: url('/assets/backgrounds/${bg}.svg')">
-                </div>
+            container.innerHTML = FIELD_THEMES.map(theme => `
+                <button class="bg-option ${theme.id === selectedBackground ? 'selected' : ''}"
+                     data-bg="${theme.id}"
+                     style="--theme-a: ${theme.a}; --theme-b: ${theme.b};"
+                     type="button">
+                    <span class="theme-name">${theme.name}</span>
+                    <span class="theme-sub">${theme.sub}</span>
+                </button>
             `).join('');
 
             container.querySelectorAll('.bg-option').forEach(el => {

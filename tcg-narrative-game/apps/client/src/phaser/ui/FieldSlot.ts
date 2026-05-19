@@ -14,7 +14,6 @@ export interface FieldSlotConfig {
 
 export class FieldSlot extends Phaser.GameObjects.Container {
     private background: Phaser.GameObjects.Rectangle;
-    private label: Phaser.GameObjects.Text;
     private glow: Phaser.GameObjects.Graphics;
 
     private slotPosition: SlotPosition;
@@ -43,15 +42,6 @@ export class FieldSlot extends Phaser.GameObjects.Container {
         this.background.setData('slotChrome', true);
         this.add(this.background);
 
-        this.label = scene.add.text(0, 0, 'SLOT', {
-            fontSize: '18px',
-            color: '#ffffff',
-            fontFamily: 'Georgia, serif',
-            align: 'center',
-        }).setOrigin(0.5);
-        this.label.setData('slotChrome', true);
-        this.add(this.label);
-
         this.setSize(config.width, config.height);
         this.setInteractive({ dropZone: true });
         this.setData('isSlot', true);
@@ -64,7 +54,6 @@ export class FieldSlot extends Phaser.GameObjects.Container {
     setOccupied(isOccupied: boolean, cardId?: string): void {
         this.isOccupied = isOccupied;
         this.currentCardId = cardId || null;
-        this.label.setVisible(!isOccupied);
 
         if (isOccupied) {
             this.background.setStrokeStyle(2, 0x4ecdc4);
@@ -114,5 +103,24 @@ export class FieldSlot extends Phaser.GameObjects.Container {
             this.background.setStrokeStyle(3, 0xffffff);
         }
         this.glow.clear();
+    }
+
+    pulse(color = 0xffd166): void {
+        this.scene.tweens.add({
+            targets: this,
+            scale: { from: 1, to: 1.12 },
+            duration: 180,
+            yoyo: true,
+            repeat: 2,
+        });
+        this.glow.clear();
+        this.glow.fillStyle(color, 0.42);
+        this.glow.fillRect(
+            -this.width / 2 - 7,
+            -this.height / 2 - 7,
+            this.width + 14,
+            this.height + 14
+        );
+        this.scene.time.delayedCall(720, () => this.resetHighlight());
     }
 }

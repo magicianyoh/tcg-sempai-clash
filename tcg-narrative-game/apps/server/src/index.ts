@@ -39,8 +39,12 @@ server.get('/cards', async () => {
             cost: card.cost,
             desc: card.description,
             backstory: card.backstory,
+            image: card.image,
             maxCopies: card.maxCopies,
             prereqs: card.eventPrerequisites,
+            requirements: card.requirements,
+            effects: card.effects,
+            tags: card.tags,
         });
     }
 

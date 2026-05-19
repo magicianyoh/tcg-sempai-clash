@@ -16,6 +16,7 @@ export interface CardSpriteConfig {
     width?: number;
     height?: number;
     interactive?: boolean;
+    activatable?: boolean;
 }
 
 export class CardSprite extends Phaser.GameObjects.Container {
@@ -36,6 +37,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
 
     private isDragging: boolean = false;
     private originalPosition: { x: number; y: number } = { x: 0, y: 0 };
+    private activatable = false;
 
     static readonly DEFAULT_WIDTH = 100;
     static readonly DEFAULT_HEIGHT = 140;
@@ -52,9 +54,11 @@ export class CardSprite extends Phaser.GameObjects.Container {
         this.cardCost = config.cost;
         this.cardDescription = config.description;
         this.cardBackstory = config.backstory || 'No backstory available.';
+        this.activatable = config.activatable === true;
         this.originalPosition = { x: config.x, y: config.y };
 
         this.createCard(width, height);
+        this.setActivatable(this.activatable);
 
         if (config.interactive !== false) {
             this.enableInteraction();
@@ -282,6 +286,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
      * Set highlight state for activatable events
      */
     setActivatable(activatable: boolean): void {
+        this.activatable = activatable;
         if (activatable) {
             if (!this.scene.tweens.isTweening(this.background)) {
                 this.scene.tweens.add({

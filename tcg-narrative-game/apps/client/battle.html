@@ -24,6 +24,85 @@
             width: 100vw;
             height: 100vh;
         }
+
+        .anime-log-panel {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 330px;
+            height: 100vh;
+            padding: 18px 18px 22px;
+            background: rgba(0, 0, 0, 0.82);
+            border-left: 1px solid rgba(255, 255, 255, 0.22);
+            z-index: 10;
+            overflow: hidden;
+        }
+
+        .anime-log-title {
+            font-size: 0.78rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #4ecdc4;
+            margin-bottom: 14px;
+            font-weight: 700;
+        }
+
+        .anime-log-content {
+            height: calc(100vh - 70px);
+            overflow-y: auto;
+            padding-right: 6px;
+        }
+
+        .anime-log-content p {
+            margin-bottom: 12px;
+            color: rgba(255, 255, 255, 0.82);
+            font-size: 0.88rem;
+            line-height: 1.35;
+        }
+
+        .anime-log-content strong {
+            color: #fff;
+            font-weight: 800;
+        }
+
+        .anime-log-toggle {
+            display: none;
+            position: fixed;
+            right: 14px;
+            bottom: 18px;
+            z-index: 11;
+            padding: 10px 14px;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.86);
+            color: #fff;
+            font-weight: 700;
+        }
+
+        @media (max-width: 919px) {
+            .anime-log-panel {
+                top: auto;
+                bottom: 0;
+                width: 100vw;
+                height: min(55vh, 390px);
+                border-left: none;
+                border-top: 1px solid rgba(255, 255, 255, 0.25);
+                transform: translateY(100%);
+                transition: transform 180ms ease;
+            }
+
+            .anime-log-panel.open {
+                transform: translateY(0);
+            }
+
+            .anime-log-content {
+                height: calc(min(55vh, 390px) - 70px);
+            }
+
+            .anime-log-toggle {
+                display: block;
+            }
+        }
     </style>
 </head>
 

@@ -103,15 +103,6 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
         lens.fillCircle(-16, -14, 7);
         orb.add(lens);
 
-        const label = this.scene.add.text(0, TimelineBlock.ORB_RADIUS + 14, 'Evento\nClave', {
-            fontSize: '26px',
-            color: '#ffffff',
-            fontFamily: 'Georgia, serif',
-            align: 'center',
-            lineSpacing: 2,
-        }).setOrigin(0.5, 0);
-        orb.add(label);
-
         orb.setSize(TimelineBlock.ORB_RADIUS * 2, TimelineBlock.ORB_RADIUS * 2);
         orb.setInteractive({ dropZone: true });
         orb.setData('isEventOrb', true);
@@ -164,18 +155,12 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
             fontStyle: 'bold',
         }).setOrigin(0.5);
 
-        const inspectText = this.scene.add.text(0, TimelineBlock.SLOT_HEIGHT / 2 - 20, 'CTRL / TAP', {
-            fontSize: '8px',
-            color: '#d7f9ff',
-            align: 'center',
-        }).setOrigin(0.5);
-
         cardBg.setInteractive({ useHandCursor: true });
         cardBg.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
             this.scene.events.emit('card-clicked', cardId, pointer, this.blockIndex, position);
         });
 
-        slot.add([cardBg, typeText, cardLabel, inspectText]);
+        slot.add([cardBg, typeText, cardLabel]);
         return true;
     }
 
@@ -200,15 +185,6 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
             fontStyle: 'bold',
         }).setOrigin(0.5);
         this.eventOrb.add(cardLabel);
-
-        const label = this.scene.add.text(0, TimelineBlock.ORB_RADIUS + 14, 'Evento\nClave', {
-            fontSize: '24px',
-            color: '#ffffff',
-            fontFamily: 'Georgia, serif',
-            align: 'center',
-            lineSpacing: 2,
-        }).setOrigin(0.5, 0);
-        this.eventOrb.add(label);
 
         this.eventOrb.setData('isEmpty', false);
         this.eventOrb.setData('cardId', cardId);
@@ -306,6 +282,23 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
 
     getEventOrb(): Phaser.GameObjects.Container | null {
         return this.eventOrb;
+    }
+
+    getEventOrbWorldPosition(): Phaser.Math.Vector2 | null {
+        if (!this.eventOrb) return null;
+        const matrix = this.eventOrb.getWorldTransformMatrix();
+        return new Phaser.Math.Vector2(matrix.tx, matrix.ty);
+    }
+
+    getSlotWorldPosition(position: SlotPosition): Phaser.Math.Vector2 | null {
+        const slot = this.slots.get(position);
+        if (!slot) return null;
+        const matrix = slot.getWorldTransformMatrix();
+        return new Phaser.Math.Vector2(matrix.tx, matrix.ty);
+    }
+
+    pulseSlots(positions: SlotPosition[]): void {
+        positions.forEach(position => this.slots.get(position)?.pulse());
     }
 
     getSlotsData(): SlotData[] {
