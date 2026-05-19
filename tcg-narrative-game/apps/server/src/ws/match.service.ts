@@ -1,10 +1,11 @@
-import { MatchState, PlayerState, BoardState, LogEntry, DeckData, CardType, TimelineBlock, TimelineSlot } from '@tcg/shared/types';
+import { MatchState, PlayerState, BoardState, LogEntry, DeckData, CardData, CardType, TimelineBlock, TimelineSlot } from '@tcg/shared/types';
 import { ARCHETYPES, GAME_CONSTANTS, SLOT_POSITIONS } from '@tcg/shared/constants';
 import { MatchActionType } from '@tcg/shared/protocol';
 import { store } from '../store/memory.store';
 import { CARDS } from '@tcg/game-engine/content/cards';
 import { canPlayCard, canReturnToHand } from '@tcg/game-engine/rules/validation';
 import { resolveEffects } from '@tcg/game-engine/rules/effect';
+import { chooseCpuPlay } from './cpu.strategy';
 
 // ============================================
 // Match Service
@@ -133,12 +134,7 @@ function createPlayerState(username: string, deck: DeckData): PlayerState {
 }
 
 function createCpuDeck(archetypeId: string, difficulty: CpuDifficulty): DeckData {
-    const allCards = Object.values(CARDS)
-        .filter(card => card.archetype === archetypeId)
-        .sort((a, b) => {
-            const typeOrder = [CardType.PROTAGONIST, CardType.PERSONAJE, CardType.ITEM, CardType.LOCATION, CardType.EVENT, CardType.EVENT_FINAL];
-            return typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) || a.cost - b.cost || a.id.localeCompare(b.id);
-        });
+    const allCards = Object.values(CARDS).filter(card => card.archetype === archetypeId);
 
     if (allCards.length === 0) {
         throw new Error(`No cards found for CPU archetype: ${archetypeId}`);
@@ -146,25 +142,58 @@ function createCpuDeck(archetypeId: string, difficulty: CpuDifficulty): DeckData
 
     const cards: string[] = [];
     const counts: Record<string, number> = {};
-    const preferEvents = difficulty !== 'easy';
-    const cardPool = preferEvents
-        ? [...allCards.filter(card => card.type === CardType.PROTAGONIST), ...allCards.filter(card => card.type !== CardType.PROTAGONIST)]
-        : allCards;
-
-    while (cards.length < GAME_CONSTANTS.DECK_SIZE) {
+    const addCard = (card: CardData, copies = 1): boolean => {
         let added = false;
+        const maxCopies = card.maxCopies ?? (card.type === CardType.PROTAGONIST ? GAME_CONSTANTS.PROTAGONIST_MAX_COPIES : GAME_CONSTANTS.MAX_COPIES_PER_CARD);
 
-        for (const card of cardPool) {
-            const maxCopies = card.maxCopies ?? (card.type === CardType.PROTAGONIST ? GAME_CONSTANTS.PROTAGONIST_MAX_COPIES : GAME_CONSTANTS.MAX_COPIES_PER_CARD);
-            if ((counts[card.id] || 0) >= maxCopies) continue;
-
+        for (let i = 0; i < copies && cards.length < GAME_CONSTANTS.DECK_SIZE; i++) {
+            if ((counts[card.id] || 0) >= maxCopies) break;
             cards.push(card.id);
             counts[card.id] = (counts[card.id] || 0) + 1;
             added = true;
-
-            if (cards.length === GAME_CONSTANTS.DECK_SIZE) break;
         }
 
+        return added;
+    };
+
+    const byType = (type: CardType) => allCards
+        .filter(card => card.type === type)
+        .sort((a, b) => scoreCpuDeckCard(b, difficulty) - scoreCpuDeckCard(a, difficulty) || a.cost - b.cost || a.id.localeCompare(b.id));
+
+    const protagonist = byType(CardType.PROTAGONIST)[0];
+    if (protagonist) addCard(protagonist);
+
+    const finalEvent = byType(CardType.EVENT_FINAL)[0];
+    if (finalEvent) addCard(finalEvent);
+
+    const targetComposition: Array<[CardType, number]> = [
+        [CardType.EVENT, difficulty === 'easy' ? 4 : 6],
+        [CardType.PERSONAJE, 5],
+        [CardType.ITEM, 4],
+        [CardType.LOCATION, 3],
+    ];
+
+    for (const [type, targetCount] of targetComposition) {
+        let addedForType = 0;
+        for (const card of byType(type)) {
+            while (addedForType < targetCount && addCard(card)) {
+                addedForType++;
+            }
+            if (addedForType >= targetCount) break;
+        }
+    }
+
+    const fallbackPool = [
+        ...byType(CardType.EVENT),
+        ...byType(CardType.PERSONAJE),
+        ...byType(CardType.ITEM),
+        ...byType(CardType.LOCATION),
+        ...byType(CardType.EVENT_FINAL),
+        ...byType(CardType.PROTAGONIST),
+    ];
+
+    while (cards.length < GAME_CONSTANTS.DECK_SIZE) {
+        const added = fallbackPool.some(card => addCard(card));
         if (!added) break;
     }
 
@@ -181,6 +210,20 @@ function createCpuDeck(archetypeId: string, difficulty: CpuDifficulty): DeckData
         createdAt: now,
         updatedAt: now,
     };
+}
+
+function scoreCpuDeckCard(card: CardData, difficulty: CpuDifficulty): number {
+    let score = 0;
+    if (card.type === CardType.EVENT_FINAL) score += 100;
+    if (card.type === CardType.PROTAGONIST) score += 80;
+    if (card.effects.some(effect => effect.type === 'VICTORY')) score += 100;
+    if (card.effects.some(effect => effect.type === 'STORY')) score += 25;
+    if (card.effects.some(effect => effect.type === 'FILLER' && effect.target === 'OPPONENT')) score += difficulty === 'hard' ? 35 : 20;
+    if (card.effects.some(effect => effect.type === 'DRAW')) score += 18;
+    if (card.affinity?.compatibleWith?.length) score += 12;
+    if (card.likesData?.likes?.length) score += 8;
+    score += Math.max(0, 5 - card.cost);
+    return score;
 }
 
 export type CpuDifficulty = 'easy' | 'normal' | 'hard';
@@ -343,8 +386,11 @@ export class MatchService {
         for (let i = 0; i < maxPlays; i++) {
             if (match.winner) break;
 
-            const played = this.playBestCpuCard(match, cpuIndex);
-            if (!played) break;
+            const plan = chooseCpuPlay(match, cpuIndex);
+            if (!plan) break;
+
+            this.handlePlayCard(match, cpuIndex, plan.cardId, plan.slotPosition, plan.isEventActivation);
+            this.addLog(match, cpu.username, 'cpu_decision', `${CARDS[plan.cardId]?.name || plan.cardId} (${plan.reason})`);
 
             this.checkVictory(match);
         }
@@ -353,42 +399,6 @@ export class MatchService {
             this.handleEndTurn(match, cpuIndex);
             this.checkVictory(match);
         }
-    }
-
-    private playBestCpuCard(match: MatchState, cpuIndex: number): boolean {
-        const cpu = match.players[cpuIndex];
-        const blockIndex = cpu.board.currentBlockIndex;
-        const block = cpu.board.blocks[blockIndex];
-        if (!block) return false;
-
-        const playableEvent = cpu.hand.find(cardId => {
-            const card = CARDS[cardId];
-            if (!card || (card.type !== CardType.EVENT && card.type !== CardType.EVENT_FINAL && card.type !== CardType.EVENT_KEY)) return false;
-            return canPlayCard(match, cpuIndex, cardId, { blockIndex, isEventOrb: true }).ok;
-        });
-
-        if (playableEvent) {
-            this.handlePlayCard(match, cpuIndex, playableEvent, undefined, true);
-            return true;
-        }
-
-        const emptySlot = block.slots.find(slot => !slot.cardId);
-        if (!emptySlot) return false;
-
-        const playableCard = cpu.hand.find(cardId => {
-            const card = CARDS[cardId];
-            if (!card || card.type === CardType.EVENT || card.type === CardType.EVENT_FINAL || card.type === CardType.EVENT_KEY) return false;
-            return canPlayCard(match, cpuIndex, cardId, {
-                blockIndex,
-                position: emptySlot.position,
-                isEventOrb: false,
-            }).ok;
-        });
-
-        if (!playableCard) return false;
-
-        this.handlePlayCard(match, cpuIndex, playableCard, emptySlot.position);
-        return true;
     }
 
     // ============================================
