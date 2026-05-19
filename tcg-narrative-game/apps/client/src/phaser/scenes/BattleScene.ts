@@ -4,62 +4,15 @@ import { CardSprite } from '../ui/CardSprite';
 import { FieldSlot, SlotPosition } from '../ui/FieldSlot';
 import { CardDetailOverlay, CardInfo } from '../ui/CardDetailOverlay';
 import { canPlayCard } from '@tcg/game-engine/rules/validation';
+import type {
+    MatchState,
+    PlayerState,
+    TimelineBlock as TimelineBlockData,
+} from '@tcg/shared/types';
 
 // ============================================
 // Types
 // ============================================
-
-interface MatchState {
-    matchId: string;
-    turnNumber: number;
-    currentTurn: 0 | 1;
-    phase: string;
-    players: [PlayerState, PlayerState];
-    playerOrder: [string, string];
-    activePlayerId: string;
-    winner?: string;
-    winReason?: string;
-    log: LogEntry[];
-}
-
-interface PlayerState {
-    username: string;
-    hand: string[];
-    board: BoardState;
-    timeline: TimelineNode[];
-    storyPoints: number;
-    fillerPoints: number;
-    historyPoints: number;
-    completedEvents?: string[];
-    canPlayEvents?: boolean;
-}
-
-interface BoardState {
-    blocks: TimelineBlockData[];
-    currentBlockIndex: number;
-    characters: string[];
-    location?: string;
-}
-
-interface TimelineBlockData {
-    blockIndex: number;
-    slots: { position: string; cardId?: string; cardType?: string }[];
-    eventSlot?: string;
-    eventCompleted: boolean;
-}
-
-interface TimelineNode {
-    cardId: string;
-    turn: number;
-    resolved: boolean;
-}
-
-interface LogEntry {
-    turn: number;
-    player: string;
-    action: string;
-    details?: string;
-}
 
 // Minimal card data for display
 interface CardDisplayData {
@@ -289,7 +242,7 @@ export class BattleScene extends Phaser.Scene {
         const valid = canPlayCard(this.matchState, this.myPlayerIndex, cardId, dropData);
 
         if (!valid.ok) {
-            this.showFeedback(card.x, card.y, valid.reasons[0]);
+            this.showFeedback(card.x, card.y, valid.reasons?.[0] ?? 'Jugada invalida');
             card.resetPosition();
             return;
         }

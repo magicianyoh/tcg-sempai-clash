@@ -1,4 +1,4 @@
-import { CardData, MatchState, PlayerState, CardType, TimelineNode, CardEffect } from '@tcg/shared/types';
+import { CardEffect, CardRequirement, CardType, MatchState } from '@tcg/shared/types';
 import { CARDS } from '../content/cards';
 
 export function validatePlayCard(match: MatchState, playerId: string, cardId: string): { valid: boolean; reason?: string } {
@@ -12,8 +12,7 @@ export function validatePlayCard(match: MatchState, playerId: string, cardId: st
 
     // Check requirements
     if (card.requirements) {
-        const historyIds = player.timeline.map((node: TimelineNode) => node.cardId);
-        const meetsReq = card.requirements.every((reqId: string) => historyIds.includes(reqId));
+        const meetsReq = card.requirements.every((requirement) => meetsRequirement(match, playerId, requirement));
         if (!meetsReq) return { valid: false, reason: 'Requirements not met' };
     }
 
@@ -23,6 +22,51 @@ export function validatePlayCard(match: MatchState, playerId: string, cardId: st
     }
 
     return { valid: true };
+}
+
+function meetsRequirement(match: MatchState, playerId: string, requirement: CardRequirement): boolean {
+    const player = match.players.find(p => p.id === playerId);
+    if (!player) return false;
+
+    switch (requirement.type) {
+        case 'STORY_MIN':
+        case 'HISTORY_MIN': {
+            const storyPoints = player.storyPoints ?? player.historyPoints ?? 0;
+            return storyPoints >= (requirement.value || 0);
+        }
+
+        case 'FILLER_MAX':
+            return player.fillerPoints <= (requirement.value || 0);
+
+        case 'EVENT_COMPLETED':
+            return (requirement.cardIds || []).every(cardId => player.completedEvents.includes(cardId));
+
+        case 'CARD_ON_BOARD': {
+            const boardCards = player.board.blocks.flatMap(block => block.slots.map(slot => slot.cardId).filter(Boolean));
+            const matchingCards = boardCards.filter(cardId => {
+                const boardCard = CARDS[cardId!];
+                if (!boardCard) return false;
+                if (requirement.cardIds && !requirement.cardIds.includes(boardCard.id)) return false;
+                if (requirement.cardType && boardCard.type !== requirement.cardType) return false;
+                if (requirement.tag && !boardCard.tags?.includes(requirement.tag)) return false;
+                if (requirement.archetype && boardCard.archetype !== requirement.archetype) return false;
+                return true;
+            });
+
+            return matchingCards.length >= (requirement.value || 1);
+        }
+
+        case 'AFFINITY_ACTIVE': {
+            const boardCards = player.board.blocks.flatMap(block => block.slots.map(slot => slot.cardId).filter(Boolean));
+            return boardCards.some(cardId => {
+                const compatibleIds = CARDS[cardId!]?.affinity?.compatibleWith || [];
+                return compatibleIds.some(compatibleId => boardCards.includes(compatibleId));
+            });
+        }
+
+        default:
+            return true;
+    }
 }
 
 export function playCard(match: MatchState, playerId: string, cardId: string): MatchState {

@@ -1,4 +1,4 @@
-import { CardData, CardType, PlayerState, BoardState } from '@tcg/shared/types';
+import { CardData, CardRequirement, CardType, PlayerState } from '@tcg/shared/types';
 import { GAME_CONSTANTS } from '@tcg/shared/constants';
 import { CARDS } from '../content/cards';
 import { getFieldCards, isBlockedByDislike } from './affinity';
@@ -62,16 +62,13 @@ export function canActivateEvent(eventCard: CardData, player: PlayerState): Even
         }
     }
 
-    // Check legacy requirements (cards in timeline)
+    // Check structured card requirements.
     if (eventCard.requirements && eventCard.requirements.length > 0) {
-        const timelineCardIds = player.timeline.map(node => node.cardId);
-
-        for (const reqId of eventCard.requirements) {
-            if (!timelineCardIds.includes(reqId)) {
-                const reqCard = CARDS[reqId];
+        for (const requirement of eventCard.requirements) {
+            if (!doesPlayerMeetRequirement(player, requirement)) {
                 return {
                     canActivate: false,
-                    reason: `Requires "${reqCard?.name || reqId}" in timeline.`,
+                    reason: getRequirementFailureMessage(requirement, player),
                 };
             }
         }
@@ -107,6 +104,75 @@ export function canActivateEvent(eventCard: CardData, player: PlayerState): Even
     }
 
     return { canActivate: true };
+}
+
+function doesPlayerMeetRequirement(player: PlayerState, requirement: CardRequirement): boolean {
+    switch (requirement.type) {
+        case 'STORY_MIN':
+        case 'HISTORY_MIN': {
+            const storyPoints = player.storyPoints ?? player.historyPoints ?? 0;
+            return storyPoints >= (requirement.value || 0);
+        }
+
+        case 'FILLER_MAX':
+            return player.fillerPoints <= (requirement.value || 0);
+
+        case 'EVENT_COMPLETED':
+            return (requirement.cardIds || []).every(id => player.completedEvents?.includes(id));
+
+        case 'CARD_ON_BOARD': {
+            const fieldCards = getFieldCards(player.board);
+            const matchingCards = fieldCards.filter(cardId => {
+                const card = CARDS[cardId];
+                if (!card) return false;
+                if (requirement.cardIds && !requirement.cardIds.includes(card.id)) return false;
+                if (requirement.cardType && card.type !== requirement.cardType) return false;
+                if (requirement.tag && !card.tags?.includes(requirement.tag)) return false;
+                if (requirement.archetype && card.archetype !== requirement.archetype) return false;
+                return true;
+            });
+
+            return matchingCards.length >= (requirement.value || 1);
+        }
+
+        case 'AFFINITY_ACTIVE': {
+            const fieldCards = getFieldCards(player.board);
+            return fieldCards.some(cardId => {
+                const compatibleIds = CARDS[cardId]?.affinity?.compatibleWith || [];
+                return compatibleIds.some(compatibleId => fieldCards.includes(compatibleId));
+            });
+        }
+
+        default:
+            return true;
+    }
+}
+
+function getRequirementFailureMessage(requirement: CardRequirement, player: PlayerState): string {
+    switch (requirement.type) {
+        case 'STORY_MIN':
+        case 'HISTORY_MIN': {
+            const storyPoints = player.storyPoints ?? player.historyPoints ?? 0;
+            return `Need ${requirement.value} Story Points (have ${storyPoints})`;
+        }
+
+        case 'FILLER_MAX':
+            return `Filler must be <= ${requirement.value} (have ${player.fillerPoints})`;
+
+        case 'EVENT_COMPLETED': {
+            const eventNames = requirement.cardIds?.map(id => CARDS[id]?.name || id).join(', ');
+            return `Must complete: ${eventNames}`;
+        }
+
+        case 'CARD_ON_BOARD':
+            return 'Required card is not on the board';
+
+        case 'AFFINITY_ACTIVE':
+            return 'Need cards with active affinity on field';
+
+        default:
+            return 'Requirement not met';
+    }
 }
 
 /**
