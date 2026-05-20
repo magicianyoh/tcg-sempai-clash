@@ -226,6 +226,39 @@
             transform: scale(1.15);
         }
 
+        .suggestions {
+            position: fixed;
+            z-index: 30;
+            display: none;
+            width: min(360px, 90vw);
+            max-height: 220px;
+            overflow: auto;
+            border: 1px solid rgba(78, 205, 196, 0.5);
+            border-radius: 7px;
+            background: #0b1018;
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+        }
+
+        .suggestions.open {
+            display: grid;
+        }
+
+        .suggestions button {
+            border: 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: transparent;
+            color: #fff;
+            padding: 8px 10px;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .effect-list {
+            display: grid;
+            gap: 7px;
+            margin-top: 8px;
+        }
+
         .modal {
             position: fixed;
             inset: 0;
@@ -365,6 +398,53 @@
                     <label>Efectos JSON
                         <textarea id="card-effects"></textarea>
                     </label>
+                    <div style="grid-column: 1 / -1;">
+                        <h3>Editor de efectos</h3>
+                        <div class="grid" style="margin-top: 8px;">
+                            <label>Tipo
+                                <select id="effect-type">
+                                    <option value="STORY">Story</option>
+                                    <option value="FILLER">Filler</option>
+                                    <option value="DRAW">Robar</option>
+                                    <option value="DISCARD">Descartar</option>
+                                    <option value="BLOCK_EVENTS">Bloquear eventos</option>
+                                    <option value="BLOCK_CARD_TYPE">Bloquear tipo de carta</option>
+                                    <option value="EXTRA_DRAW_NEXT_TURN">Robo extra proximo turno</option>
+                                    <option value="REMOVE_OPPONENT_BOARD_CARD">Remover carta rival del campo</option>
+                                    <option value="VICTORY">Victoria</option>
+                                </select>
+                            </label>
+                            <label>Objetivo
+                                <select id="effect-target">
+                                    <option value="SELF">Propio</option>
+                                    <option value="OPPONENT">Rival</option>
+                                </select>
+                            </label>
+                            <label>Valor
+                                <input id="effect-value" type="number" value="1">
+                            </label>
+                            <label>Tipo bloqueado
+                                <select id="effect-card-type">
+                                    <option value="">Ninguno</option>
+                                    <option value="PERSONAJE">Personaje</option>
+                                    <option value="ITEM">Item</option>
+                                    <option value="LOCATION">Locacion</option>
+                                    <option value="EVENT">Evento</option>
+                                    <option value="EVENT_FINAL">Evento final</option>
+                                </select>
+                            </label>
+                            <label>Turnos
+                                <input id="effect-turns" type="number" value="1">
+                            </label>
+                            <label>Descripcion
+                                <input id="effect-description" placeholder="Texto del efecto">
+                            </label>
+                        </div>
+                        <div class="actions">
+                            <button id="add-effect-btn" class="btn" type="button">Añadir efecto</button>
+                        </div>
+                        <div id="effect-list" class="effect-list"></div>
+                    </div>
                 </form>
                 <div class="actions">
                     <button id="save-card-btn" class="btn primary">Guardar carta</button>
@@ -508,6 +588,7 @@
             <div id="media-modal-grid" class="media-grid"></div>
         </div>
     </div>
+    <div id="card-suggestions" class="suggestions"></div>
 
     <script type="module" src="/src/admin.ts"></script>
 </body>

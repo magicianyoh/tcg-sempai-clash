@@ -108,6 +108,15 @@ export function canPlayCard(
         // For now, ignoring numerical cost check unless resource added.
     }
 
+    const blockedType = player.statusEffects?.find(effect =>
+        effect.type === 'BLOCK_CARD_TYPE' &&
+        effect.turnsRemaining > 0 &&
+        effect.cardType === card.type
+    );
+    if (blockedType) {
+        return { ok: false, reasons: [blockedType.message || `No puedes jugar cartas de ${card.type}`] };
+    }
+
     // 3. Event Specific Checks
     if (card.type === CardType.EVENT || card.type === CardType.EVENT_KEY || card.type === CardType.EVENT_FINAL) {
 

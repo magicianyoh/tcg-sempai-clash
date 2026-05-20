@@ -31,6 +31,9 @@ export enum EffectType {
 
     // Control
     BLOCK_EVENTS = 'BLOCK_EVENTS', // Block opponent events for X turns
+    BLOCK_CARD_TYPE = 'BLOCK_CARD_TYPE', // Block one card type for N turns
+    EXTRA_DRAW_NEXT_TURN = 'EXTRA_DRAW_NEXT_TURN',
+    REMOVE_OPPONENT_BOARD_CARD = 'REMOVE_OPPONENT_BOARD_CARD',
 
     // Victory
     VICTORY = 'VICTORY',           // Win condition (Final Event)
@@ -85,6 +88,8 @@ export interface CardEffect {
     target?: 'SELF' | 'OPPONENT';
     condition?: EffectCondition;
     description?: string;        // Human-readable effect description
+    cardType?: CardType | string;
+    turns?: number;
 }
 
 // ============================================
@@ -201,6 +206,7 @@ export interface PlayerState {
     finalEventPlayed: boolean;
     canPlayEvents: boolean;       // False if filler >= 10
     eventsBlockedTurns: number;   // Turns remaining where events are blocked
+    statusEffects?: StatusEffect[];
 
     // Legacy compatibility
     historyPoints: number;        // Alias for storyPoints
@@ -253,6 +259,17 @@ export interface MatchState {
 
     // Log
     log: LogEntry[];
+}
+
+export interface StatusEffect {
+    id: string;
+    type: string;
+    sourceCardId: string;
+    sourceName: string;
+    turnsRemaining: number;
+    cardType?: CardType | string;
+    value?: number;
+    message: string;
 }
 
 export interface LogEntry {

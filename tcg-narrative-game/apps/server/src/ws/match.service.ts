@@ -151,6 +151,7 @@ function createPlayerState(username: string, deck: DeckData): PlayerState {
         finalEventPlayed: false,
         canPlayEvents: true,
         eventsBlockedTurns: 0,
+        statusEffects: [],
 
         // Legacy compatibility
         historyPoints: 0,
@@ -478,7 +479,7 @@ export class MatchService {
                 this.addLog(match, player.username, 'event_prepared', `${card.name}`);
             }
         } else if (slotPosition) {
-            resolveEffects(match, playerIndex, cardId);
+            const effectLogs = resolveEffects(match, playerIndex, cardId);
 
             const block = player.board.blocks[targetBlockIndex];
             const slot = block.slots.find(s => s.position === slotPosition);
@@ -487,6 +488,7 @@ export class MatchService {
                 slot.cardType = card.type;
                 slot.placedTurn = match.turnNumber;
                 this.addLog(match, player.username, 'play_card', `${card.name} @ ${slotPosition}`);
+                effectLogs.forEach(details => this.addLog(match, player.username, 'effect_resolved', details));
             }
         }
 
@@ -549,7 +551,12 @@ export class MatchService {
 
         // Filler reduction? Usually no.
 
-        this.drawCards(nextPlayer, GAME_CONSTANTS.CARDS_DRAWN_PER_TURN);
+        const extraDraw = this.consumeExtraDraw(nextPlayer);
+        this.drawCards(nextPlayer, GAME_CONSTANTS.CARDS_DRAWN_PER_TURN + extraDraw);
+        if (extraDraw > 0) {
+            this.addLog(match, nextPlayer.username, 'effect_resolved', `${nextPlayer.username} roba ${extraDraw} carta extra por un efecto activo.`);
+        }
+        this.tickStatusEffects(player);
 
         this.addLog(match, match.activePlayerId, 'turn_start', `Turn ${match.turnNumber}`);
     }
@@ -573,7 +580,7 @@ export class MatchService {
             return;
         }
 
-        resolveEffects(match, playerIndex, cardId);
+        const effectLogs = resolveEffects(match, playerIndex, cardId);
 
         if (!player.completedEvents) player.completedEvents = [];
         if (!player.completedEvents.includes(cardId)) {
@@ -590,6 +597,7 @@ export class MatchService {
         opponent.fillerPoints += GAME_CONSTANTS.FILLER_POINTS_EVENT_COMPLETE;
 
         this.addLog(match, player.username, 'event_complete', `${card.name}`);
+        effectLogs.forEach(details => this.addLog(match, player.username, 'effect_resolved', details));
         this.resolveActCheckpoint(match, completedBlockIndex);
 
         if (card.type === CardType.EVENT_FINAL) {
@@ -683,6 +691,25 @@ export class MatchService {
             const drawn = player.deck.shift();
             if (drawn) player.hand.push(drawn);
         }
+    }
+
+    private consumeExtraDraw(player: PlayerState): number {
+        let extra = 0;
+        player.statusEffects ||= [];
+        player.statusEffects = player.statusEffects.filter(effect => {
+            if (effect.type !== 'EXTRA_DRAW_NEXT_TURN') return true;
+            extra += Math.max(1, effect.value || 1);
+            return false;
+        });
+        return extra;
+    }
+
+    private tickStatusEffects(player: PlayerState): void {
+        player.statusEffects ||= [];
+        player.statusEffects = player.statusEffects
+            .filter(effect => effect.type === 'EXTRA_DRAW_NEXT_TURN' || effect.turnsRemaining > 0)
+            .map(effect => ({ ...effect, turnsRemaining: effect.turnsRemaining - 1 }))
+            .filter(effect => effect.type === 'EXTRA_DRAW_NEXT_TURN' || effect.turnsRemaining > 0);
     }
 
     // Check victory conditions

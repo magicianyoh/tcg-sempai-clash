@@ -16,6 +16,14 @@ type AdminCard = {
     dislikes?: string[];
     tags?: string[];
 };
+type AdminEffect = {
+    type: string;
+    target?: 'SELF' | 'OPPONENT';
+    value?: number;
+    cardType?: string;
+    turns?: number;
+    description?: string;
+};
 
 type AdminUser = {
     id: string;
@@ -205,10 +213,113 @@ function renderSelectedCard() {
     ($<HTMLTextAreaElement>('card-dislikes')).value = (card.dislikes || []).join(', ');
     ($<HTMLTextAreaElement>('card-requirements')).value = JSON.stringify(card.requirements || [], null, 2);
     ($<HTMLTextAreaElement>('card-effects')).value = JSON.stringify(card.effects || [], null, 2);
+    renderEffectList();
 }
 
 function parseCsvList(value: string): string[] {
     return value.split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function parseEffectsFromEditor(): AdminEffect[] {
+    try {
+        const parsed = JSON.parse(($<HTMLTextAreaElement>('card-effects')).value || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function writeEffectsToEditor(effects: AdminEffect[]) {
+    ($<HTMLTextAreaElement>('card-effects')).value = JSON.stringify(effects, null, 2);
+    renderEffectList();
+}
+
+function renderEffectList() {
+    const effects = parseEffectsFromEditor();
+    $('effect-list').innerHTML = effects.map((effect, index) => `
+        <div class="row">
+            <strong>${effect.type}</strong>
+            <span class="meta">${effect.target || 'SELF'}${effect.value !== undefined ? ` / valor ${effect.value}` : ''}${effect.cardType ? ` / bloquea ${effect.cardType}` : ''}${effect.turns ? ` / ${effect.turns} turno(s)` : ''}</span>
+            <span class="meta">${effect.description || ''}</span>
+            <button class="btn danger" data-remove-effect="${index}" type="button">Quitar</button>
+        </div>
+    `).join('');
+
+    document.querySelectorAll<HTMLButtonElement>('[data-remove-effect]').forEach(button => {
+        button.addEventListener('click', () => {
+            const index = Number(button.dataset.removeEffect);
+            const next = parseEffectsFromEditor();
+            next.splice(index, 1);
+            writeEffectsToEditor(next);
+        });
+    });
+}
+
+function addEffectFromControls() {
+    const effect: AdminEffect = {
+        type: ($<HTMLSelectElement>('effect-type')).value,
+        target: ($<HTMLSelectElement>('effect-target')).value as 'SELF' | 'OPPONENT',
+    };
+    const value = ($<HTMLInputElement>('effect-value')).value;
+    const cardType = ($<HTMLSelectElement>('effect-card-type')).value;
+    const turns = ($<HTMLInputElement>('effect-turns')).value;
+    const description = ($<HTMLInputElement>('effect-description')).value.trim();
+
+    if (value !== '') effect.value = Number(value);
+    if (cardType) effect.cardType = cardType;
+    if (turns !== '') effect.turns = Number(turns);
+    if (description) effect.description = description;
+
+    writeEffectsToEditor([...parseEffectsFromEditor(), effect]);
+}
+
+function selectedCard(): AdminCard | undefined {
+    return cards.find(card => card.id === selectedCardId);
+}
+
+function setupCardReferenceAutocomplete(textareaId: string) {
+    const textarea = $<HTMLTextAreaElement>(textareaId);
+    const menu = $('card-suggestions');
+
+    textarea.addEventListener('input', () => {
+        const beforeCursor = textarea.value.slice(0, textarea.selectionStart || 0);
+        if (!beforeCursor.endsWith(':')) {
+            menu.classList.remove('open');
+            return;
+        }
+
+        const card = selectedCard();
+        const options = cards
+            .filter(item => item.archetype === card?.archetype && item.id !== card?.id)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .slice(0, 16);
+
+        const rect = textarea.getBoundingClientRect();
+        menu.style.left = `${rect.left}px`;
+        menu.style.top = `${Math.min(window.innerHeight - 230, rect.bottom + 6)}px`;
+        menu.innerHTML = options.map(option => `
+            <button type="button" data-card-ref="${option.id}">
+                <strong>${option.name}</strong><br>
+                <span class="meta">${option.type} / ${option.id}</span>
+            </button>
+        `).join('');
+        menu.classList.add('open');
+
+        menu.querySelectorAll<HTMLButtonElement>('[data-card-ref]').forEach(button => {
+            button.addEventListener('click', () => {
+                const id = button.dataset.cardRef || '';
+                const start = textarea.selectionStart || textarea.value.length;
+                textarea.value = textarea.value.slice(0, start - 1) + id + ', ' + textarea.value.slice(start);
+                textarea.focus();
+                textarea.selectionStart = textarea.selectionEnd = start + id.length + 1;
+                menu.classList.remove('open');
+            });
+        });
+    });
+
+    textarea.addEventListener('blur', () => {
+        setTimeout(() => menu.classList.remove('open'), 160);
+    });
 }
 
 async function saveCard() {
@@ -562,6 +673,10 @@ function bindEvents() {
         showLogin();
     });
     $('save-card-btn').addEventListener('click', saveCard);
+    $('add-effect-btn').addEventListener('click', addEffectFromControls);
+    $('card-effects').addEventListener('input', renderEffectList);
+    setupCardReferenceAutocomplete('card-likes');
+    setupCardReferenceAutocomplete('card-dislikes');
     $('import-btn').addEventListener('click', importCsv);
     $('create-user-btn').addEventListener('click', createUser);
     $('save-prebuilt-btn').addEventListener('click', savePrebuiltDeckSettings);

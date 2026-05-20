@@ -3245,3 +3245,68 @@ export const CARDS: Record<string, CardData> = {
     },
 
 };
+
+const BLOCK_BY_ARCHETYPE: Record<string, CardType> = {
+    [ARCHETYPES.SHONEN]: CardType.PERSONAJE,
+    [ARCHETYPES.MECHA]: CardType.ITEM,
+    [ARCHETYPES.HAREM_INVERSO]: CardType.PERSONAJE,
+    [ARCHETYPES.SLICE_OF_LIFE]: CardType.LOCATION,
+    [ARCHETYPES.SHOJO]: CardType.PERSONAJE,
+    [ARCHETYPES.HAREM]: CardType.PERSONAJE,
+    [ARCHETYPES.ISEKAI]: CardType.ITEM,
+    [ARCHETYPES.SURVIVAL_GAME]: CardType.ITEM,
+    [ARCHETYPES.SPOKON]: CardType.LOCATION,
+    [ARCHETYPES.KAIJU]: CardType.LOCATION,
+};
+
+function enrichCardEffects(): void {
+    Object.values(CARDS).forEach(card => {
+        card.effects ||= [];
+
+        if (card.effects.length === 0) {
+            if (card.type === CardType.PROTAGONIST) {
+                card.effects.push({ type: EffectType.STORY, value: 1, target: 'SELF', description: `${card.name} marca el tono del episodio.` });
+            } else if (card.type === CardType.PERSONAJE || card.type === CardType.CHARACTER || card.type === CardType.UNIT) {
+                card.effects.push({ type: EffectType.STORY, value: 1, target: 'SELF', description: `${card.name} aporta presencia al campo.` });
+            } else if (card.type === CardType.ITEM) {
+                card.effects.push({ type: EffectType.DRAW, value: 1, target: 'SELF', description: `${card.name} abre una opcion tactica.` });
+            } else if (card.type === CardType.LOCATION) {
+                card.effects.push({ type: 'EXTRA_DRAW_NEXT_TURN', value: 1, target: 'SELF', description: `${card.name} prepara recursos para el proximo arco.` });
+            } else if (card.type === CardType.EVENT || card.type === CardType.EVENT_KEY) {
+                card.effects.push({ type: EffectType.STORY, value: 2, target: 'SELF', description: `${card.name} empuja la historia.` });
+            } else if (card.type === CardType.EVENT_FINAL) {
+                card.effects.push({ type: EffectType.VICTORY, target: 'SELF', description: `${card.name} cierra la temporada.` });
+            }
+        }
+
+        if ((card.type === CardType.EVENT || card.type === CardType.EVENT_KEY) && !card.effects.some(effect => effect.type === 'BLOCK_CARD_TYPE')) {
+            card.effects.push({
+                type: 'BLOCK_CARD_TYPE',
+                target: 'OPPONENT',
+                cardType: BLOCK_BY_ARCHETYPE[card.archetype] || CardType.ITEM,
+                turns: 1,
+                description: `${card.name} cambia el ritmo e impide una categoria del rival por un turno.`,
+            });
+        }
+
+        if (card.type === CardType.EVENT_FINAL && !card.effects.some(effect => effect.type === 'REMOVE_OPPONENT_BOARD_CARD')) {
+            card.effects.push({
+                type: 'REMOVE_OPPONENT_BOARD_CARD',
+                target: 'OPPONENT',
+                value: 1,
+                description: `${card.name} arrasa una pieza rival del campo.`,
+            });
+        }
+
+        if (card.likesData?.likes?.length && !card.effects.some(effect => effect.type === 'EXTRA_DRAW_NEXT_TURN')) {
+            card.effects.push({
+                type: 'EXTRA_DRAW_NEXT_TURN',
+                target: 'SELF',
+                value: 1,
+                description: `${card.name} prospera cuando sus afinidades aparecen en escena.`,
+            });
+        }
+    });
+}
+
+enrichCardEffects();

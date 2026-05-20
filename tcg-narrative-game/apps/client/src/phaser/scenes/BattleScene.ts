@@ -8,6 +8,7 @@ import type {
     LogEntry,
     MatchState,
     PlayerState,
+    StatusEffect,
     TimelineBlock as TimelineBlockData,
 } from '@tcg/shared/types';
 
@@ -34,6 +35,8 @@ interface CardDisplayData {
         value?: number;
         target?: 'SELF' | 'OPPONENT';
         description?: string;
+        cardType?: string;
+        turns?: number;
     }>;
     tags?: string[];
 }
@@ -120,6 +123,7 @@ export class BattleScene extends Phaser.Scene {
     private narrativeEntries: string[] = [];
     private narrativePanel: HTMLElement | null = null;
     private narrativeContent: HTMLDivElement | null = null;
+    private narrativeEffectsContent: HTMLDivElement | null = null;
     private narrativeToggle: HTMLButtonElement | null = null;
     private narrativeDrawerOpen = false;
     private uiSettings: UiSettings = {
@@ -223,7 +227,12 @@ export class BattleScene extends Phaser.Scene {
         panel.className = 'anime-log-panel';
         panel.innerHTML = `
             <div class="anime-log-title">Capitulo en curso</div>
+            <div class="anime-log-tabs">
+                <button class="anime-log-tab active" data-log-tab="story" type="button">Narracion</button>
+                <button class="anime-log-tab" data-log-tab="effects" type="button">Efectos</button>
+            </div>
             <div class="anime-log-content"></div>
+            <div class="anime-log-content hidden" data-effects-content></div>
         `;
 
         const toggle = document.createElement('button');
@@ -250,7 +259,18 @@ export class BattleScene extends Phaser.Scene {
         document.body.appendChild(toggle);
         this.narrativePanel = panel;
         this.narrativeContent = panel.querySelector('.anime-log-content') as HTMLDivElement | null;
+        this.narrativeEffectsContent = panel.querySelector('[data-effects-content]') as HTMLDivElement | null;
         this.narrativeToggle = toggle;
+        panel.querySelectorAll<HTMLButtonElement>('[data-log-tab]').forEach(button => {
+            button.addEventListener('click', () => {
+                const showEffects = button.dataset.logTab === 'effects';
+                panel.querySelectorAll('.anime-log-tab').forEach(tab => tab.classList.remove('active'));
+                button.classList.add('active');
+                this.narrativeContent?.classList.toggle('hidden', showEffects);
+                this.narrativeEffectsContent?.classList.toggle('hidden', !showEffects);
+                this.renderActiveEffects();
+            });
+        });
 
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyNarrativeLog());
         this.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroyNarrativeLog());
@@ -263,6 +283,7 @@ export class BattleScene extends Phaser.Scene {
         this.narrativeToggle?.remove();
         this.narrativePanel = null;
         this.narrativeContent = null;
+        this.narrativeEffectsContent = null;
         this.narrativeToggle = null;
     }
 
@@ -915,6 +936,7 @@ export class BattleScene extends Phaser.Scene {
             next.players.forEach(player => {
                 this.previousFillerByPlayer[player.username] = player.fillerPoints;
             });
+            this.renderActiveEffects();
             this.enqueueBanner('CAMBIO DE TURNO', `Turno de ${next.activePlayerId}`, 'turn');
             return;
         }
@@ -941,6 +963,7 @@ export class BattleScene extends Phaser.Scene {
             this.enqueueBanner('CAMBIO DE TURNO', `Turno de ${next.activePlayerId}`, 'turn');
         }
         this.lastActivePlayerId = next.activePlayerId;
+        this.renderActiveEffects();
     }
 
     private announceLogEntry(entry: LogEntry): void {
@@ -983,6 +1006,9 @@ export class BattleScene extends Phaser.Scene {
             case 'act_checkpoint':
                 this.playConfiguredEffect(this.uiSettings.phaseAdvanceEffect, 'turn');
                 this.enqueueBanner('PUNTO DE ACTO', entry.details ?? 'La historia recalibra el tempo', 'turn');
+                break;
+            case 'effect_resolved':
+                this.enqueueBanner('EFECTO ACTIVO', entry.details ?? 'Un efecto cambia el campo', 'neutral');
                 break;
             case 'victory':
                 this.playConfiguredEffect(this.uiSettings.victoryEffect, 'final');
@@ -1061,6 +1087,12 @@ export class BattleScene extends Phaser.Scene {
                     `El montaje compara avances y heridas: ${this.escapeHtml(entry.details ?? 'la partida se reequilibra')}.`,
                     `El capitulo recalibra la tension antes del siguiente arco: ${this.escapeHtml(entry.details ?? '')}.`,
                 ]);
+            case 'effect_resolved':
+                return this.pickNarrative(entry, [
+                    `${this.escapeHtml(entry.details ?? 'Un efecto altera el campo')}`,
+                    `La escena cambia por efecto: ${this.escapeHtml(entry.details ?? '')}`,
+                    `${player} siente el impacto: ${this.escapeHtml(entry.details ?? '')}`,
+                ]);
             case 'return_to_hand':
                 return this.pickNarrative(entry, [
                     `${player} retira ${cardName} antes de que la escena se cierre.`,
@@ -1087,6 +1119,30 @@ export class BattleScene extends Phaser.Scene {
     private pickNarrative(entry: LogEntry, variants: string[]): string {
         const seed = (entry.timestamp || 0) + entry.turn * 17 + entry.action.length * 31 + (entry.details?.length || 0);
         return variants[Math.abs(seed) % variants.length];
+    }
+
+    private renderActiveEffects(): void {
+        if (!this.narrativeEffectsContent || !this.matchState) return;
+
+        const rows = this.matchState.players.flatMap(player =>
+            (player.statusEffects || []).map(effect => this.formatStatusEffect(player.username, effect))
+        );
+
+        this.narrativeEffectsContent.innerHTML = rows.length
+            ? rows.map(row => `<p>${row}</p>`).join('')
+            : '<p>No hay efectos persistentes activos.</p>';
+    }
+
+    private formatStatusEffect(username: string, effect: StatusEffect): string {
+        const owner = this.escapeHtml(username);
+        const source = this.escapeHtml(effect.sourceName || effect.sourceCardId);
+        if (effect.type === 'BLOCK_CARD_TYPE') {
+            return `<strong>${owner}</strong>: No puedes jugar cartas de <strong>${this.escapeHtml(String(effect.cardType || 'ese tipo'))}</strong> por ${source}. Restan ${effect.turnsRemaining} turno(s).`;
+        }
+        if (effect.type === 'EXTRA_DRAW_NEXT_TURN') {
+            return `<strong>${owner}</strong>: Robara ${effect.value || 1} carta extra por ${source}.`;
+        }
+        return `<strong>${owner}</strong>: ${this.escapeHtml(effect.message || effect.type)}.`;
     }
 
     private escapeHtml(value: string): string {
@@ -1440,6 +1496,42 @@ export class BattleScene extends Phaser.Scene {
             fontSize: '16px',
             color: '#d7dee9',
         }).setOrigin(0.5).setDepth(2801);
+        this.addGameOverButton(width / 2 - 170, height / 2 + 82, 'REMATCH', () => {
+            window.location.href = '/match.html';
+        });
+        this.addGameOverButton(width / 2, height / 2 + 82, 'BUILDER', () => {
+            window.location.href = '/build.html';
+        });
+        this.addGameOverButton(width / 2 + 170, height / 2 + 82, 'GUARDAR LOG', () => {
+            this.saveMatchLog();
+        });
+    }
+
+    private addGameOverButton(x: number, y: number, label: string, onClick: () => void): void {
+        const container = this.add.container(x, y).setDepth(2802);
+        const bg = this.add.rectangle(0, 0, 142, 38, 0x111827, 0.96).setStrokeStyle(2, 0xffffff);
+        const text = this.add.text(0, 0, label, {
+            fontSize: '12px',
+            color: '#ffffff',
+            fontStyle: 'bold',
+        }).setOrigin(0.5);
+        container.add([bg, text]);
+        container.setSize(142, 38);
+        container.setInteractive({ useHandCursor: true });
+        container.on('pointerdown', onClick);
+    }
+
+    private saveMatchLog(): void {
+        const lines = (this.matchState?.log || []).map(entry =>
+            `[Turno ${entry.turn}] ${entry.player}: ${entry.action}${entry.details ? ` - ${entry.details}` : ''}`
+        );
+        const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `sempai-clash-log-${this.matchState?.matchId || Date.now()}.txt`;
+        link.click();
+        URL.revokeObjectURL(url);
     }
 
     private addConfiguredEndImage(source: string, x: number, y: number): void {

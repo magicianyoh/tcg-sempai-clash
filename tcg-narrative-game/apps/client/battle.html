@@ -67,10 +67,36 @@
             font-weight: 700;
         }
 
+        .anime-log-tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        .anime-log-tab {
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            padding: 7px 8px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .anime-log-tab.active {
+            border-color: #4ecdc4;
+            background: rgba(78, 205, 196, 0.16);
+        }
+
         .anime-log-content {
-            height: calc(100vh - 70px);
+            height: calc(100vh - 116px);
             overflow-y: auto;
             padding-right: 6px;
+        }
+
+        .anime-log-content.hidden {
+            display: none;
         }
 
         .anime-log-content p {
@@ -125,7 +151,7 @@
             }
 
             .anime-log-content {
-                height: calc(min(55vh, 390px) - 70px);
+                height: calc(min(55vh, 390px) - 116px);
             }
 
             .anime-log-toggle {

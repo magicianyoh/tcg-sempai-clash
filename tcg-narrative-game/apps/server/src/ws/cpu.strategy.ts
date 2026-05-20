@@ -258,6 +258,12 @@ function scoreEffects(effects: CardEffect[], context: CpuContext): number {
                 return total + value * 8;
             case 'DISCARD':
                 return total + (effect.target === 'OPPONENT' ? value * 9 : -value * 8);
+            case 'BLOCK_CARD_TYPE':
+                return total + (effect.target === 'OPPONENT' ? 28 : 4);
+            case 'EXTRA_DRAW_NEXT_TURN':
+                return total + Math.max(1, value) * 10;
+            case 'REMOVE_OPPONENT_BOARD_CARD':
+                return total + (effect.target === 'OPPONENT' ? 34 : 0);
             case 'VICTORY':
                 return total + 120;
             default:
