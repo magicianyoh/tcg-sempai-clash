@@ -282,7 +282,8 @@
         }
 
         .deck-select-row {
-            display: flex;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 118px;
             gap: 8px;
             margin-bottom: 10px;
         }
@@ -309,6 +310,8 @@
             color: #4ecdc4;
             cursor: pointer;
             font-size: 0.8rem;
+            min-width: 118px;
+            white-space: nowrap;
         }
 
         .load-btn:hover {
@@ -461,6 +464,16 @@
         .message.error {
             color: #e94560;
         }
+
+        @media (max-width: 560px) {
+            .deck-select-row {
+                grid-template-columns: 1fr;
+            }
+
+            .load-btn {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 
@@ -506,7 +519,7 @@
                 <select class="deck-dropdown" id="deck-dropdown">
                     <option value="">--- Nuevo Mazo ---</option>
                 </select>
-                <button class="load-btn" id="load-btn">Cargar</button>
+                <button class="load-btn" id="load-btn" type="button">Cargar mazo</button>
             </div>
             <input type="text" class="deck-name-input" id="deck-name" placeholder="Nombre del mazo..." value="Mi Mazo">
 
@@ -946,11 +959,12 @@
                 (prebuiltOptions ? `<optgroup label="Decks pre-armados">${prebuiltOptions}</optgroup>` : '');
         }
 
-        document.getElementById('load-btn').addEventListener('click', () => {
+        function loadSelectedDeckFromDropdown() {
             const selectedValue = document.getElementById('deck-dropdown').value;
             if (!selectedValue) {
                 deckCards = [];
                 currentEditingDeckId = null;
+                document.getElementById('deck-name').value = 'Mi Mazo';
                 renderCards();
                 renderDeck();
                 return;
@@ -973,7 +987,10 @@
                 renderDeck();
                 renderBackgrounds();
             }
-        });
+        }
+
+        document.getElementById('load-btn').addEventListener('click', loadSelectedDeckFromDropdown);
+        document.getElementById('deck-dropdown').addEventListener('change', loadSelectedDeckFromDropdown);
 
         // Save deck
         document.getElementById('save-btn').addEventListener('click', async () => {
