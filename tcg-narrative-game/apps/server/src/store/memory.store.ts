@@ -96,8 +96,9 @@ export class MemoryStore {
         rules: [
             'El objetivo es avanzar arcos narrativos completando eventos.',
             'Las cartas normales se colocan en slots del campo.',
+            'Una carta normal solo puede volver a la mano durante el mismo turno en que fue jugada; al cambiar el turno queda fijada al campo.',
             'Las cartas de evento se preparan en el centro y se resuelven al presionar Siguiente Arco/Pasar turno si sus requisitos se cumplen.',
-            'El Filler bloquea eventos al llegar a 10 y puede decidir partidas.',
+            'El Filler ejerce presion, pero no decide la partida antes del Acto III.',
             'Los eventos finales representan el cierre de temporada y pueden ganar la partida.',
         ].join('\n'),
         modes: [
@@ -109,6 +110,7 @@ export class MemoryStore {
             'Slots: cada arco usa cuatro slots visibles para cartas normales.',
             'Evento clave: se coloca en el centro y revisa requisitos contra el campo.',
             'Siguiente Arco: aparece cuando el evento preparado ya cumple sus requisitos.',
+            'Checkpoints de acto: al cerrar el primer y tercer arco se compara tempo narrativo. Quien lidera gana Story; quien queda atras roba cartas y reduce Filler.',
         ].join('\n'),
     };
 

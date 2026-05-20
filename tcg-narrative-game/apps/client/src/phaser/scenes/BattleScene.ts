@@ -972,6 +972,10 @@ export class BattleScene extends Phaser.Scene {
                 });
                 break;
             }
+            case 'act_checkpoint':
+                this.playConfiguredEffect(this.uiSettings.phaseAdvanceEffect, 'turn');
+                this.enqueueBanner('PUNTO DE ACTO', entry.details ?? 'La historia recalibra el tempo', 'turn');
+                break;
             case 'victory':
                 this.playConfiguredEffect(this.uiSettings.victoryEffect, 'final');
                 this.enqueueBanner('VICTORIA', `${entry.player} gana la partida`, 'final');
@@ -1043,6 +1047,12 @@ export class BattleScene extends Phaser.Scene {
                         `${cardName} se resuelve al cierre del turno y abre un nuevo arco.`,
                         `Los requisitos encajan; ${player} hace avanzar la historia con ${cardName}.`,
                     ]);
+            case 'act_checkpoint':
+                return this.pickNarrative(entry, [
+                    `La serie entra en punto de acto: ${this.escapeHtml(entry.details ?? 'el tempo cambia de manos')}.`,
+                    `El montaje compara avances y heridas: ${this.escapeHtml(entry.details ?? 'la partida se reequilibra')}.`,
+                    `El capitulo recalibra la tension antes del siguiente arco: ${this.escapeHtml(entry.details ?? '')}.`,
+                ]);
             case 'return_to_hand':
                 return this.pickNarrative(entry, [
                     `${player} retira ${cardName} antes de que la escena se cierre.`,

@@ -117,7 +117,7 @@ export function canPlayCard(
         }
 
         // Filler Cap Check
-        if (!player.canPlayEvents || player.fillerPoints >= 10) {
+        if (!player.canPlayEvents || (player.fillerPoints >= 10 && player.board.currentBlockIndex >= 3)) {
             return { ok: false, reasons: ['Bloqueado por exceso de Filler (10+)'] };
         }
 
@@ -169,6 +169,10 @@ export function canReturnToHand(
 
     const slot = block.slots.find(s => s.position === position);
     if (!slot || !slot.cardId) return { ok: false, reasons: ['Slot vacío'] };
+
+    if (slot.placedTurn !== undefined && slot.placedTurn !== state.turnNumber) {
+        return { ok: false, reasons: ['La carta ya quedo fijada al campo'] };
+    }
 
     // Rule: Cannot return if block has active event?
     // Often returning valid cards breaks the event requirements if we re-check dynamically.

@@ -249,7 +249,10 @@ function scoreEffects(effects: CardEffect[], context: CpuContext): number {
             case 'STORY':
                 return total + value * 9;
             case 'FILLER':
-                if (effect.target === 'OPPONENT') return total + value * 10;
+                if (effect.target === 'OPPONENT') {
+                    const fillerValue = context.cpu.board.currentBlockIndex >= 3 ? 10 : 4;
+                    return total + value * fillerValue;
+                }
                 return total + (value < 0 ? Math.abs(value) * (context.cpu.fillerPoints >= 6 ? 12 : 6) : -value * 5);
             case 'DRAW':
                 return total + value * 8;

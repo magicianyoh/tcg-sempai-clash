@@ -24,6 +24,33 @@ function shuffle<T>(array: T[]): T[] {
     return result;
 }
 
+function getStoryRequirement(card: CardData): number {
+    return Math.max(
+        0,
+        ...(card.requirements || [])
+            .filter(req => req.type === 'STORY_MIN')
+            .map(req => req.value || 0)
+    );
+}
+
+function getActBucket(cardId: string): 1 | 2 | 3 {
+    const card = CARDS[cardId];
+    if (!card) return 2;
+    const storyRequirement = getStoryRequirement(card);
+
+    if (card.type === CardType.EVENT_FINAL || storyRequirement >= 20 || card.cost >= 5) return 3;
+    if (storyRequirement > 10 || card.cost >= 3) return 2;
+    return 1;
+}
+
+function arrangeDeckForActs(cards: string[]): string[] {
+    const buckets: Record<1 | 2 | 3, string[]> = { 1: [], 2: [], 3: [] };
+    for (const cardId of cards) {
+        buckets[getActBucket(cardId)].push(cardId);
+    }
+    return [...buckets[1], ...buckets[2], ...buckets[3]];
+}
+
 /**
  * Apply protagonist draw probability.
  * Returns a shuffled deck with protagonist weighted toward early positions.
@@ -73,7 +100,7 @@ function shuffleWithProtagonistBias(cards: string[], turnNumber: number = 0): st
         result.push(...protagonists);
     }
 
-    return result;
+    return arrangeDeckForActs(result);
 }
 
 /**
@@ -262,6 +289,7 @@ export class MatchService {
             players: [player1, player2],
             playerOrder: [p1Username, p2Username],
             activePlayerId: firstPlayer === 0 ? p1Username : p2Username,
+            actCheckpointsResolved: [],
             log: [{
                 turn: 1,
                 player: 'system',
@@ -305,6 +333,7 @@ export class MatchService {
             players: [humanPlayer, cpuPlayer],
             playerOrder: [humanUsername, cpuUsername],
             activePlayerId: humanUsername,
+            actCheckpointsResolved: [],
             cpuOpponent: {
                 username: cpuUsername,
                 archetypeId: cpuArchetypeId,
@@ -456,6 +485,7 @@ export class MatchService {
             if (slot) {
                 slot.cardId = cardId;
                 slot.cardType = card.type;
+                slot.placedTurn = match.turnNumber;
                 this.addLog(match, player.username, 'play_card', `${card.name} @ ${slotPosition}`);
             }
         }
@@ -479,6 +509,7 @@ export class MatchService {
             // Remove from board
             slot.cardId = undefined;
             slot.cardType = undefined;
+            slot.placedTurn = undefined;
 
             // Add to hand
             player.hand.push(cardId);
@@ -500,6 +531,7 @@ export class MatchService {
             player.eventsBlockedTurns--;
             if (player.eventsBlockedTurns === 0) {
                 player.isEventsBlocked = false;
+                player.canPlayEvents = true;
             }
         }
 
@@ -517,17 +549,7 @@ export class MatchService {
 
         // Filler reduction? Usually no.
 
-        // Draw cards
-        const cardsToDraw = Math.min(
-            GAME_CONSTANTS.CARDS_DRAWN_PER_TURN,
-            nextPlayer.deck.length,
-            GAME_CONSTANTS.MAX_HAND_SIZE - nextPlayer.hand.length
-        );
-
-        for (let i = 0; i < cardsToDraw; i++) {
-            const drawn = nextPlayer.deck.shift();
-            if (drawn) nextPlayer.hand.push(drawn);
-        }
+        this.drawCards(nextPlayer, GAME_CONSTANTS.CARDS_DRAWN_PER_TURN);
 
         this.addLog(match, match.activePlayerId, 'turn_start', `Turn ${match.turnNumber}`);
     }
@@ -560,13 +582,15 @@ export class MatchService {
 
         block.eventCompleted = true;
         block.eventSubmitted = false;
+        const completedBlockIndex = block.blockIndex;
 
-        const storyGain = 5;
+        const storyGain = GAME_CONSTANTS.STORY_POINTS_EVENT_COMPLETE;
         player.storyPoints += storyGain;
         player.historyPoints = player.storyPoints;
-        opponent.fillerPoints += 2;
+        opponent.fillerPoints += GAME_CONSTANTS.FILLER_POINTS_EVENT_COMPLETE;
 
         this.addLog(match, player.username, 'event_complete', `${card.name}`);
+        this.resolveActCheckpoint(match, completedBlockIndex);
 
         if (card.type === CardType.EVENT_FINAL) {
             player.finalEventPlayed = true;
@@ -602,6 +626,65 @@ export class MatchService {
         }
     }
 
+    private resolveActCheckpoint(match: MatchState, completedBlockIndex: number): void {
+        const checkpoint = completedBlockIndex === 0 ? 'act_one' : completedBlockIndex === 2 ? 'act_two' : null;
+        if (!checkpoint) return;
+
+        match.actCheckpointsResolved ||= [];
+        if (match.actCheckpointsResolved.includes(checkpoint)) return;
+        match.actCheckpointsResolved.push(checkpoint);
+
+        const [p1, p2] = match.players;
+        const p1Tempo = this.getTempoScore(p1);
+        const p2Tempo = this.getTempoScore(p2);
+        const leader = p1Tempo >= p2Tempo ? p1 : p2;
+        const trailing = leader === p1 ? p2 : p1;
+        const isActTwo = checkpoint === 'act_two';
+
+        leader.storyPoints += isActTwo ? 3 : 2;
+        leader.historyPoints = leader.storyPoints;
+
+        const fillerRelief = isActTwo ? 4 : 2;
+        trailing.fillerPoints = Math.max(0, trailing.fillerPoints - fillerRelief);
+        trailing.storyPoints += isActTwo ? 1 : 0;
+        trailing.historyPoints = trailing.storyPoints;
+        this.drawCards(trailing, isActTwo ? 2 : 1);
+
+        if (isActTwo && trailing.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD) {
+            trailing.fillerPoints = GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD - 1;
+            trailing.eventsBlockedTurns = Math.max(trailing.eventsBlockedTurns, 1);
+            trailing.isEventsBlocked = true;
+            trailing.canPlayEvents = false;
+        }
+
+        const label = isActTwo ? 'Acto II - Punto medio' : 'Acto I - Planteamiento';
+        this.addLog(
+            match,
+            'system',
+            'act_checkpoint',
+            `${label}: ${leader.username} lidera tempo ${Math.max(p1Tempo, p2Tempo)}-${Math.min(p1Tempo, p2Tempo)}; ${trailing.username} roba ${isActTwo ? 2 : 1} y baja ${fillerRelief} Filler`
+        );
+    }
+
+    private getTempoScore(player: PlayerState): number {
+        return (player.storyPoints ?? player.historyPoints ?? 0)
+            + player.completedEvents.length * 4
+            + player.board.currentBlockIndex * 3
+            - player.fillerPoints;
+    }
+
+    private drawCards(player: PlayerState, count: number): void {
+        const cardsToDraw = Math.min(
+            count,
+            player.deck.length,
+            GAME_CONSTANTS.MAX_HAND_SIZE - player.hand.length
+        );
+        for (let i = 0; i < cardsToDraw; i++) {
+            const drawn = player.deck.shift();
+            if (drawn) player.hand.push(drawn);
+        }
+    }
+
     // Check victory conditions
     private checkVictory(match: MatchState): void {
         if (match.winner) return;
@@ -609,8 +692,9 @@ export class MatchService {
         for (const player of match.players) {
             const opponent = match.players.find(p => p.username !== player.username)!;
 
-            // Victory by opponent filler (legacy rule)
-            if (opponent.fillerPoints >= 10) {
+            // Filler becomes a loss condition only in Act III, after both comeback
+            // checkpoints had room to resolve. Before that it is pressure, not checkmate.
+            if (opponent.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD && player.board.currentBlockIndex >= 3) {
                 match.winner = player.username;
                 match.winReason = 'opponent_filler';
                 match.phase = 'ended';

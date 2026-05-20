@@ -149,6 +149,7 @@ export interface TimelineSlot {
     position: SlotPosition;
     cardId?: string;              // Card placed in this slot
     cardType?: CardType;          // Type of card in slot (for validation)
+    placedTurn?: number;          // Global turn when the card entered the field
 }
 
 export interface TimelineBlock {
@@ -241,6 +242,7 @@ export interface MatchState {
     // Result
     winner?: string;
     winReason?: 'final_event' | 'opponent_filler' | 'surrender' | 'timeout';
+    actCheckpointsResolved?: string[];
 
     // CPU opponent metadata
     cpuOpponent?: {
