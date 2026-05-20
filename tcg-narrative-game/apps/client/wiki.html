@@ -36,6 +36,7 @@
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
+            align-items: center;
         }
 
         a,
@@ -44,11 +45,13 @@
         }
 
         .nav a,
-        .filter {
+        .admin-badge,
+        .btn {
             border: 1px solid rgba(255, 255, 255, 0.16);
             background: #151b27;
             border-radius: 6px;
             padding: 8px 10px;
+            color: #fff;
             text-decoration: none;
         }
 
@@ -75,7 +78,8 @@
         }
 
         input,
-        select {
+        select,
+        textarea {
             width: 100%;
             border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 6px;
@@ -83,6 +87,12 @@
             color: #fff;
             padding: 8px;
             margin-top: 8px;
+        }
+
+        textarea {
+            min-height: 110px;
+            resize: vertical;
+            font-family: Consolas, monospace;
         }
 
         .card-list {
@@ -120,7 +130,8 @@
             margin-bottom: 10px;
         }
 
-        .details-grid {
+        .details-grid,
+        .admin-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
@@ -188,6 +199,44 @@
             padding-left: 20px;
         }
 
+        label {
+            display: grid;
+            gap: 5px;
+            color: rgba(255, 255, 255, 0.76);
+            font-size: 0.78rem;
+        }
+
+        .admin-tools {
+            border-color: rgba(78, 205, 196, 0.32);
+            background: #0d1a1d;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .btn {
+            cursor: pointer;
+        }
+
+        .btn.primary {
+            border-color: #4ecdc4;
+            background: #173438;
+        }
+
+        .message {
+            min-height: 20px;
+            margin-top: 8px;
+            color: #4ecdc4;
+        }
+
+        .message.error {
+            color: #ff6b6b;
+        }
+
         @media (max-width: 900px) {
             main {
                 grid-template-columns: 1fr;
@@ -198,7 +247,8 @@
                 height: auto;
             }
 
-            .details-grid {
+            .details-grid,
+            .admin-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -217,6 +267,7 @@
             <a href="/build.html">Builder</a>
             <a href="/match.html">Partidas</a>
             <a href="/admin.html">Admin</a>
+            <span id="admin-state" class="admin-badge">Solo lectura</span>
         </nav>
     </header>
 
@@ -231,23 +282,38 @@
 
         <div class="content">
             <section id="overview">
-                <h2>Reglas rápidas</h2>
-                <ul>
-                    <li>El objetivo es avanzar arcos narrativos completando eventos.</li>
-                    <li>Las cartas normales se colocan en slots del campo.</li>
-                    <li>Las cartas de evento se preparan en el centro y se resuelven al presionar Siguiente Arco/Pasar turno si sus requisitos se cumplen.</li>
-                    <li>El Filler bloquea eventos al llegar a 10 y puede decidir partidas.</li>
-                    <li>Los eventos finales representan el cierre de temporada y pueden ganar la partida.</li>
-                </ul>
+                <h2>Reglas rapidas</h2>
+                <div id="rules-content"></div>
             </section>
 
-            <section>
+            <section id="modes">
                 <h2>Modos</h2>
-                <ul>
-                    <li>Quick Match: emparejamiento contra otro jugador.</li>
-                    <li>Lobby: partida privada por código.</li>
-                    <li>CPU: partida contra IA con arquetipo y dificultad seleccionables.</li>
-                </ul>
+                <div id="modes-content"></div>
+            </section>
+
+            <section id="mechanics">
+                <h2>Mecanicas</h2>
+                <div id="mechanics-content"></div>
+            </section>
+
+            <section id="wiki-admin" class="admin-tools" hidden>
+                <h2>Editar Wiki</h2>
+                <p class="meta">Visible solo con sesion admin activa. Cada linea se muestra como un punto publico de documentacion.</p>
+                <div class="admin-grid">
+                    <label>Reglas
+                        <textarea id="edit-rules"></textarea>
+                    </label>
+                    <label>Modos
+                        <textarea id="edit-modes"></textarea>
+                    </label>
+                    <label style="grid-column: 1 / -1;">Mecanicas
+                        <textarea id="edit-mechanics"></textarea>
+                    </label>
+                </div>
+                <div class="actions">
+                    <button id="save-wiki-btn" class="btn primary" type="button">Guardar documentacion</button>
+                </div>
+                <p id="wiki-message" class="message"></p>
             </section>
 
             <section id="card-detail">

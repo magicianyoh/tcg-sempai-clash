@@ -31,6 +31,10 @@ server.get('/ui-settings', async () => {
     return { settings: store.getAdminUiSettings() };
 });
 
+server.get('/wiki-content', async () => {
+    return { content: store.getWikiContent() };
+});
+
 server.get('/cards', async () => {
     const cardsByArchetype: Record<string, unknown[]> = {};
 

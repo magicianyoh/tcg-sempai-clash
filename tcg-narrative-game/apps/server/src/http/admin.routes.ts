@@ -57,6 +57,12 @@ interface AdminMediaUploadBody {
     }>;
 }
 
+interface AdminWikiBody {
+    rules?: string;
+    modes?: string;
+    mechanics?: string;
+}
+
 function serializeCard(card: MutableCard) {
     return {
         id: card.id,
@@ -299,5 +305,13 @@ export async function adminRoutes(fastify: FastifyInstance) {
         const deleted = store.deleteMediaAsset(request.params.id);
         if (!deleted) return reply.code(404).send({ error: 'Media not found' });
         return { success: true };
+    });
+
+    fastify.get('/admin/wiki-content', async () => {
+        return { content: store.getWikiContent() };
+    });
+
+    fastify.put<{ Body: AdminWikiBody }>('/admin/wiki-content', async (request) => {
+        return { content: store.updateWikiContent(request.body) };
     });
 }

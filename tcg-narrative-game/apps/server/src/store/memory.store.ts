@@ -42,6 +42,12 @@ export interface MediaAsset {
     createdAt: number;
 }
 
+export interface WikiContent {
+    rules: string;
+    modes: string;
+    mechanics: string;
+}
+
 // ============================================
 // Memory Store
 // ============================================
@@ -85,6 +91,26 @@ export class MemoryStore {
     };
 
     private mediaAssets: Map<string, MediaAsset> = new Map();
+
+    private wikiContent: WikiContent = {
+        rules: [
+            'El objetivo es avanzar arcos narrativos completando eventos.',
+            'Las cartas normales se colocan en slots del campo.',
+            'Las cartas de evento se preparan en el centro y se resuelven al presionar Siguiente Arco/Pasar turno si sus requisitos se cumplen.',
+            'El Filler bloquea eventos al llegar a 10 y puede decidir partidas.',
+            'Los eventos finales representan el cierre de temporada y pueden ganar la partida.',
+        ].join('\n'),
+        modes: [
+            'Quick Match: emparejamiento contra otro jugador.',
+            'Lobby: partida privada por codigo.',
+            'CPU: partida contra IA con arquetipo y dificultad seleccionables.',
+        ].join('\n'),
+        mechanics: [
+            'Slots: cada arco usa cuatro slots visibles para cartas normales.',
+            'Evento clave: se coloca en el centro y revisa requisitos contra el campo.',
+            'Siguiente Arco: aparece cuando el evento preparado ya cumple sus requisitos.',
+        ].join('\n'),
+    };
 
     // ========== User Methods ==========
 
@@ -312,6 +338,18 @@ export class MemoryStore {
 
     deleteMediaAsset(id: string): boolean {
         return this.mediaAssets.delete(id);
+    }
+
+    getWikiContent(): WikiContent {
+        return { ...this.wikiContent };
+    }
+
+    updateWikiContent(updates: Partial<WikiContent>): WikiContent {
+        this.wikiContent = {
+            ...this.wikiContent,
+            ...updates,
+        };
+        return this.getWikiContent();
     }
 }
 
