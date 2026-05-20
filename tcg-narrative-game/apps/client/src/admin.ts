@@ -34,7 +34,7 @@ type MediaAsset = {
     createdAt: number;
 };
 
-const API_URL = 'http://localhost:3000';
+const API_URL = window.location.origin;
 
 let token = localStorage.getItem('adminToken') || '';
 let cards: AdminCard[] = [];

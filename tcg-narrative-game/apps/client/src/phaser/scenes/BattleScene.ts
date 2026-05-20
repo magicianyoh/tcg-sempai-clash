@@ -69,6 +69,14 @@ type UiSettings = {
 };
 
 const CARD_DB: Record<string, CardDisplayData> = {};
+const API_URL = window.location.origin;
+
+function getWebSocketUrl(token?: string): string {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const query = token ? `?token=${encodeURIComponent(token)}` : '';
+    return `${protocol}//${window.location.host}${query}`;
+}
+
 const FIELD_THEMES: Record<string, FieldTheme> = {
     bg_01: { id: 'bg_01', name: 'Neon Clash', bg: 0x020609, accent: 0x4ecdc4, secondary: 0xe94560 },
     bg_02: { id: 'bg_02', name: 'Crimson Arc', bg: 0x140508, accent: 0xff5a76, secondary: 0xffd166 },
@@ -525,7 +533,7 @@ export class BattleScene extends Phaser.Scene {
 
     private async loadCardCatalog(): Promise<void> {
         try {
-            const response = await fetch('http://localhost:3000/cards');
+            const response = await fetch(`${API_URL}/cards`);
             const data = await response.json() as { cards?: Record<string, any[]> };
             Object.values(data.cards ?? {}).flat().forEach(card => {
                 CARD_DB[card.id] = {
@@ -550,7 +558,7 @@ export class BattleScene extends Phaser.Scene {
 
     private async loadUiSettings(): Promise<void> {
         try {
-            const response = await fetch('http://localhost:3000/ui-settings');
+            const response = await fetch(`${API_URL}/ui-settings`);
             const data = await response.json() as { settings?: Partial<UiSettings> };
             this.uiSettings = {
                 ...this.uiSettings,
@@ -563,7 +571,7 @@ export class BattleScene extends Phaser.Scene {
 
     private connectWebSocket(): void {
         const token = (window as any).token;
-        this.ws = new WebSocket(`ws://localhost:3000?token=${token}`);
+        this.ws = new WebSocket(getWebSocketUrl(token));
         this.ws.onopen = () => this.requestMatchState();
         this.ws.onmessage = event => {
             const msg = JSON.parse(event.data);

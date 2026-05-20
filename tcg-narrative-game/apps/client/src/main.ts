@@ -14,6 +14,11 @@ const findMatchBtn = document.getElementById('find-match-btn');
 
 const network = new NetworkSystem();
 
+function getWebSocketUrl(): string {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}`;
+}
+
 loginBtn?.addEventListener('click', async () => {
     const username = usernameInput.value;
     // Mock Auth for NOW
@@ -22,7 +27,7 @@ loginBtn?.addEventListener('click', async () => {
     lobbyContainer!.style.display = 'block';
 
     // Connect WS
-    network.connect('ws://localhost:3000');
+    network.connect(getWebSocketUrl());
 });
 
 findMatchBtn?.addEventListener('click', () => {

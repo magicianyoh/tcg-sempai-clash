@@ -498,8 +498,9 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:3000';
-        const WS_URL = 'ws://localhost:3000';
+        const API_URL = window.location.origin;
+        const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const WS_URL = `${WS_PROTOCOL}//${window.location.host}`;
 
         // State
         let ws = null;

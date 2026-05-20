@@ -108,7 +108,7 @@ const start = async () => {
         wsGateway(server); // Attach WS
         const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         await server.listen({ port, host: '0.0.0.0' });
-        console.log(`Server running on http://localhost:${port}`);
+        console.log(`Server running on http://0.0.0.0:${port}`);
     } catch (err) {
         console.error(err);
         process.exit(1);

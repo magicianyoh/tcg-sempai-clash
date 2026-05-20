@@ -54,13 +54,7 @@ let wikiContent: WikiContent = {
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 function apiBases(): string[] {
-    const host = window.location.hostname || '127.0.0.1';
-    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-    return Array.from(new Set([
-        `${protocol}//${host}:3000`,
-        'http://127.0.0.1:3000',
-        'http://localhost:3000',
-    ]));
+    return [window.location.origin];
 }
 
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -373,7 +367,7 @@ async function loadCards(): Promise<void> {
         renderFilters();
         renderCardList();
     } catch (error: any) {
-        detail.innerHTML = `<h2>No se pudo cargar la Wiki</h2><p class="meta">${escapeHtml(error.message || 'Verifica que el servidor este corriendo en el puerto 3000.')}</p>`;
+        detail.innerHTML = `<h2>No se pudo cargar la Wiki</h2><p class="meta">${escapeHtml(error.message || 'Verifica que la plataforma este corriendo en la misma direccion de red.')}</p>`;
     }
 }
 
