@@ -21,6 +21,25 @@ export interface AdminUiSettings {
     playCardSound: string;
     phaseAdvanceEffect: string;
     phaseAdvanceSound: string;
+    handHoverEffect: string;
+    slotIdleEffect: string;
+    slotValidDropEffect: string;
+    eventReadyEffect: string;
+    eventResolveEffect: string;
+    victoryEffect: string;
+    defeatEffect: string;
+    boardBackgroundImage: string;
+    turnBannerImage: string;
+}
+
+export interface MediaAsset {
+    id: string;
+    name: string;
+    type: 'image' | 'audio' | 'other';
+    mimeType: string;
+    dataUrl: string;
+    size: number;
+    createdAt: number;
 }
 
 // ============================================
@@ -54,7 +73,18 @@ export class MemoryStore {
         playCardSound: '',
         phaseAdvanceEffect: 'arc-burst',
         phaseAdvanceSound: '',
+        handHoverEffect: 'lift-glow',
+        slotIdleEffect: 'thin-outline',
+        slotValidDropEffect: 'cyan-pulse',
+        eventReadyEffect: 'gold-pulse',
+        eventResolveEffect: 'arc-burst',
+        victoryEffect: 'screen-flash',
+        defeatEffect: 'desaturate',
+        boardBackgroundImage: '',
+        turnBannerImage: '',
     };
+
+    private mediaAssets: Map<string, MediaAsset> = new Map();
 
     // ========== User Methods ==========
 
@@ -264,6 +294,24 @@ export class MemoryStore {
             ...updates,
         };
         return this.getAdminUiSettings();
+    }
+
+    listMediaAssets(): MediaAsset[] {
+        return Array.from(this.mediaAssets.values()).sort((a, b) => b.createdAt - a.createdAt);
+    }
+
+    addMediaAsset(asset: Omit<MediaAsset, 'id' | 'createdAt'>): MediaAsset {
+        const fullAsset: MediaAsset = {
+            ...asset,
+            id: 'media_' + Math.random().toString(36).slice(2, 11),
+            createdAt: Date.now(),
+        };
+        this.mediaAssets.set(fullAsset.id, fullAsset);
+        return fullAsset;
+    }
+
+    deleteMediaAsset(id: string): boolean {
+        return this.mediaAssets.delete(id);
     }
 }
 

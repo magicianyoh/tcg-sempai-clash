@@ -22,6 +22,7 @@ export default defineConfig({
                 match: path.resolve(__dirname, 'match.html'),
                 battle: path.resolve(__dirname, 'battle.html'),
                 admin: path.resolve(__dirname, 'admin.html'),
+                wiki: path.resolve(__dirname, 'wiki.html'),
             },
         },
     }

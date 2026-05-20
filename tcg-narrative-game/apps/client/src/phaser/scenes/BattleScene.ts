@@ -57,6 +57,15 @@ type UiSettings = {
     playCardSound: string;
     phaseAdvanceEffect: string;
     phaseAdvanceSound: string;
+    handHoverEffect: string;
+    slotIdleEffect: string;
+    slotValidDropEffect: string;
+    eventReadyEffect: string;
+    eventResolveEffect: string;
+    victoryEffect: string;
+    defeatEffect: string;
+    boardBackgroundImage: string;
+    turnBannerImage: string;
 };
 
 const CARD_DB: Record<string, CardDisplayData> = {};
@@ -91,6 +100,8 @@ export class BattleScene extends Phaser.Scene {
     private statText!: Phaser.GameObjects.Text;
     private opponentStatText!: Phaser.GameObjects.Text;
     private fieldThemeOverlay!: Phaser.GameObjects.Graphics;
+    private configuredBoardBackgroundImage: Phaser.GameObjects.Image | null = null;
+    private configuredBoardBackgroundSource = '';
 
     private hasReceivedState = false;
     private lastLogIndex = 0;
@@ -112,6 +123,15 @@ export class BattleScene extends Phaser.Scene {
         playCardSound: '',
         phaseAdvanceEffect: 'arc-burst',
         phaseAdvanceSound: '',
+        handHoverEffect: 'lift-glow',
+        slotIdleEffect: 'thin-outline',
+        slotValidDropEffect: 'cyan-pulse',
+        eventReadyEffect: 'gold-pulse',
+        eventResolveEffect: 'arc-burst',
+        victoryEffect: 'screen-flash',
+        defeatEffect: 'desaturate',
+        boardBackgroundImage: '',
+        turnBannerImage: '',
     };
 
     constructor() {
@@ -122,7 +142,7 @@ export class BattleScene extends Phaser.Scene {
         const { width, height } = this.scale;
         this.myUsername = (window as any).username || 'Player';
 
-        this.background = this.add.rectangle(0, 0, width, height, 0x000000).setOrigin(0);
+        this.background = this.add.rectangle(0, 0, width, height, 0x000000).setOrigin(0).setDepth(-30);
         this.createLayout();
         this.createHUD();
         this.createNarrativeLog();
@@ -138,6 +158,7 @@ export class BattleScene extends Phaser.Scene {
     private createLayout(): void {
         const { width, height } = this.scale;
         this.fieldThemeOverlay = this.add.graphics();
+        this.fieldThemeOverlay.setDepth(-10);
         this.boardContainer = this.add.container(this.getBoardX(), this.getBoardY());
         this.handContainer = this.add.container(0, height - 108);
         this.bannerLayer = this.add.container(0, 0).setDepth(2500);
@@ -256,15 +277,16 @@ export class BattleScene extends Phaser.Scene {
     private createEndTurnButton(): void {
         const { width } = this.scale;
         this.endTurnBtn = this.add.container(this.getActionButtonX(), 150);
-        const bg = this.add.rectangle(0, 0, 148, 38, 0x4ecdc4, 0.95).setStrokeStyle(2, 0xffffff);
+        const bg = this.add.rectangle(0, 0, 164, 38, 0x4ecdc4, 0.95).setStrokeStyle(2, 0xffffff);
         const text = this.add.text(0, 0, 'PASAR TURNO', {
             fontSize: '13px',
             color: '#001315',
             fontStyle: 'bold',
         }).setOrigin(0.5);
+        text.setData('label', true);
 
         this.endTurnBtn.add([bg, text]);
-        this.endTurnBtn.setSize(148, 38);
+        this.endTurnBtn.setSize(164, 38);
         this.endTurnBtn.setInteractive({ useHandCursor: true });
         this.endTurnBtn.on('pointerdown', () => this.sendEndTurn());
     }
@@ -512,7 +534,7 @@ export class BattleScene extends Phaser.Scene {
                     type: card.type,
                     cost: card.cost ?? 0,
                     description: card.description ?? card.desc ?? '',
-                    backstory: card.backstory,
+                    backstory: card.extendedLore ?? card.backstory,
                     image: card.image,
                     sound: card.sound,
                     prereqs: card.prereqs ?? [],
@@ -643,6 +665,7 @@ export class BattleScene extends Phaser.Scene {
 
         this.endTurnBtn.setPosition(this.getActionButtonX(), 150);
         this.endTurnBtn.setAlpha(isMyTurn && this.currentView === 'self' ? 1 : 0.45);
+        this.updateEndTurnLabel();
         this.renderViewedBoard(viewed);
         this.renderHand(me.hand, isMyTurn && this.currentView === 'self');
     }
@@ -650,6 +673,57 @@ export class BattleScene extends Phaser.Scene {
     private updateViewToggleLabel(): void {
         const label = this.viewToggleBtn.getAll().find(child => child.getData('label') === true) as Phaser.GameObjects.Text | undefined;
         label?.setText(this.currentView === 'self' ? 'VER RIVAL' : 'VER MI CAMPO');
+    }
+
+    private updateEndTurnLabel(): void {
+        const label = this.endTurnBtn.getAll().find(child => child.getData('label') === true) as Phaser.GameObjects.Text | undefined;
+        label?.setText(this.isPreparedEventReady(this.myPlayerIndex) ? 'SIGUIENTE ARCO' : 'PASAR TURNO');
+    }
+
+    private isPreparedEventReady(playerIndex: number): boolean {
+        if (!this.matchState) return false;
+        const player = this.matchState.players[playerIndex];
+        const block = player.board.blocks[player.board.currentBlockIndex];
+        if (!block?.eventSlot || block.eventCompleted) return false;
+
+        const card = this.getCardDisplayData(block.eventSlot);
+        const requirements = card.requirements || [];
+        if (requirements.length === 0) return true;
+
+        for (const requirement of requirements) {
+            switch (requirement.type) {
+                case 'STORY_MIN': {
+                    const story = player.storyPoints ?? player.historyPoints ?? 0;
+                    if (story < (requirement.value || 0)) return false;
+                    break;
+                }
+                case 'FILLER_MAX':
+                    if (player.fillerPoints > (requirement.value || 99)) return false;
+                    break;
+                case 'EVENT_COMPLETED': {
+                    const required = requirement.cardIds || [];
+                    if (required.some(cardId => !player.completedEvents.includes(cardId))) return false;
+                    break;
+                }
+                case 'CARD_ON_BOARD': {
+                    let foundCount = 0;
+                    player.board.blocks.forEach(boardBlock => {
+                        boardBlock.slots.forEach(slot => {
+                            if (!slot.cardId) return;
+                            const slotCard = this.getCardDisplayData(slot.cardId);
+                            if (requirement.cardIds && !requirement.cardIds.includes(slot.cardId)) return;
+                            if (requirement.cardType && slotCard.type !== requirement.cardType) return;
+                            if (requirement.tag && !slotCard.tags?.includes(requirement.tag)) return;
+                            foundCount++;
+                        });
+                    });
+                    if (foundCount < (requirement.value || 1)) return false;
+                    break;
+                }
+            }
+        }
+
+        return true;
     }
 
     private applyFieldTheme(backgroundId?: string): void {
@@ -662,6 +736,43 @@ export class BattleScene extends Phaser.Scene {
         this.fieldThemeOverlay.lineStyle(2, theme.accent, 0.16);
         for (let y = 0; y < height; y += 62) {
             this.fieldThemeOverlay.lineBetween(0, y, width, y);
+        }
+        this.applyConfiguredBoardBackgroundImage(width, height);
+    }
+
+    private applyConfiguredBoardBackgroundImage(width: number, height: number): void {
+        const source = this.uiSettings.boardBackgroundImage;
+        if (!source) {
+            this.configuredBoardBackgroundImage?.destroy();
+            this.configuredBoardBackgroundImage = null;
+            this.configuredBoardBackgroundSource = '';
+            return;
+        }
+
+        const key = `admin-board-${this.hashSource(source)}`;
+        const showImage = () => {
+            if (this.configuredBoardBackgroundSource !== source) {
+                this.configuredBoardBackgroundImage?.destroy();
+                this.configuredBoardBackgroundImage = null;
+                this.configuredBoardBackgroundSource = source;
+            }
+            if (!this.configuredBoardBackgroundImage) {
+                this.configuredBoardBackgroundImage = this.add.image(width / 2, height / 2, key)
+                    .setDepth(-25)
+                    .setAlpha(0.34);
+            }
+            this.configuredBoardBackgroundImage
+                .setTexture(key)
+                .setPosition(width / 2, height / 2)
+                .setDisplaySize(width, height);
+        };
+
+        if (this.textures.exists(key)) {
+            showImage();
+        } else if (/^(https?:\/\/|\/|data:image\/)/.test(source)) {
+            this.load.image(key, source);
+            this.load.once(Phaser.Loader.Events.COMPLETE, showImage);
+            this.load.start();
         }
     }
 
@@ -832,6 +943,7 @@ export class BattleScene extends Phaser.Scene {
             case 'play_card': {
                 const card = this.findCardFromLog(entry.details);
                 this.playConfiguredSound(card?.sound || this.uiSettings.playCardSound);
+                this.playConfiguredEffect(this.uiSettings.playCardEffect, card?.type === 'FILLER' ? 'danger' : 'neutral');
                 if (card?.type === 'FILLER') {
                     this.enqueueBanner('ARCO DE RELLENO', `${entry.player} jugo ${card.name}`, 'danger');
                 } else {
@@ -842,12 +954,14 @@ export class BattleScene extends Phaser.Scene {
             case 'event_prepared': {
                 const card = this.findCardFromLog(entry.details);
                 this.playConfiguredSound(card?.sound || this.uiSettings.playCardSound);
+                this.playConfiguredEffect(this.uiSettings.eventReadyEffect, 'event');
                 this.enqueueBanner('EVENTO PREPARADO', `${card?.name ?? entry.details ?? ''} se activa al pasar turno`, 'event');
                 break;
             }
             case 'event_complete': {
                 const card = this.findCardFromLog(entry.details);
                 this.playConfiguredSound(this.uiSettings.phaseAdvanceSound);
+                this.playConfiguredEffect(this.uiSettings.eventResolveEffect || this.uiSettings.phaseAdvanceEffect, card?.type === 'EVENT_FINAL' ? 'final' : 'event');
                 this.animateEventResolution(entry, card);
                 this.time.delayedCall(760, () => {
                     if (card?.type === 'EVENT_FINAL') {
@@ -859,6 +973,7 @@ export class BattleScene extends Phaser.Scene {
                 break;
             }
             case 'victory':
+                this.playConfiguredEffect(this.uiSettings.victoryEffect, 'final');
                 this.enqueueBanner('VICTORIA', `${entry.player} gana la partida`, 'final');
                 break;
         }
@@ -1103,6 +1218,52 @@ export class BattleScene extends Phaser.Scene {
         }
     }
 
+    private playConfiguredEffect(effect?: string, tone: BannerTone = 'neutral'): void {
+        if (!effect || effect === 'none') return;
+
+        if (effect === 'shake') {
+            this.cameras.main.shake(220, 0.006);
+            return;
+        }
+
+        if (effect === 'screen-flash' || effect === 'desaturate') {
+            const color = effect === 'desaturate' ? 0x9aa3af : this.getBannerColor(tone);
+            const flash = this.add.rectangle(0, 0, this.scale.width, this.scale.height, color, 0.22)
+                .setOrigin(0)
+                .setDepth(2550);
+            this.tweens.add({
+                targets: flash,
+                alpha: 0,
+                duration: 360,
+                onComplete: () => flash.destroy(),
+            });
+            return;
+        }
+
+        if (effect === 'zoom-pop') {
+            this.tweens.add({
+                targets: this.cameras.main,
+                zoom: { from: 1.02, to: 1 },
+                duration: 260,
+                ease: 'Sine.Out',
+            });
+            return;
+        }
+
+        const color = this.getBannerColor(tone);
+        const ring = this.add.circle(this.scale.width / 2, this.scale.height / 2, 36, color, 0)
+            .setStrokeStyle(5, color, 0.92)
+            .setDepth(2540);
+        this.tweens.add({
+            targets: ring,
+            scale: { from: 0.6, to: effect === 'ripple' ? 6.5 : 3.8 },
+            alpha: { from: 0.95, to: 0 },
+            duration: effect === 'arc-burst' ? 620 : 420,
+            ease: 'Sine.Out',
+            onComplete: () => ring.destroy(),
+        });
+    }
+
     private enqueueBanner(title: string, subtitle: string | undefined, tone: BannerTone): void {
         this.bannerQueue.push({ title, subtitle, tone });
         if (!this.bannerActive) {
@@ -1121,7 +1282,12 @@ export class BattleScene extends Phaser.Scene {
         const { width, height } = this.scale;
         const color = this.getBannerColor(next.tone);
         const container = this.add.container(width / 2, height / 2).setDepth(2600);
-        const bg = this.add.rectangle(0, 0, Math.min(width * 0.9, 620), 106, 0x000000, 0.88)
+        const bannerWidth = Math.min(width * 0.9, 620);
+        const bannerHeight = 106;
+        if (this.uiSettings.turnBannerImage) {
+            this.addConfiguredBannerImage(container, this.uiSettings.turnBannerImage, bannerWidth, bannerHeight);
+        }
+        const bg = this.add.rectangle(0, 0, bannerWidth, bannerHeight, 0x000000, 0.88)
             .setStrokeStyle(4, color);
         const title = this.add.text(0, -18, next.title, {
             fontSize: width < 620 ? '28px' : '40px',
@@ -1161,6 +1327,34 @@ export class BattleScene extends Phaser.Scene {
                 });
             },
         });
+    }
+
+    private addConfiguredBannerImage(container: Phaser.GameObjects.Container, source: string, width: number, height: number): void {
+        if (!/^(https?:\/\/|\/|data:image\/)/.test(source)) return;
+        const key = `admin-banner-${this.hashSource(source)}`;
+        const addImage = () => {
+            if (!container.active || !this.textures.exists(key)) return;
+            const image = this.add.image(0, 0, key)
+                .setDisplaySize(width, height)
+                .setAlpha(0.26);
+            container.addAt(image, 0);
+        };
+
+        if (this.textures.exists(key)) {
+            addImage();
+        } else {
+            this.load.image(key, source);
+            this.load.once(Phaser.Loader.Events.COMPLETE, addImage);
+            this.load.start();
+        }
+    }
+
+    private hashSource(source: string): string {
+        let hash = 0;
+        for (let i = 0; i < source.length; i++) {
+            hash = ((hash << 5) - hash + source.charCodeAt(i)) | 0;
+        }
+        return Math.abs(hash).toString(36);
     }
 
     private getBannerColor(tone: BannerTone): number {
@@ -1216,6 +1410,7 @@ export class BattleScene extends Phaser.Scene {
         const isWinner = payload.winner === this.myUsername;
         const configuredImage = isWinner ? this.uiSettings.victoryImage : this.uiSettings.defeatImage;
         this.playConfiguredSound(isWinner ? this.uiSettings.victorySound : this.uiSettings.defeatSound);
+        this.playConfiguredEffect(isWinner ? this.uiSettings.victoryEffect : this.uiSettings.defeatEffect, isWinner ? 'final' : 'danger');
         this.add.rectangle(0, 0, width, height, 0x000000, 0.9).setOrigin(0).setDepth(2800);
         if (configuredImage) this.addConfiguredEndImage(configuredImage, width / 2, height / 2 - 126);
         this.add.text(width / 2, height / 2 - 44, isWinner ? 'VICTORIA' : 'DERROTA', {

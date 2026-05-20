@@ -11,6 +11,7 @@ type MutableCard = CardData & {
     sound?: string;
     likes?: string[];
     dislikes?: string[];
+    extendedLore?: string;
 };
 
 interface AdminLoginBody {
@@ -27,6 +28,8 @@ interface AdminCardUpdateBody {
     archetype?: string;
     image?: string;
     sound?: string;
+    backstory?: string;
+    extendedLore?: string;
     likes?: string[];
     dislikes?: string[];
     requirements?: unknown[];
@@ -44,6 +47,16 @@ interface AdminCsvBody {
     csv: string;
 }
 
+interface AdminMediaUploadBody {
+    files: Array<{
+        name: string;
+        type: 'image' | 'audio' | 'other';
+        mimeType: string;
+        dataUrl: string;
+        size: number;
+    }>;
+}
+
 function serializeCard(card: MutableCard) {
     return {
         id: card.id,
@@ -54,6 +67,7 @@ function serializeCard(card: MutableCard) {
         desc: card.description,
         description: card.description,
         backstory: card.backstory,
+        extendedLore: card.extendedLore || card.backstory || '',
         image: card.image,
         sound: card.sound || '',
         maxCopies: card.maxCopies,
@@ -140,6 +154,8 @@ function upsertCard(row: Record<string, string>): MutableCard {
     card.type = (row.type || card.type) as CardData['type'];
     card.cost = row.cost ? Number(row.cost) : card.cost;
     card.description = row.description || row.desc || card.description;
+    card.backstory = row.backstory || card.backstory;
+    card.extendedLore = row.extendedLore || card.extendedLore || card.backstory;
     card.archetype = row.archetype || card.archetype;
     card.image = row.image || card.image;
     card.sound = row.sound || card.sound || '';
@@ -196,6 +212,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
         const body = request.body;
         card.name = body.name ?? card.name;
         card.description = body.description ?? body.desc ?? card.description;
+        card.backstory = body.backstory ?? card.backstory;
+        card.extendedLore = body.extendedLore ?? card.extendedLore;
         if (body.type) card.type = body.type as CardData['type'];
         if (body.cost !== undefined) card.cost = Number(body.cost);
         if (body.archetype) card.archetype = body.archetype;
@@ -259,5 +277,27 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     fastify.put<{ Body: Record<string, string> }>('/admin/ui-settings', async (request) => {
         return { settings: store.updateAdminUiSettings(request.body) };
+    });
+
+    fastify.get('/admin/media', async () => {
+        return { media: store.listMediaAssets() };
+    });
+
+    fastify.post<{ Body: AdminMediaUploadBody }>('/admin/media', async (request, reply) => {
+        const files = request.body.files || [];
+        const media = files.map(file => store.addMediaAsset({
+            name: file.name,
+            type: file.type,
+            mimeType: file.mimeType,
+            dataUrl: file.dataUrl,
+            size: file.size,
+        }));
+        return reply.code(201).send({ media, count: media.length });
+    });
+
+    fastify.delete<{ Params: { id: string } }>('/admin/media/:id', async (request, reply) => {
+        const deleted = store.deleteMediaAsset(request.params.id);
+        if (!deleted) return reply.code(404).send({ error: 'Media not found' });
+        return { success: true };
     });
 }

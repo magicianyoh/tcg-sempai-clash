@@ -135,7 +135,9 @@
         }
 
         .card-list,
-        .user-list {
+        .user-list,
+        .media-list,
+        .media-grid {
             display: grid;
             gap: 7px;
             margin-top: 10px;
@@ -182,6 +184,55 @@
             display: none;
         }
 
+        .media-grid {
+            grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+        }
+
+        .media-tile {
+            border: 1px solid rgba(255, 255, 255, 0.13);
+            border-radius: 7px;
+            background: #111722;
+            min-height: 112px;
+            padding: 8px;
+            display: grid;
+            align-content: start;
+            gap: 6px;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        .media-tile img {
+            width: 100%;
+            height: 76px;
+            object-fit: cover;
+            border-radius: 5px;
+            background: #090b10;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            display: none;
+            background: rgba(0, 0, 0, 0.72);
+            padding: 24px;
+        }
+
+        .modal.open {
+            display: grid;
+            place-items: center;
+        }
+
+        .modal-panel {
+            width: min(900px, 96vw);
+            max-height: 88vh;
+            overflow: auto;
+            background: #0f131c;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 8px;
+            padding: 14px;
+        }
+
         @media (max-width: 900px) {
             .layout {
                 grid-template-columns: 1fr;
@@ -218,7 +269,9 @@
                 <button class="tab active" data-tab="cards">Cartas</button>
                 <button class="tab" data-tab="import">Importar CSV</button>
                 <button class="tab" data-tab="users">Usuarios</button>
+                <button class="tab" data-tab="media">Gestión de medios</button>
                 <button class="tab" data-tab="ui">UI / FX</button>
+                <a class="tab" href="/wiki.html" target="_blank">Wiki</a>
                 <button id="logout-btn" class="tab">Salir</button>
             </nav>
         </header>
@@ -279,6 +332,9 @@
                     <label style="grid-column: 1 / -1;">Descripción
                         <textarea id="card-description"></textarea>
                     </label>
+                    <label style="grid-column: 1 / -1;">Lore extendido
+                        <textarea id="card-extended-lore"></textarea>
+                    </label>
                     <label>Likes
                         <textarea id="card-likes" placeholder="ids separados por coma"></textarea>
                     </label>
@@ -327,32 +383,70 @@
                 <p id="user-message" class="message"></p>
             </section>
 
+            <section class="panel section" id="media-section">
+                <h2>Gestión de medios</h2>
+                <p class="meta" style="margin: 8px 0 12px;">Subí imágenes y sonidos para usarlos en cartas, UI y efectos de partida.</p>
+                <input id="media-files" type="file" multiple accept="image/*,audio/*">
+                <div class="actions">
+                    <button id="upload-media-btn" class="btn primary">Subir medios</button>
+                </div>
+                <div id="media-list" class="media-grid"></div>
+                <p id="media-message" class="message"></p>
+            </section>
+
             <section class="panel section" id="ui-section">
                 <h2>UI / Sonidos / Efectos</h2>
                 <div class="grid" style="margin-top: 12px;">
                     <label>Imagen victoria
-                        <input id="victoryImage">
+                        <input id="victoryImage" class="media-picker" data-media-type="image" readonly>
                     </label>
                     <label>Sonido victoria
-                        <input id="victorySound">
+                        <input id="victorySound" class="media-picker" data-media-type="audio" readonly>
                     </label>
                     <label>Imagen derrota
-                        <input id="defeatImage">
+                        <input id="defeatImage" class="media-picker" data-media-type="image" readonly>
                     </label>
                     <label>Sonido derrota
-                        <input id="defeatSound">
+                        <input id="defeatSound" class="media-picker" data-media-type="audio" readonly>
+                    </label>
+                    <label>Imagen fondo de campo
+                        <input id="boardBackgroundImage" class="media-picker" data-media-type="image" readonly>
+                    </label>
+                    <label>Imagen banner de turno
+                        <input id="turnBannerImage" class="media-picker" data-media-type="image" readonly>
                     </label>
                     <label>Efecto al jugar carta
-                        <input id="playCardEffect">
+                        <select id="playCardEffect" class="fx-select"></select>
                     </label>
                     <label>Sonido al jugar carta
-                        <input id="playCardSound">
+                        <input id="playCardSound" class="media-picker" data-media-type="audio" readonly>
                     </label>
                     <label>Efecto cambio fase/arco
-                        <input id="phaseAdvanceEffect">
+                        <select id="phaseAdvanceEffect" class="fx-select"></select>
                     </label>
                     <label>Sonido cambio fase/arco
-                        <input id="phaseAdvanceSound">
+                        <input id="phaseAdvanceSound" class="media-picker" data-media-type="audio" readonly>
+                    </label>
+                    <label>FX hover cartas mano
+                        <select id="handHoverEffect" class="fx-select"></select>
+                    </label>
+                    <label>FX idle slots
+                        <select id="slotIdleEffect" class="fx-select"></select>
+                    </label>
+                    <label>FX slot válido
+                        <select id="slotValidDropEffect" class="fx-select"></select>
+                    </label>
+                    <label>FX evento listo
+                        <select id="eventReadyEffect" class="fx-select"></select>
+                    </label>
+                    <label>FX evento resuelto
+                        <select id="eventResolveEffect" class="fx-select"></select>
+                    </label>
+                    <label>FX victoria
+                        <select id="victoryEffect" class="fx-select"></select>
+                    </label>
+                    <label>FX derrota
+                        <select id="defeatEffect" class="fx-select"></select>
                     </label>
                 </div>
                 <div class="actions">
@@ -361,6 +455,18 @@
                 <p id="ui-message" class="message"></p>
             </section>
         </main>
+    </div>
+
+    <div id="media-modal" class="modal">
+        <div class="modal-panel">
+            <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
+                <h2 id="media-modal-title">Seleccionar medio</h2>
+                <button id="close-media-modal" class="btn">Cerrar</button>
+            </div>
+            <div style="height:10px"></div>
+            <input id="media-modal-search" placeholder="Buscar archivo">
+            <div id="media-modal-grid" class="media-grid"></div>
+        </div>
     </div>
 
     <script type="module" src="/src/admin.ts"></script>

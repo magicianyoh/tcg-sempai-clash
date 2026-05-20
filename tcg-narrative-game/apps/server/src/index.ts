@@ -46,6 +46,7 @@ server.get('/cards', async () => {
             cost: card.cost,
             desc: card.description,
             backstory: card.backstory,
+            extendedLore: (card as any).extendedLore || card.backstory,
             image: card.image,
             sound: (card as any).sound,
             maxCopies: card.maxCopies,

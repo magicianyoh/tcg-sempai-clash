@@ -6,6 +6,7 @@ type AdminCard = {
     cost: number;
     description: string;
     desc?: string;
+    extendedLore?: string;
     image?: string;
     sound?: string;
     maxCopies?: number;
@@ -23,13 +24,40 @@ type AdminUser = {
 };
 
 type AdminSettings = Record<string, string>;
+type MediaAsset = {
+    id: string;
+    name: string;
+    type: 'image' | 'audio' | 'other';
+    mimeType: string;
+    dataUrl: string;
+    size: number;
+    createdAt: number;
+};
 
 const API_URL = 'http://localhost:3000';
 
 let token = localStorage.getItem('adminToken') || '';
 let cards: AdminCard[] = [];
 let users: AdminUser[] = [];
+let mediaAssets: MediaAsset[] = [];
 let selectedCardId = '';
+let pendingMediaTarget = '';
+let pendingMediaType: 'image' | 'audio' | 'other' = 'image';
+
+const FX_OPTIONS = [
+    'none',
+    'spark',
+    'lift-glow',
+    'cyan-pulse',
+    'gold-pulse',
+    'arc-burst',
+    'screen-flash',
+    'desaturate',
+    'shake',
+    'zoom-pop',
+    'ripple',
+    'slot-ring',
+];
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -91,7 +119,14 @@ async function login() {
 }
 
 async function loadAll() {
-    await Promise.all([loadCards(), loadUsers(), loadSettings()]);
+    hydrateFxDropdowns();
+    await Promise.all([loadCards(), loadUsers(), loadSettings(), loadMedia()]);
+}
+
+function hydrateFxDropdowns() {
+    document.querySelectorAll<HTMLSelectElement>('.fx-select').forEach(select => {
+        select.innerHTML = FX_OPTIONS.map(option => `<option value="${option}">${option}</option>`).join('');
+    });
 }
 
 async function loadCards() {
@@ -151,6 +186,7 @@ function renderSelectedCard() {
     ($<HTMLInputElement>('card-sound')).value = card.sound || '';
     ($<HTMLInputElement>('card-max')).value = card.maxCopies ? String(card.maxCopies) : '';
     ($<HTMLTextAreaElement>('card-description')).value = card.description || card.desc || '';
+    ($<HTMLTextAreaElement>('card-extended-lore')).value = card.extendedLore || '';
     ($<HTMLTextAreaElement>('card-likes')).value = (card.likes || []).join(', ');
     ($<HTMLTextAreaElement>('card-dislikes')).value = (card.dislikes || []).join(', ');
     ($<HTMLTextAreaElement>('card-requirements')).value = JSON.stringify(card.requirements || [], null, 2);
@@ -182,6 +218,7 @@ async function saveCard() {
                 sound: ($<HTMLInputElement>('card-sound')).value,
                 maxCopies: maxCopiesValue ? Number(maxCopiesValue) : undefined,
                 description: ($<HTMLTextAreaElement>('card-description')).value,
+                extendedLore: ($<HTMLTextAreaElement>('card-extended-lore')).value,
                 likes: parseCsvList(($<HTMLTextAreaElement>('card-likes')).value),
                 dislikes: parseCsvList(($<HTMLTextAreaElement>('card-dislikes')).value),
                 requirements,
@@ -290,7 +327,7 @@ async function resetPassword(username: string) {
 async function loadSettings() {
     const data = await request<{ settings: AdminSettings }>('/admin/ui-settings', { headers: authHeaders() });
     Object.entries(data.settings).forEach(([key, value]) => {
-        const input = document.getElementById(key) as HTMLInputElement | null;
+        const input = document.getElementById(key) as HTMLInputElement | HTMLSelectElement | null;
         if (input) input.value = value || '';
     });
 }
@@ -305,8 +342,17 @@ async function saveSettings() {
         'playCardSound',
         'phaseAdvanceEffect',
         'phaseAdvanceSound',
+        'handHoverEffect',
+        'slotIdleEffect',
+        'slotValidDropEffect',
+        'eventReadyEffect',
+        'eventResolveEffect',
+        'victoryEffect',
+        'defeatEffect',
+        'boardBackgroundImage',
+        'turnBannerImage',
     ];
-    const settings = Object.fromEntries(keys.map(key => [key, ($<HTMLInputElement>(key)).value]));
+    const settings = Object.fromEntries(keys.map(key => [key, ($<HTMLInputElement | HTMLSelectElement>(key)).value]));
 
     try {
         await request('/admin/ui-settings', {
@@ -318,6 +364,111 @@ async function saveSettings() {
     } catch (error: any) {
         setMessage('ui-message', error.message, true);
     }
+}
+
+async function loadMedia() {
+    const data = await request<{ media: MediaAsset[] }>('/admin/media', { headers: authHeaders() });
+    mediaAssets = data.media;
+    renderMedia();
+}
+
+function renderMedia() {
+    $('media-list').innerHTML = mediaAssets.map(asset => mediaTile(asset, true)).join('');
+    document.querySelectorAll<HTMLButtonElement>('[data-delete-media]').forEach(button => {
+        button.addEventListener('click', () => deleteMedia(button.dataset.deleteMedia || ''));
+    });
+}
+
+function mediaTile(asset: MediaAsset, withDelete = false): string {
+    const preview = asset.type === 'image'
+        ? `<img src="${asset.dataUrl}" alt="${asset.name}">`
+        : `<div class="meta" style="height:76px; display:grid; place-items:center;">${asset.type.toUpperCase()}</div>`;
+    return `
+        <div class="media-tile" data-media-id="${asset.id}">
+            ${preview}
+            <strong title="${asset.name}">${asset.name}</strong>
+            <span class="meta">${asset.mimeType} / ${Math.round(asset.size / 1024)} KB</span>
+            ${withDelete ? `<button class="btn danger" data-delete-media="${asset.id}" type="button">Eliminar</button>` : ''}
+        </div>
+    `;
+}
+
+async function uploadMedia() {
+    const files = Array.from(($<HTMLInputElement>('media-files')).files || []);
+    if (files.length === 0) {
+        setMessage('media-message', 'Selecciona uno o más archivos.', true);
+        return;
+    }
+
+    const payload = await Promise.all(files.map(async file => ({
+        name: file.name,
+        type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('audio/') ? 'audio' : 'other',
+        mimeType: file.type || 'application/octet-stream',
+        dataUrl: await readFileAsDataUrl(file),
+        size: file.size,
+    })));
+
+    try {
+        const data = await request<{ count: number }>('/admin/media', {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ files: payload }),
+        });
+        ($<HTMLInputElement>('media-files')).value = '';
+        setMessage('media-message', `${data.count} archivo(s) subido(s).`);
+        await loadMedia();
+    } catch (error: any) {
+        setMessage('media-message', error.message, true);
+    }
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+    });
+}
+
+async function deleteMedia(id: string) {
+    if (!id || !confirm('Eliminar archivo?')) return;
+    try {
+        await request(`/admin/media/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+        });
+        setMessage('media-message', 'Archivo eliminado.');
+        await loadMedia();
+    } catch (error: any) {
+        setMessage('media-message', error.message, true);
+    }
+}
+
+function openMediaModal(targetId: string, type: 'image' | 'audio' | 'other') {
+    pendingMediaTarget = targetId;
+    pendingMediaType = type;
+    ($('media-modal-title')).textContent = type === 'image' ? 'Seleccionar imagen' : 'Seleccionar audio';
+    ($<HTMLInputElement>('media-modal-search')).value = '';
+    $('media-modal').classList.add('open');
+    renderMediaModal();
+}
+
+function renderMediaModal() {
+    const search = ($<HTMLInputElement>('media-modal-search')).value.toLowerCase();
+    const filtered = mediaAssets
+        .filter(asset => asset.type === pendingMediaType)
+        .filter(asset => !search || asset.name.toLowerCase().includes(search));
+
+    $('media-modal-grid').innerHTML = filtered.map(asset => mediaTile(asset)).join('');
+    document.querySelectorAll<HTMLElement>('#media-modal-grid .media-tile').forEach(tile => {
+        tile.addEventListener('click', () => {
+            const asset = mediaAssets.find(item => item.id === tile.dataset.mediaId);
+            if (!asset || !pendingMediaTarget) return;
+            ($<HTMLInputElement>(pendingMediaTarget)).value = asset.dataUrl;
+            $('media-modal').classList.remove('open');
+        });
+    });
 }
 
 function bindTabs() {
@@ -342,6 +493,12 @@ function bindEvents() {
     $('import-btn').addEventListener('click', importCsv);
     $('create-user-btn').addEventListener('click', createUser);
     $('save-ui-btn').addEventListener('click', saveSettings);
+    $('upload-media-btn').addEventListener('click', uploadMedia);
+    $('close-media-modal').addEventListener('click', () => $('media-modal').classList.remove('open'));
+    $('media-modal-search').addEventListener('input', renderMediaModal);
+    document.querySelectorAll<HTMLInputElement>('.media-picker').forEach(input => {
+        input.addEventListener('click', () => openMediaModal(input.id, (input.dataset.mediaType || 'image') as any));
+    });
     ['card-search', 'card-sort', 'type-filter', 'archetype-filter'].forEach(id => {
         $(id).addEventListener('input', renderCards);
         $(id).addEventListener('change', renderCards);
@@ -368,3 +525,5 @@ if (token) {
 } else {
     showLogin();
 }
+
+export {};

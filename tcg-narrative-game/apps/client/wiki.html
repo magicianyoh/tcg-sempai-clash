@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sempai Clash Wiki</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            background: #090b10;
+            color: #f5f7fb;
+            font-family: "Segoe UI", system-ui, sans-serif;
+        }
+
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 14px 18px;
+            background: #0f131c;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .nav {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        a,
+        button {
+            color: #fff;
+        }
+
+        .nav a,
+        .filter {
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: #151b27;
+            border-radius: 6px;
+            padding: 8px 10px;
+            text-decoration: none;
+        }
+
+        main {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 14px;
+            padding: 14px;
+        }
+
+        aside,
+        section {
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: #0f131c;
+            border-radius: 8px;
+            padding: 14px;
+        }
+
+        aside {
+            position: sticky;
+            top: 74px;
+            height: calc(100vh - 88px);
+            overflow: auto;
+        }
+
+        input,
+        select {
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 6px;
+            background: #090b10;
+            color: #fff;
+            padding: 8px;
+            margin-top: 8px;
+        }
+
+        .card-list {
+            display: grid;
+            gap: 7px;
+            margin-top: 12px;
+        }
+
+        .card-link {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            background: #111722;
+            padding: 9px;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .card-link.active {
+            border-color: #4ecdc4;
+            background: #102a2d;
+        }
+
+        .meta {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.76rem;
+            margin-top: 3px;
+        }
+
+        .content {
+            display: grid;
+            gap: 14px;
+        }
+
+        h2 {
+            margin-bottom: 10px;
+        }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .detail-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .cost {
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 6px;
+            background: #173438;
+            padding: 7px 10px;
+            white-space: nowrap;
+        }
+
+        .card-profile {
+            display: grid;
+            grid-template-columns: 220px 1fr;
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+
+        .card-image,
+        .image-placeholder {
+            width: 100%;
+            min-height: 260px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 8px;
+            background: #090b10;
+        }
+
+        .card-image {
+            object-fit: cover;
+        }
+
+        .image-placeholder {
+            display: grid;
+            place-items: center;
+            padding: 12px;
+            color: rgba(255, 255, 255, 0.62);
+            text-align: center;
+        }
+
+        h3 {
+            margin: 10px 0 7px;
+            color: #4ecdc4;
+            font-size: 0.95rem;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            background: #090b10;
+            border-radius: 6px;
+            padding: 10px;
+            overflow: auto;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        @media (max-width: 900px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+
+            aside {
+                position: static;
+                height: auto;
+            }
+
+            .details-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .card-profile {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>Sempai Clash Wiki</h1>
+        <nav class="nav">
+            <a href="/auth.html">Login</a>
+            <a href="/build.html">Builder</a>
+            <a href="/match.html">Partidas</a>
+            <a href="/admin.html">Admin</a>
+        </nav>
+    </header>
+
+    <main>
+        <aside>
+            <h2>Cartas</h2>
+            <input id="search" placeholder="Buscar carta">
+            <select id="archetype"></select>
+            <select id="type"></select>
+            <div id="card-list" class="card-list"></div>
+        </aside>
+
+        <div class="content">
+            <section id="overview">
+                <h2>Reglas rápidas</h2>
+                <ul>
+                    <li>El objetivo es avanzar arcos narrativos completando eventos.</li>
+                    <li>Las cartas normales se colocan en slots del campo.</li>
+                    <li>Las cartas de evento se preparan en el centro y se resuelven al presionar Siguiente Arco/Pasar turno si sus requisitos se cumplen.</li>
+                    <li>El Filler bloquea eventos al llegar a 10 y puede decidir partidas.</li>
+                    <li>Los eventos finales representan el cierre de temporada y pueden ganar la partida.</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>Modos</h2>
+                <ul>
+                    <li>Quick Match: emparejamiento contra otro jugador.</li>
+                    <li>Lobby: partida privada por código.</li>
+                    <li>CPU: partida contra IA con arquetipo y dificultad seleccionables.</li>
+                </ul>
+            </section>
+
+            <section id="card-detail">
+                <h2>Selecciona una carta</h2>
+                <p class="meta">Usa el buscador o los filtros para ver detalles, lore, likes, dislikes, requisitos y efectos.</p>
+            </section>
+        </div>
+    </main>
+
+    <script type="module" src="/src/wiki.ts"></script>
+</body>
+
+</html>

@@ -41,7 +41,8 @@
             gap: 15px;
         }
 
-        .logout-btn {
+        .logout-btn,
+        .wiki-btn {
             padding: 8px 16px;
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 8px;
@@ -49,9 +50,12 @@
             color: #fff;
             cursor: pointer;
             transition: all 0.3s;
+            text-decoration: none;
+            font-size: 0.9rem;
         }
 
-        .logout-btn:hover {
+        .logout-btn:hover,
+        .wiki-btn:hover {
             background: rgba(255, 255, 255, 0.1);
         }
 
@@ -465,6 +469,7 @@
         <h1>Deck Builder</h1>
         <div class="user-info">
             <span id="username-display">Player</span>
+            <a class="wiki-btn" href="/wiki.html">Wiki</a>
             <button class="logout-btn" id="logout-btn">Logout</button>
         </div>
     </div>
