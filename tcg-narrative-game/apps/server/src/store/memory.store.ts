@@ -1,5 +1,7 @@
 import { DeckData, MatchState } from '@tcg/shared/types';
 import { LobbyState } from '@tcg/shared/protocol';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // ============================================
 // User Model
@@ -48,11 +50,23 @@ export interface WikiContent {
     mechanics: string;
 }
 
+interface PersistedStoreState {
+    version: 1;
+    users: Array<[string, User]>;
+    decks: Array<[string, DeckData]>;
+    decksByUser: Array<[string, string[]]>;
+    adminUiSettings: Partial<AdminUiSettings>;
+    mediaAssets: Array<[string, MediaAsset]>;
+    wikiContent: Partial<WikiContent>;
+}
+
 // ============================================
 // Memory Store
 // ============================================
 
 export class MemoryStore {
+    private readonly dbFilePath = path.resolve(process.env.STORE_DB_PATH || path.join(process.cwd(), 'data', 'db.json'));
+
     // Users indexed by username
     private users: Map<string, User> = new Map();
 
@@ -114,6 +128,69 @@ export class MemoryStore {
         ].join('\n'),
     };
 
+    constructor() {
+        this.loadFromDisk();
+    }
+
+    private loadFromDisk(): void {
+        try {
+            if (!fs.existsSync(this.dbFilePath)) return;
+
+            const raw = fs.readFileSync(this.dbFilePath, 'utf8');
+            const parsed = JSON.parse(raw) as Partial<PersistedStoreState>;
+
+            if (Array.isArray(parsed.users)) {
+                this.users = new Map(parsed.users);
+            }
+            if (Array.isArray(parsed.decks)) {
+                this.decks = new Map(parsed.decks);
+            }
+            if (Array.isArray(parsed.decksByUser)) {
+                this.decksByUser = new Map(parsed.decksByUser);
+            }
+            if (Array.isArray(parsed.mediaAssets)) {
+                this.mediaAssets = new Map(parsed.mediaAssets);
+            }
+            if (parsed.adminUiSettings && typeof parsed.adminUiSettings === 'object') {
+                this.adminUiSettings = {
+                    ...this.adminUiSettings,
+                    ...parsed.adminUiSettings,
+                };
+            }
+            if (parsed.wikiContent && typeof parsed.wikiContent === 'object') {
+                this.wikiContent = {
+                    ...this.wikiContent,
+                    ...parsed.wikiContent,
+                };
+            }
+        } catch {
+            // Keep the in-code defaults when the local JSON database is missing or invalid.
+        }
+    }
+
+    private saveToDisk(): void {
+        try {
+            const dir = path.dirname(this.dbFilePath);
+            fs.mkdirSync(dir, { recursive: true });
+
+            const state: PersistedStoreState = {
+                version: 1,
+                users: Array.from(this.users.entries()),
+                decks: Array.from(this.decks.entries()),
+                decksByUser: Array.from(this.decksByUser.entries()),
+                adminUiSettings: this.getAdminUiSettings(),
+                mediaAssets: Array.from(this.mediaAssets.entries()),
+                wikiContent: this.getWikiContent(),
+            };
+
+            const tempPath = `${this.dbFilePath}.tmp`;
+            fs.writeFileSync(tempPath, JSON.stringify(state, null, 2), 'utf8');
+            fs.renameSync(tempPath, this.dbFilePath);
+        } catch {
+            // Persistence failure should not break live gameplay; state remains in memory.
+        }
+    }
+
     // ========== User Methods ==========
 
     createUser(username: string, passwordHash: string): User {
@@ -121,6 +198,7 @@ export class MemoryStore {
         const user: User = { id, username, passwordHash };
         this.users.set(username, user);
         this.decksByUser.set(username, []);
+        this.saveToDisk();
         return user;
     }
 
@@ -147,6 +225,7 @@ export class MemoryStore {
         this.decksByUser.delete(username);
         this.users.delete(username);
         this.removeFromAllQueues(username);
+        this.saveToDisk();
         return true;
     }
 
@@ -155,6 +234,7 @@ export class MemoryStore {
         if (!user) return undefined;
         user.passwordHash = passwordHash;
         this.users.set(username, user);
+        this.saveToDisk();
         return user;
     }
 
@@ -162,6 +242,7 @@ export class MemoryStore {
         const user = this.users.get(username);
         if (user) {
             user.activeDeckId = deckId;
+            this.saveToDisk();
         }
     }
 
@@ -182,6 +263,7 @@ export class MemoryStore {
         userDecks.push(id);
         this.decksByUser.set(username, userDecks);
 
+        this.saveToDisk();
         return fullDeck;
     }
 
@@ -204,6 +286,7 @@ export class MemoryStore {
             updatedAt: Date.now(),
         };
         this.decks.set(deckId, updated);
+        this.saveToDisk();
         return updated;
     }
 
@@ -216,6 +299,7 @@ export class MemoryStore {
 
         userDecks.splice(index, 1);
         this.decks.delete(deckId);
+        this.saveToDisk();
         return true;
     }
 
@@ -321,6 +405,7 @@ export class MemoryStore {
             ...this.adminUiSettings,
             ...updates,
         };
+        this.saveToDisk();
         return this.getAdminUiSettings();
     }
 
@@ -335,11 +420,14 @@ export class MemoryStore {
             createdAt: Date.now(),
         };
         this.mediaAssets.set(fullAsset.id, fullAsset);
+        this.saveToDisk();
         return fullAsset;
     }
 
     deleteMediaAsset(id: string): boolean {
-        return this.mediaAssets.delete(id);
+        const deleted = this.mediaAssets.delete(id);
+        if (deleted) this.saveToDisk();
+        return deleted;
     }
 
     getWikiContent(): WikiContent {
@@ -351,6 +439,7 @@ export class MemoryStore {
             ...this.wikiContent,
             ...updates,
         };
+        this.saveToDisk();
         return this.getWikiContent();
     }
 }
