@@ -3,6 +3,7 @@ import { store } from '../store/memory.store';
 import { DeckData } from '@tcg/shared/types';
 import { GAME_CONSTANTS, ARCHETYPES } from '@tcg/shared/constants';
 import { CARDS } from '@tcg/game-engine/content/cards';
+import { getPrebuiltDecks } from '../decks/prebuilt-decks';
 
 // ============================================
 // Deck Validation
@@ -84,6 +85,10 @@ export async function deckRoutes(fastify: FastifyInstance) {
         const user = request.user as { username: string };
         const decks = store.getDecksForUser(user.username);
         return { decks };
+    });
+
+    fastify.get('/prebuilt-decks', async () => {
+        return { decks: getPrebuiltDecks(store.getPrebuiltDeckSettings()) };
     });
 
     // GET /decks/:id - Get single deck

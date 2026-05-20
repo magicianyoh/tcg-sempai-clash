@@ -17,6 +17,7 @@ export default defineConfig({
         proxy: {
             '^/auth(?:/|$)': apiProxy,
             '^/decks(?:/|$)': apiProxy,
+            '^/prebuilt-decks$': apiProxy,
             '^/cards$': apiProxy,
             '^/cpu-match$': apiProxy,
             '^/ui-settings$': apiProxy,

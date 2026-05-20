@@ -552,6 +552,7 @@
         let selectedTypeFilter = 'ALL';
         let deckCards = [];
         let savedDecks = [];
+        let prebuiltDecks = [];
         let currentEditingDeckId = null;
         let selectedBackground = 'bg_01'; // Default
 
@@ -921,15 +922,33 @@
             }
         }
 
+        async function loadPrebuiltDecks() {
+            try {
+                const res = await fetch(`${API_URL}/prebuilt-decks`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    prebuiltDecks = data.decks || [];
+                    renderDeckDropdown();
+                }
+            } catch (err) {
+                console.error('Failed to load prebuilt decks:', err);
+            }
+        }
+
         function renderDeckDropdown() {
             const dropdown = document.getElementById('deck-dropdown');
+            const savedOptions = savedDecks.map(d => `<option value="saved:${d.id}">${d.name} (${d.archetypeId})</option>`).join('');
+            const prebuiltOptions = prebuiltDecks.map(d => `<option value="prebuilt:${d.id}">Plantilla: ${d.name}</option>`).join('');
             dropdown.innerHTML = '<option value="">--- Nuevo Mazo ---</option>' +
-                savedDecks.map(d => `<option value="${d.id}">${d.name} (${d.archetypeId})</option>`).join('');
+                (savedOptions ? `<optgroup label="Mis mazos">${savedOptions}</optgroup>` : '') +
+                (prebuiltOptions ? `<optgroup label="Decks pre-armados">${prebuiltOptions}</optgroup>` : '');
         }
 
         document.getElementById('load-btn').addEventListener('click', () => {
-            const deckId = document.getElementById('deck-dropdown').value;
-            if (!deckId) {
+            const selectedValue = document.getElementById('deck-dropdown').value;
+            if (!selectedValue) {
                 deckCards = [];
                 currentEditingDeckId = null;
                 renderCards();
@@ -937,15 +956,18 @@
                 return;
             }
 
-            const deck = savedDecks.find(d => d.id === deckId);
+            const [source, deckId] = selectedValue.split(':');
+            const deck = source === 'prebuilt'
+                ? prebuiltDecks.find(d => d.id === deckId)
+                : savedDecks.find(d => d.id === deckId);
             if (deck) {
                 selectedArchetype = deck.archetypeId;
                 document.querySelectorAll('.archetype-btn').forEach(b => {
                     b.classList.toggle('selected', b.dataset.archetype === selectedArchetype);
                 });
                 deckCards = [...deck.cards];
-                currentEditingDeckId = deckId;
-                document.getElementById('deck-name').value = deck.name;
+                currentEditingDeckId = source === 'prebuilt' ? null : deckId;
+                document.getElementById('deck-name').value = source === 'prebuilt' ? `${deck.name} Custom` : deck.name;
                 selectedBackground = deck.backgroundId || 'bg_01';
                 renderCards();
                 renderDeck();
@@ -1006,7 +1028,7 @@
             await loadCardCatalog();
             renderArchetypes();
             renderBackgrounds();
-            await loadUserDecks();
+            await Promise.all([loadUserDecks(), loadPrebuiltDecks()]);
             if (localStorage.getItem('activeDeckId')) {
                 document.getElementById('continue-btn').style.display = 'block';
             }

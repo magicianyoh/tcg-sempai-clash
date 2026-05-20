@@ -50,6 +50,11 @@ export interface WikiContent {
     mechanics: string;
 }
 
+export interface PrebuiltDeckSettings {
+    enabled: boolean;
+    archetypes: Record<string, boolean>;
+}
+
 interface PersistedStoreState {
     version: 1;
     users: Array<[string, User]>;
@@ -58,6 +63,7 @@ interface PersistedStoreState {
     adminUiSettings: Partial<AdminUiSettings>;
     mediaAssets: Array<[string, MediaAsset]>;
     wikiContent: Partial<WikiContent>;
+    prebuiltDeckSettings?: Partial<PrebuiltDeckSettings>;
 }
 
 // ============================================
@@ -105,6 +111,11 @@ export class MemoryStore {
     };
 
     private mediaAssets: Map<string, MediaAsset> = new Map();
+
+    private prebuiltDeckSettings: PrebuiltDeckSettings = {
+        enabled: true,
+        archetypes: {},
+    };
 
     private wikiContent: WikiContent = {
         rules: [
@@ -163,6 +174,16 @@ export class MemoryStore {
                     ...parsed.wikiContent,
                 };
             }
+            if (parsed.prebuiltDeckSettings && typeof parsed.prebuiltDeckSettings === 'object') {
+                this.prebuiltDeckSettings = {
+                    ...this.prebuiltDeckSettings,
+                    ...parsed.prebuiltDeckSettings,
+                    archetypes: {
+                        ...this.prebuiltDeckSettings.archetypes,
+                        ...(parsed.prebuiltDeckSettings.archetypes || {}),
+                    },
+                };
+            }
         } catch {
             // Keep the in-code defaults when the local JSON database is missing or invalid.
         }
@@ -181,6 +202,7 @@ export class MemoryStore {
                 adminUiSettings: this.getAdminUiSettings(),
                 mediaAssets: Array.from(this.mediaAssets.entries()),
                 wikiContent: this.getWikiContent(),
+                prebuiltDeckSettings: this.getPrebuiltDeckSettings(),
             };
 
             const tempPath = `${this.dbFilePath}.tmp`;
@@ -407,6 +429,26 @@ export class MemoryStore {
         };
         this.saveToDisk();
         return this.getAdminUiSettings();
+    }
+
+    getPrebuiltDeckSettings(): PrebuiltDeckSettings {
+        return {
+            enabled: this.prebuiltDeckSettings.enabled,
+            archetypes: { ...this.prebuiltDeckSettings.archetypes },
+        };
+    }
+
+    updatePrebuiltDeckSettings(updates: Partial<PrebuiltDeckSettings>): PrebuiltDeckSettings {
+        this.prebuiltDeckSettings = {
+            ...this.prebuiltDeckSettings,
+            ...updates,
+            archetypes: {
+                ...this.prebuiltDeckSettings.archetypes,
+                ...(updates.archetypes || {}),
+            },
+        };
+        this.saveToDisk();
+        return this.getPrebuiltDeckSettings();
     }
 
     listMediaAssets(): MediaAsset[] {

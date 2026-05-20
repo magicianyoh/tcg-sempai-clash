@@ -33,6 +33,18 @@ type MediaAsset = {
     size: number;
     createdAt: number;
 };
+type PrebuiltDeck = {
+    id: string;
+    name: string;
+    archetypeId: string;
+    protagonistName: string;
+    description: string;
+    cards: string[];
+};
+type PrebuiltDeckSettings = {
+    enabled: boolean;
+    archetypes: Record<string, boolean>;
+};
 
 const API_URL = window.location.origin;
 
@@ -40,6 +52,8 @@ let token = localStorage.getItem('adminToken') || '';
 let cards: AdminCard[] = [];
 let users: AdminUser[] = [];
 let mediaAssets: MediaAsset[] = [];
+let prebuiltDecks: PrebuiltDeck[] = [];
+let prebuiltSettings: PrebuiltDeckSettings = { enabled: true, archetypes: {} };
 let selectedCardId = '';
 let pendingMediaTarget = '';
 let pendingMediaType: 'image' | 'audio' | 'other' = 'image';
@@ -120,7 +134,7 @@ async function login() {
 
 async function loadAll() {
     hydrateFxDropdowns();
-    await Promise.all([loadCards(), loadUsers(), loadSettings(), loadMedia()]);
+    await Promise.all([loadCards(), loadUsers(), loadSettings(), loadMedia(), loadPrebuiltDeckSettings()]);
 }
 
 function hydrateFxDropdowns() {
@@ -324,6 +338,64 @@ async function resetPassword(username: string) {
     }
 }
 
+async function loadPrebuiltDeckSettings() {
+    const data = await request<{ settings: PrebuiltDeckSettings; decks: PrebuiltDeck[] }>('/admin/prebuilt-decks/settings', { headers: authHeaders() });
+    prebuiltSettings = data.settings || { enabled: true, archetypes: {} };
+    prebuiltDecks = data.decks || [];
+    renderPrebuiltDeckSettings();
+}
+
+function renderPrebuiltDeckSettings() {
+    ($<HTMLInputElement>('prebuilt-enabled')).checked = prebuiltSettings.enabled !== false;
+
+    const archetypes = Array.from(new Set(prebuiltDecks.map(deck => deck.archetypeId))).sort();
+    $('prebuilt-archetypes').innerHTML = archetypes.map(archetype => {
+        const enabled = prebuiltSettings.archetypes[archetype] !== false;
+        const count = prebuiltDecks.filter(deck => deck.archetypeId === archetype).length;
+        return `
+            <label class="switch-row">
+                <div>
+                    <strong>${archetype}</strong>
+                    <div class="meta">${count} plantilla(s) por protagonista</div>
+                </div>
+                <input class="prebuilt-archetype-toggle" data-archetype="${archetype}" type="checkbox" ${enabled ? 'checked' : ''}>
+            </label>
+        `;
+    }).join('');
+
+    $('prebuilt-preview').innerHTML = prebuiltDecks.map(deck => `
+        <div class="row">
+            <strong>${deck.name}</strong>
+            <span class="meta">${deck.archetypeId} / ${deck.cards.length} cartas / protagonista: ${deck.protagonistName}</span>
+            <span class="meta">${deck.description}</span>
+        </div>
+    `).join('');
+}
+
+async function savePrebuiltDeckSettings() {
+    const archetypes: Record<string, boolean> = {};
+    document.querySelectorAll<HTMLInputElement>('.prebuilt-archetype-toggle').forEach(input => {
+        const archetype = input.dataset.archetype;
+        if (archetype) archetypes[archetype] = input.checked;
+    });
+
+    try {
+        const data = await request<{ settings: PrebuiltDeckSettings }>('/admin/prebuilt-decks/settings', {
+            method: 'PUT',
+            headers: jsonHeaders(),
+            body: JSON.stringify({
+                enabled: ($<HTMLInputElement>('prebuilt-enabled')).checked,
+                archetypes,
+            }),
+        });
+        prebuiltSettings = data.settings;
+        setMessage('prebuilt-message', 'Decks pre-armados guardados.');
+        renderPrebuiltDeckSettings();
+    } catch (error: any) {
+        setMessage('prebuilt-message', error.message, true);
+    }
+}
+
 async function loadSettings() {
     const data = await request<{ settings: AdminSettings }>('/admin/ui-settings', { headers: authHeaders() });
     Object.entries(data.settings).forEach(([key, value]) => {
@@ -492,6 +564,7 @@ function bindEvents() {
     $('save-card-btn').addEventListener('click', saveCard);
     $('import-btn').addEventListener('click', importCsv);
     $('create-user-btn').addEventListener('click', createUser);
+    $('save-prebuilt-btn').addEventListener('click', savePrebuiltDeckSettings);
     $('save-ui-btn').addEventListener('click', saveSettings);
     $('upload-media-btn').addEventListener('click', uploadMedia);
     $('close-media-modal').addEventListener('click', () => $('media-modal').classList.remove('open'));

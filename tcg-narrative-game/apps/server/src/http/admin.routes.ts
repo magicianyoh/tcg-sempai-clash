@@ -3,6 +3,7 @@ import * as argon2 from 'argon2';
 import { CARDS } from '@tcg/game-engine/content/cards';
 import { CardData } from '@tcg/shared/types';
 import { store } from '../store/memory.store';
+import { getPrebuiltDecks } from '../decks/prebuilt-decks';
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234';
@@ -61,6 +62,11 @@ interface AdminWikiBody {
     rules?: string;
     modes?: string;
     mechanics?: string;
+}
+
+interface AdminPrebuiltDeckSettingsBody {
+    enabled?: boolean;
+    archetypes?: Record<string, boolean>;
 }
 
 function serializeCard(card: MutableCard) {
@@ -313,5 +319,18 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     fastify.put<{ Body: AdminWikiBody }>('/admin/wiki-content', async (request) => {
         return { content: store.updateWikiContent(request.body) };
+    });
+
+    fastify.get('/admin/prebuilt-decks/settings', async () => {
+        return {
+            settings: store.getPrebuiltDeckSettings(),
+            decks: getPrebuiltDecks({ enabled: true, archetypes: {} }),
+        };
+    });
+
+    fastify.put<{ Body: AdminPrebuiltDeckSettingsBody }>('/admin/prebuilt-decks/settings', async (request) => {
+        return {
+            settings: store.updatePrebuiltDeckSettings(request.body),
+        };
     });
 }

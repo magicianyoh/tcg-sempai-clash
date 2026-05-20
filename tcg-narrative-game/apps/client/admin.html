@@ -209,6 +209,23 @@
             background: #090b10;
         }
 
+        .switch-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            background: #111722;
+        }
+
+        .switch-row input {
+            width: auto;
+            min-width: 42px;
+            transform: scale(1.15);
+        }
+
         .modal {
             position: fixed;
             inset: 0;
@@ -269,6 +286,7 @@
                 <button class="tab active" data-tab="cards">Cartas</button>
                 <button class="tab" data-tab="import">Importar CSV</button>
                 <button class="tab" data-tab="users">Usuarios</button>
+                <button class="tab" data-tab="prebuilt">Decks pre-armados</button>
                 <button class="tab" data-tab="media">Gestión de medios</button>
                 <button class="tab" data-tab="ui">UI / FX</button>
                 <a class="tab" href="/wiki.html" target="_blank">Wiki</a>
@@ -381,6 +399,28 @@
                 </div>
                 <div id="user-list" class="user-list"></div>
                 <p id="user-message" class="message"></p>
+            </section>
+
+            <section class="panel section" id="prebuilt-section">
+                <h2>Decks pre-armados</h2>
+                <p class="meta" style="margin: 8px 0 12px;">Controla si el builder muestra plantillas por protagonista y por arquetipo.</p>
+                <div class="switch-row">
+                    <div>
+                        <strong>Mostrar decks pre-armados en el builder</strong>
+                        <div class="meta">Switch general para habilitar o deshabilitar todas las plantillas.</div>
+                    </div>
+                    <input id="prebuilt-enabled" type="checkbox">
+                </div>
+                <div style="height: 12px"></div>
+                <h3>Arquetipos</h3>
+                <div id="prebuilt-archetypes" class="card-list"></div>
+                <div class="actions">
+                    <button id="save-prebuilt-btn" class="btn primary">Guardar decks pre-armados</button>
+                </div>
+                <p id="prebuilt-message" class="message"></p>
+                <div style="height: 14px"></div>
+                <h3>Plantillas disponibles</h3>
+                <div id="prebuilt-preview" class="card-list"></div>
             </section>
 
             <section class="panel section" id="media-section">
