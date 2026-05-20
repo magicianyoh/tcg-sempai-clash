@@ -36,7 +36,12 @@ function request<T extends JsonValue>(method: string, path: string, body?: JsonV
     });
 }
 
-async function waitForMatchState(token: string, matchId: string): Promise<JsonValue> {
+async function waitForMatchState(
+    token: string,
+    matchId: string,
+    afterOpen?: (ws: WebSocket) => void,
+    predicate: (matchState: JsonValue) => boolean = () => true,
+): Promise<JsonValue> {
     return new Promise((resolve, reject) => {
         const ws = new WebSocket(`${wsUrl}/ws?token=${encodeURIComponent(token)}`);
         const timeout = setTimeout(() => {
@@ -46,11 +51,12 @@ async function waitForMatchState(token: string, matchId: string): Promise<JsonVa
 
         ws.on('open', () => {
             ws.send(JSON.stringify({ type: 'MATCH_REJOIN', payload: { matchId } }));
+            afterOpen?.(ws);
         });
 
         ws.on('message', raw => {
             const msg = JSON.parse(raw.toString());
-            if (msg.type === 'MATCH_STATE') {
+            if (msg.type === 'MATCH_STATE' && predicate(msg.payload.matchState)) {
                 clearTimeout(timeout);
                 ws.close();
                 resolve(msg.payload.matchState);
@@ -98,6 +104,30 @@ async function main(): Promise<void> {
         throw new Error('Expected MATCH_STATE with two players');
     }
 
+    const afterEndTurn = await waitForMatchState(
+        auth.token,
+        cpuMatch.matchId,
+        ws => {
+            ws.send(JSON.stringify({
+                type: 'MATCH_ACTION',
+                payload: {
+                    matchId: cpuMatch.matchId,
+                    action: { type: 'END_TURN' },
+                },
+            }));
+        },
+        state => Number(state.turnNumber || 0) >= 3,
+    );
+
+    if (afterEndTurn.activePlayerId !== username) {
+        throw new Error(`Expected turn to return to ${username}, got ${String(afterEndTurn.activePlayerId)}`);
+    }
+
+    const log = afterEndTurn.log as Array<{ action: string }> | undefined;
+    if (!log?.some(entry => entry.action === 'cpu_decision' || entry.action === 'turn_start')) {
+        throw new Error('Expected match log to include CPU/turn progression after END_TURN');
+    }
+
     console.log(JSON.stringify({
         ok: true,
         baseUrl,
@@ -105,6 +135,7 @@ async function main(): Promise<void> {
         archetype: template.archetypeId,
         deckId: deck.deck.id,
         matchId: cpuMatch.matchId,
+        turnAfterEndTurn: afterEndTurn.turnNumber,
     }, null, 2));
 }
 

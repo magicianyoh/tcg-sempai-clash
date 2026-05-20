@@ -110,9 +110,13 @@ export class BattleScene extends Phaser.Scene {
     private playerTitleText!: Phaser.GameObjects.Text;
     private statText!: Phaser.GameObjects.Text;
     private opponentStatText!: Phaser.GameObjects.Text;
+    private objectivePanel!: Phaser.GameObjects.Container;
+    private objectivePanelBg!: Phaser.GameObjects.Rectangle;
+    private objectiveText!: Phaser.GameObjects.Text;
     private fieldThemeOverlay!: Phaser.GameObjects.Graphics;
     private configuredBoardBackgroundImage: Phaser.GameObjects.Image | null = null;
     private configuredBoardBackgroundSource = '';
+    private lastNoTargetFeedbackAt = 0;
 
     private hasReceivedState = false;
     private lastLogIndex = 0;
@@ -211,12 +215,25 @@ export class BattleScene extends Phaser.Scene {
             lineSpacing: 4,
         }).setOrigin(1, 0);
 
+        this.objectivePanel = this.add.container(18, 82);
+        this.objectivePanelBg = this.add.rectangle(0, 0, 292, 116, 0x000000, 0.72)
+            .setOrigin(0)
+            .setStrokeStyle(1, 0x4ecdc4, 0.42);
+        this.objectiveText = this.add.text(12, 10, 'Esperando estado de partida...', {
+            fontSize: '12px',
+            color: '#d7dee9',
+            lineSpacing: 4,
+            wordWrap: { width: 268 },
+        });
+        this.objectivePanel.add([this.objectivePanelBg, this.objectiveText]);
+
         this.hudContainer.add([
             this.playerTitleText,
             this.turnIndicator,
             this.turnCountText,
             this.statText,
             this.opponentStatText,
+            this.objectivePanel,
         ]);
     }
 
@@ -430,6 +447,7 @@ export class BattleScene extends Phaser.Scene {
 
         const cardId = card.getCardId();
         const currentBlockIndex = this.matchState.players[this.myPlayerIndex].board.currentBlockIndex;
+        let validTargets = 0;
 
         if (this.isEventType(card.getCardType())) {
             const valid = canPlayCard(this.matchState, this.myPlayerIndex, cardId, {
@@ -438,7 +456,9 @@ export class BattleScene extends Phaser.Scene {
             });
             if (valid.ok && block.isEventOrbEmpty()) {
                 block.highlightEventOrb(true);
+                validTargets++;
             }
+            this.showNoTargetFeedbackIfNeeded(card, validTargets, valid.reasons?.[0] ?? 'El evento no cumple requisitos');
             return;
         }
 
@@ -451,8 +471,16 @@ export class BattleScene extends Phaser.Scene {
             });
             if (valid.ok) {
                 slot.highlightValid();
+                validTargets++;
             }
         }
+        this.showNoTargetFeedbackIfNeeded(card, validTargets, this.getFirstPlayIssue(cardId) || 'No hay slots validos');
+    }
+
+    private showNoTargetFeedbackIfNeeded(card: CardSprite, validTargets: number, reason: string): void {
+        if (validTargets > 0 || this.time.now - this.lastNoTargetFeedbackAt < 800) return;
+        this.lastNoTargetFeedbackAt = this.time.now;
+        this.showFeedback(card.x, card.y, reason);
     }
 
     private highlightSpecificDropTarget(card: CardSprite, dropZone: Phaser.GameObjects.GameObject): void {
@@ -686,6 +714,7 @@ export class BattleScene extends Phaser.Scene {
         const summaryLabel = this.currentView === 'self' ? 'Rival' : 'Yo';
         this.statText.setText(`Story: ${viewed.storyPoints ?? viewed.historyPoints ?? 0}\nFiller: ${viewed.fillerPoints}`);
         this.opponentStatText.setText(`${summaryLabel}\nStory: ${summaryPlayer.storyPoints ?? summaryPlayer.historyPoints ?? 0}\nFiller: ${summaryPlayer.fillerPoints}`);
+        this.updateObjectivePanel(me, viewed, isMyTurn);
 
         this.viewToggleBtn.setVisible(isMyTurn);
         this.viewToggleBtn.setAlpha(isMyTurn ? 1 : 0.35);
@@ -707,6 +736,142 @@ export class BattleScene extends Phaser.Scene {
     private updateEndTurnLabel(): void {
         const label = this.endTurnBtn.getAll().find(child => child.getData('label') === true) as Phaser.GameObjects.Text | undefined;
         label?.setText(this.isPreparedEventReady(this.myPlayerIndex) ? 'SIGUIENTE ARCO' : 'PASAR TURNO');
+    }
+
+    private updateObjectivePanel(me: PlayerState, viewed: PlayerState, isMyTurn: boolean): void {
+        const { width } = this.scale;
+        const panelWidth = width < 720 ? Math.max(220, width - 36) : 292;
+        this.objectivePanel.setPosition(18, width < 720 ? 118 : 82);
+        this.objectivePanelBg.setSize(panelWidth, 116);
+        this.objectiveText.setWordWrapWidth(panelWidth - 24);
+        this.objectiveText.setFontSize(width < 720 ? 11 : 12);
+        this.objectiveText.setText(this.createObjectiveText(me, viewed, isMyTurn));
+    }
+
+    private createObjectiveText(me: PlayerState, viewed: PlayerState, isMyTurn: boolean): string {
+        if (this.currentView === 'opponent') {
+            return `Viendo campo rival: ${viewed.username}\nLa mano rival permanece oculta.\nVolve a tu campo para jugar cartas.`;
+        }
+
+        const lines: string[] = [
+            isMyTurn ? 'Tu turno: resolve el arco o prepara el campo.' : `Esperando a ${this.matchState?.activePlayerId}.`,
+        ];
+
+        const restrictions = this.getRestrictionsText(me);
+        if (restrictions.length) lines.push(...restrictions.slice(0, 2));
+
+        const prepared = this.getPreparedEventText(me);
+        if (prepared) {
+            lines.push(prepared);
+        } else {
+            const playableEvent = me.hand.find(cardId =>
+                this.isEventType(this.getCardDisplayData(cardId).type) && this.canActivateEventCard(cardId)
+            );
+            lines.push(playableEvent && isMyTurn
+                ? `Evento listo: ${this.getCardDisplayData(playableEvent).name}. Arrastralo al centro.`
+                : 'Objetivo: ocupa slots y busca un evento con requisitos completos.'
+            );
+        }
+
+        return lines.slice(0, 5).join('\n');
+    }
+
+    private getRestrictionsText(player: PlayerState): string[] {
+        const restrictions = (player.statusEffects || [])
+            .filter(effect => effect.type === 'BLOCK_CARD_TYPE' && effect.turnsRemaining > 0)
+            .map(effect => `Restriccion: sin ${String(effect.cardType || 'ese tipo')} por ${effect.turnsRemaining} turno(s).`);
+
+        if (!player.canPlayEvents || player.eventsBlockedTurns > 0 || player.isEventsBlocked) {
+            restrictions.push(`Restriccion: eventos bloqueados ${Math.max(1, player.eventsBlockedTurns || 1)} turno(s).`);
+        }
+
+        return restrictions;
+    }
+
+    private getPreparedEventText(player: PlayerState): string | null {
+        const block = player.board.blocks[player.board.currentBlockIndex];
+        if (!block?.eventSlot || block.eventCompleted) return null;
+
+        const card = this.getCardDisplayData(block.eventSlot);
+        const missing = this.describeMissingRequirements(player, card);
+        return missing.length === 0
+            ? `Evento preparado: ${card.name}\nListo para Siguiente Arco.`
+            : `Evento preparado: ${card.name}\nFalta: ${missing.slice(0, 2).join('; ')}`;
+    }
+
+    private describeMissingRequirements(player: PlayerState, card: CardDisplayData): string[] {
+        const missing: string[] = [];
+        for (const requirement of card.requirements || []) {
+            switch (requirement.type) {
+                case 'STORY_MIN': {
+                    const story = player.storyPoints ?? player.historyPoints ?? 0;
+                    if (story < (requirement.value || 0)) missing.push(`Story ${story}/${requirement.value || 0}`);
+                    break;
+                }
+                case 'FILLER_MAX':
+                    if (player.fillerPoints > (requirement.value || 99)) missing.push(`Filler max ${requirement.value}`);
+                    break;
+                case 'EVENT_COMPLETED': {
+                    const required = requirement.cardIds || [];
+                    const pending = required.filter(cardId => !player.completedEvents.includes(cardId));
+                    if (pending.length) missing.push(`eventos: ${pending.map(id => this.getCardDisplayData(id).name).join(', ')}`);
+                    break;
+                }
+                case 'CARD_ON_BOARD': {
+                    const found = this.countMatchingBoardCards(player, requirement);
+                    const needed = requirement.value || 1;
+                    if (found < needed) missing.push(`${this.describeBoardRequirement(requirement)} ${found}/${needed}`);
+                    break;
+                }
+            }
+        }
+        return missing;
+    }
+
+    private countMatchingBoardCards(player: PlayerState, requirement: NonNullable<CardDisplayData['requirements']>[number]): number {
+        let found = 0;
+        player.board.blocks.forEach(block => {
+            block.slots.forEach(slot => {
+                if (!slot.cardId) return;
+                const card = this.getCardDisplayData(slot.cardId);
+                if (requirement.cardIds && !requirement.cardIds.includes(slot.cardId)) return;
+                if (requirement.cardType && card.type !== requirement.cardType) return;
+                if (requirement.tag && !card.tags?.includes(requirement.tag)) return;
+                found++;
+            });
+        });
+        return found;
+    }
+
+    private describeBoardRequirement(requirement: NonNullable<CardDisplayData['requirements']>[number]): string {
+        if (requirement.description) return requirement.description;
+        if (requirement.cardIds?.length) return requirement.cardIds.map(id => this.getCardDisplayData(id).name).join(', ');
+        if (requirement.cardType) return `cartas ${requirement.cardType}`;
+        if (requirement.tag) return `tag ${requirement.tag}`;
+        return 'cartas en campo';
+    }
+
+    private getFirstPlayIssue(cardId: string): string | null {
+        if (!this.matchState) return null;
+        const card = this.getCardDisplayData(cardId);
+        const player = this.matchState.players[this.myPlayerIndex];
+        const blockIndex = player.board.currentBlockIndex;
+
+        if (this.isEventType(card.type)) {
+            const result = canPlayCard(this.matchState, this.myPlayerIndex, cardId, { blockIndex, isEventOrb: true });
+            return result.ok ? null : result.reasons?.[0] || null;
+        }
+
+        const block = player.board.blocks[blockIndex];
+        const emptySlot = block?.slots.find(slot => !slot.cardId);
+        if (!emptySlot) return 'No hay slots libres en este arco';
+
+        const result = canPlayCard(this.matchState, this.myPlayerIndex, cardId, {
+            blockIndex,
+            position: emptySlot.position,
+            isEventOrb: false,
+        });
+        return result.ok ? null : result.reasons?.[0] || null;
     }
 
     private isPreparedEventReady(playerIndex: number): boolean {
