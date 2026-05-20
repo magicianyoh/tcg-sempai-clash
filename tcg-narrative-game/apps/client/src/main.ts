@@ -16,7 +16,7 @@ const network = new NetworkSystem();
 
 function getWebSocketUrl(): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.host}`;
+    return `${protocol}//${window.location.host}/ws`;
 }
 
 loginBtn?.addEventListener('click', async () => {

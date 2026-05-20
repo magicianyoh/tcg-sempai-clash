@@ -1,11 +1,33 @@
 import { defineConfig } from 'vite';
 import path from 'path';
 
+const clientPort = Number(process.env.VITE_PORT || 8080);
+const backendPort = Number(process.env.VITE_BACKEND_PORT || process.env.BACKEND_PORT || process.env.PORT || 3000);
+const backendTarget = `http://127.0.0.1:${backendPort}`;
+const apiProxy = {
+    target: backendTarget,
+    changeOrigin: true,
+};
+
 export default defineConfig({
     root: './',
     server: {
         host: '0.0.0.0',
-        port: 8080
+        port: clientPort,
+        proxy: {
+            '^/auth(?:/|$)': apiProxy,
+            '^/decks(?:/|$)': apiProxy,
+            '^/cards$': apiProxy,
+            '^/cpu-match$': apiProxy,
+            '^/ui-settings$': apiProxy,
+            '^/wiki-content$': apiProxy,
+            '^/admin(?:/|$)': apiProxy,
+            '^/health$': apiProxy,
+            '^/ws(?:/|$)': {
+                ...apiProxy,
+                ws: true,
+            },
+        },
     },
     resolve: {
         alias: {

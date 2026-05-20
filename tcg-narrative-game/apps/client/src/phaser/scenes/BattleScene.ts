@@ -74,7 +74,7 @@ const API_URL = window.location.origin;
 function getWebSocketUrl(token?: string): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const query = token ? `?token=${encodeURIComponent(token)}` : '';
-    return `${protocol}//${window.location.host}${query}`;
+    return `${protocol}//${window.location.host}/ws${query}`;
 }
 
 const FIELD_THEMES: Record<string, FieldTheme> = {
