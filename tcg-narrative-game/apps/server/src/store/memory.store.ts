@@ -1,4 +1,4 @@
-import { DeckData, MatchState } from '@tcg/shared/types';
+import { CardData, DeckData, MatchState } from '@tcg/shared/types';
 import { LobbyState } from '@tcg/shared/protocol';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -55,6 +55,13 @@ export interface PrebuiltDeckSettings {
     archetypes: Record<string, boolean>;
 }
 
+export type PersistedCardData = CardData & {
+    sound?: string;
+    extendedLore?: string;
+    likes?: string[];
+    dislikes?: string[];
+};
+
 interface PersistedStoreState {
     version: 1;
     users: Array<[string, User]>;
@@ -64,6 +71,7 @@ interface PersistedStoreState {
     mediaAssets: Array<[string, MediaAsset]>;
     wikiContent: Partial<WikiContent>;
     prebuiltDeckSettings?: Partial<PrebuiltDeckSettings>;
+    cardOverrides?: Array<[string, PersistedCardData]>;
 }
 
 // ============================================
@@ -111,6 +119,7 @@ export class MemoryStore {
     };
 
     private mediaAssets: Map<string, MediaAsset> = new Map();
+    private cardOverrides: Map<string, PersistedCardData> = new Map();
 
     private prebuiltDeckSettings: PrebuiltDeckSettings = {
         enabled: true,
@@ -162,6 +171,9 @@ export class MemoryStore {
             if (Array.isArray(parsed.mediaAssets)) {
                 this.mediaAssets = new Map(parsed.mediaAssets);
             }
+            if (Array.isArray(parsed.cardOverrides)) {
+                this.cardOverrides = new Map(parsed.cardOverrides);
+            }
             if (parsed.adminUiSettings && typeof parsed.adminUiSettings === 'object') {
                 this.adminUiSettings = {
                     ...this.adminUiSettings,
@@ -203,6 +215,7 @@ export class MemoryStore {
                 mediaAssets: Array.from(this.mediaAssets.entries()),
                 wikiContent: this.getWikiContent(),
                 prebuiltDeckSettings: this.getPrebuiltDeckSettings(),
+                cardOverrides: Array.from(this.cardOverrides.entries()),
             };
 
             const tempPath = `${this.dbFilePath}.tmp`;
@@ -483,6 +496,51 @@ export class MemoryStore {
         };
         this.saveToDisk();
         return this.getWikiContent();
+    }
+
+    listCardOverrides(): PersistedCardData[] {
+        return Array.from(this.cardOverrides.values()).map(card => ({
+            ...card,
+            requirements: card.requirements ? [...card.requirements] : undefined,
+            effects: card.effects ? [...card.effects] : [],
+            tags: card.tags ? [...card.tags] : undefined,
+            likes: card.likes ? [...card.likes] : undefined,
+            dislikes: card.dislikes ? [...card.dislikes] : undefined,
+            likesData: card.likesData ? {
+                likes: [...card.likesData.likes],
+                dislikes: [...card.likesData.dislikes],
+            } : undefined,
+            affinity: card.affinity ? {
+                compatibleWith: [...card.affinity.compatibleWith],
+            } : undefined,
+        }));
+    }
+
+    upsertCardOverride(card: PersistedCardData): PersistedCardData {
+        const saved: PersistedCardData = {
+            ...card,
+            requirements: card.requirements ? [...card.requirements] : undefined,
+            effects: card.effects ? [...card.effects] : [],
+            tags: card.tags ? [...card.tags] : undefined,
+            likes: card.likes ? [...card.likes] : undefined,
+            dislikes: card.dislikes ? [...card.dislikes] : undefined,
+            likesData: card.likesData ? {
+                likes: [...card.likesData.likes],
+                dislikes: [...card.likesData.dislikes],
+            } : undefined,
+            affinity: card.affinity ? {
+                compatibleWith: [...card.affinity.compatibleWith],
+            } : undefined,
+        };
+        this.cardOverrides.set(saved.id, saved);
+        this.saveToDisk();
+        return { ...saved };
+    }
+
+    deleteCardOverride(id: string): boolean {
+        const deleted = this.cardOverrides.delete(id);
+        if (deleted) this.saveToDisk();
+        return deleted;
     }
 }
 

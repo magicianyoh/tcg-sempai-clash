@@ -53,6 +53,36 @@ type PrebuiltDeckSettings = {
     enabled: boolean;
     archetypes: Record<string, boolean>;
 };
+type CardAuditIssue = {
+    severity: 'error' | 'warning';
+    cardId: string;
+    cardName: string;
+    field: string;
+    message: string;
+};
+type CardAuditReport = {
+    summary: {
+        cards: number;
+        errors: number;
+        warnings: number;
+        incomplete: number;
+        brokenReferences: number;
+        invalidEffects: number;
+    };
+    issues: CardAuditIssue[];
+};
+type CsvValidationIssue = {
+    severity: 'error' | 'warning';
+    line: number;
+    field: string;
+    message: string;
+};
+type CsvValidationReport = {
+    valid: boolean;
+    count: number;
+    errors: CsvValidationIssue[];
+    warnings: CsvValidationIssue[];
+};
 
 const API_URL = window.location.origin;
 
@@ -100,7 +130,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const response = await fetch(`${API_URL}${path}`, options);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-        throw new Error(data.error || `HTTP ${response.status}`);
+        const error = new Error(data.error || `HTTP ${response.status}`);
+        Object.assign(error, data);
+        throw error;
     }
     return data as T;
 }
@@ -143,6 +175,7 @@ async function login() {
 async function loadAll() {
     hydrateFxDropdowns();
     await Promise.all([loadCards(), loadUsers(), loadSettings(), loadMedia(), loadPrebuiltDeckSettings()]);
+    await runCardAudit(false);
 }
 
 function hydrateFxDropdowns() {
@@ -355,24 +388,106 @@ async function saveCard() {
         renderCards();
         renderSelectedCard();
         setMessage('card-message', 'Carta guardada.');
+        await runCardAudit(false);
     } catch (error: any) {
         setMessage('card-message', error.message, true);
     }
 }
 
-async function importCsv() {
+function renderCsvValidation(validation: CsvValidationReport) {
+    const box = $('csv-validation');
+    box.classList.toggle('error', !validation.valid);
+    const issues = [...validation.errors, ...validation.warnings].slice(0, 40);
+    const status = validation.valid
+        ? `CSV valido: ${validation.count} fila(s) listas para importar.`
+        : `CSV con ${validation.errors.length} error(es) y ${validation.warnings.length} advertencia(s).`;
+    box.innerHTML = `
+        <strong>${status}</strong>
+        ${issues.length ? `<ul>${issues.map(issue => `<li>Linea ${issue.line} / ${issue.field}: ${issue.message}</li>`).join('')}</ul>` : ''}
+    `;
+}
+
+async function validateCsvImport(): Promise<CsvValidationReport | null> {
     try {
         const csv = ($<HTMLTextAreaElement>('csv-text')).value;
-        const data = await request<{ count: number }>('/admin/cards/import', {
+        const data = await request<{ validation: CsvValidationReport }>('/admin/cards/validate-import', {
+            method: 'POST',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ csv }),
+        });
+        renderCsvValidation(data.validation);
+        setMessage('import-message', data.validation.valid ? 'Validacion correcta.' : 'Validacion con errores.', !data.validation.valid);
+        return data.validation;
+    } catch (error: any) {
+        setMessage('import-message', error.message, true);
+        return null;
+    }
+}
+
+async function importCsv() {
+    try {
+        const validation = await validateCsvImport();
+        if (!validation?.valid) return;
+        const csv = ($<HTMLTextAreaElement>('csv-text')).value;
+        const data = await request<{ count: number; audit?: CardAuditReport }>('/admin/cards/import', {
             method: 'POST',
             headers: jsonHeaders(),
             body: JSON.stringify({ csv }),
         });
         setMessage('import-message', `${data.count} cartas importadas.`);
         await loadCards();
+        if (data.audit) renderAudit(data.audit);
     } catch (error: any) {
+        if (error.validation) renderCsvValidation(error.validation);
         setMessage('import-message', error.message, true);
     }
+}
+
+async function runCardAudit(showMessage = true) {
+    try {
+        const data = await request<{ audit: CardAuditReport }>('/admin/cards/audit', { headers: authHeaders() });
+        renderAudit(data.audit);
+        if (showMessage) setMessage('audit-message', 'Auditoria actualizada.');
+    } catch (error: any) {
+        if (showMessage) setMessage('audit-message', error.message, true);
+    }
+}
+
+function renderAudit(audit: CardAuditReport) {
+    const summary = audit.summary;
+    $('audit-summary').innerHTML = [
+        ['Cartas', summary.cards],
+        ['Errores', summary.errors],
+        ['Advertencias', summary.warnings],
+        ['Incompletas', summary.incomplete],
+        ['Refs rotas', summary.brokenReferences],
+        ['FX invalidos', summary.invalidEffects],
+    ].map(([label, value]) => `
+        <div class="audit-stat">
+            <strong>${value}</strong>
+            <span class="meta">${label}</span>
+        </div>
+    `).join('');
+
+    const issues = audit.issues.slice(0, 120);
+    $('audit-list').innerHTML = issues.length
+        ? issues.map(issue => `
+            <button class="row audit-issue ${issue.severity}" data-audit-card="${issue.cardId}" type="button">
+                <strong>${issue.severity.toUpperCase()} / ${issue.cardName}</strong>
+                <span class="meta">${issue.field} / ${issue.cardId}</span>
+                <span>${issue.message}</span>
+            </button>
+        `).join('')
+        : '<div class="row"><strong>Catalogo sin problemas bloqueantes.</strong><span class="meta">No hay errores ni advertencias visibles.</span></div>';
+
+    document.querySelectorAll<HTMLButtonElement>('[data-audit-card]').forEach(button => {
+        button.addEventListener('click', () => {
+            selectedCardId = button.dataset.auditCard || selectedCardId;
+            document.querySelector<HTMLButtonElement>('.tab[data-tab="cards"]')?.click();
+            renderCards();
+            renderSelectedCard();
+        });
+    });
 }
 
 async function loadUsers() {
@@ -678,6 +793,8 @@ function bindEvents() {
     setupCardReferenceAutocomplete('card-likes');
     setupCardReferenceAutocomplete('card-dislikes');
     $('import-btn').addEventListener('click', importCsv);
+    $('validate-import-btn').addEventListener('click', validateCsvImport);
+    $('run-audit-btn').addEventListener('click', () => runCardAudit(true));
     $('create-user-btn').addEventListener('click', createUser);
     $('save-prebuilt-btn').addEventListener('click', savePrebuiltDeckSettings);
     $('save-ui-btn').addEventListener('click', saveSettings);

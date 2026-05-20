@@ -180,6 +180,40 @@
             color: #ff6b6b;
         }
 
+        .message ul,
+        .audit-list {
+            margin-top: 8px;
+            display: grid;
+            gap: 7px;
+        }
+
+        .audit-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+            gap: 8px;
+            margin: 12px 0;
+        }
+
+        .audit-stat {
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 6px;
+            background: #111722;
+            padding: 10px;
+        }
+
+        .audit-stat strong {
+            display: block;
+            font-size: 1.25rem;
+        }
+
+        .audit-issue {
+            border-left: 3px solid #ffca3a;
+        }
+
+        .audit-issue.error {
+            border-left-color: #ff6b6b;
+        }
+
         .hidden {
             display: none;
         }
@@ -318,6 +352,7 @@
             <nav class="tabs">
                 <button class="tab active" data-tab="cards">Cartas</button>
                 <button class="tab" data-tab="import">Importar CSV</button>
+                <button class="tab" data-tab="audit">Auditoria</button>
                 <button class="tab" data-tab="users">Usuarios</button>
                 <button class="tab" data-tab="prebuilt">Decks pre-armados</button>
                 <button class="tab" data-tab="media">Gestión de medios</button>
@@ -459,9 +494,22 @@
                 <div style="height: 10px"></div>
                 <textarea id="csv-text" style="min-height: 260px;" placeholder="id,name,type,archetype,cost,description"></textarea>
                 <div class="actions">
+                    <button id="validate-import-btn" class="btn" type="button">Validar CSV</button>
                     <button id="import-btn" class="btn primary">Importar</button>
                 </div>
                 <p id="import-message" class="message"></p>
+                <div id="csv-validation" class="message"></div>
+            </section>
+
+            <section class="panel section" id="audit-section">
+                <h2>Auditoria de cartas</h2>
+                <p class="meta" style="margin: 8px 0 12px;">Detecta cartas incompletas, referencias rotas y efectos que no coinciden con el motor.</p>
+                <div class="actions">
+                    <button id="run-audit-btn" class="btn primary" type="button">Ejecutar auditoria</button>
+                </div>
+                <p id="audit-message" class="message"></p>
+                <div id="audit-summary" class="audit-summary"></div>
+                <div id="audit-list" class="audit-list"></div>
             </section>
 
             <section class="panel section" id="users-section">

@@ -9,6 +9,7 @@ import { CARDS } from '@tcg/game-engine/content/cards';
 import { matchService, CpuDifficulty } from './ws/match.service';
 import { GAME_CONSTANTS } from '@tcg/shared/constants';
 import { store } from './store/memory.store';
+import { applyPersistedCardOverrides, MutableCard, serializeCard } from './content/card-catalog';
 
 const server = Fastify({ logger: true });
 const isProduction = process.env.NODE_ENV === 'production';
@@ -20,6 +21,8 @@ const corsOrigin = process.env.CORS_ORIGIN
 if (!jwtSecret) {
     throw new Error('JWT_SECRET is required when NODE_ENV=production');
 }
+
+applyPersistedCardOverrides();
 
 server.register(cors, {
     origin: corsOrigin,
@@ -52,24 +55,7 @@ server.get('/cards', async () => {
             cardsByArchetype[card.archetype] = [];
         }
 
-        cardsByArchetype[card.archetype].push({
-            id: card.id,
-            name: card.name,
-            type: card.type,
-            cost: card.cost,
-            desc: card.description,
-            backstory: card.backstory,
-            extendedLore: (card as any).extendedLore || card.backstory,
-            image: card.image,
-            sound: (card as any).sound,
-            maxCopies: card.maxCopies,
-            prereqs: card.eventPrerequisites,
-            requirements: card.requirements,
-            effects: card.effects,
-            likes: card.likesData?.likes || [],
-            dislikes: card.likesData?.dislikes || [],
-            tags: card.tags,
-        });
+        cardsByArchetype[card.archetype].push(serializeCard(card as MutableCard));
     }
 
     return { cards: cardsByArchetype };
