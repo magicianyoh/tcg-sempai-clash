@@ -4,6 +4,7 @@ import { CardSprite } from '../ui/CardSprite';
 import { FieldSlot, SlotPosition } from '../ui/FieldSlot';
 import { CardDetailOverlay, CardInfo } from '../ui/CardDetailOverlay';
 import { canPlayCard } from '@tcg/game-engine/rules/validation';
+import { GAME_CONSTANTS } from '@tcg/shared/constants';
 import type {
     LogEntry,
     MatchState,
@@ -1116,8 +1117,8 @@ export class BattleScene extends Phaser.Scene {
         if (previous) {
             next.players.forEach(player => {
                 const prevFiller = this.previousFillerByPlayer[player.username] ?? previous.players.find(p => p.username === player.username)?.fillerPoints ?? 0;
-                if (prevFiller < 10 && player.fillerPoints >= 10) {
-                    this.enqueueBanner('ARCO DE RELLENO', `${player.username} llego a 10 Filler`, 'danger');
+                if (prevFiller < GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD && player.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD) {
+                    this.enqueueBanner('ARCO DE RELLENO', `${player.username} llego a ${GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD} Filler`, 'danger');
                 }
                 this.previousFillerByPlayer[player.username] = player.fillerPoints;
             });

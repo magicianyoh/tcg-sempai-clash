@@ -68,7 +68,7 @@ export const GAME_CONSTANTS = {
     AFFINITY_BONUS_PER_CARD: 1,       // +1 story per compatible card on event complete
 
     // Filler threshold
-    FILLER_BLOCK_THRESHOLD: 10,       // Can't play events if filler >= 10
+    FILLER_BLOCK_THRESHOLD: 14,       // Can't play events if filler gets out of control late
 
     // Board
     MAX_CHARACTERS_ON_BOARD: 5,

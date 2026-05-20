@@ -8,6 +8,7 @@ import {
     TimelineBlock
 } from '@tcg/shared/types';
 import { CARDS } from '../content/cards';
+import { GAME_CONSTANTS } from '@tcg/shared/constants';
 
 export function evaluateRequirements(
     state: MatchState,
@@ -126,8 +127,8 @@ export function canPlayCard(
         }
 
         // Filler Cap Check
-        if (!player.canPlayEvents || (player.fillerPoints >= 10 && player.board.currentBlockIndex >= 3)) {
-            return { ok: false, reasons: ['Bloqueado por exceso de Filler (10+)'] };
+        if (!player.canPlayEvents || (player.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD && player.board.currentBlockIndex >= 3)) {
+            return { ok: false, reasons: [`Bloqueado por exceso de Filler (${GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD}+)`] };
         }
 
         // Requirements
