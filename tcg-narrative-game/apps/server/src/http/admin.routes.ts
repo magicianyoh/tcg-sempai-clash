@@ -5,8 +5,18 @@ import { CardData } from '@tcg/shared/types';
 import { store } from '../store/memory.store';
 import { getPrebuiltDecks } from '../decks/prebuilt-decks';
 
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234';
+const isProduction = process.env.NODE_ENV === 'production';
+
+function requiredInProduction(name: string, fallback: string): string {
+    const value = process.env[name];
+    if (isProduction && !value) {
+        throw new Error(`${name} is required when NODE_ENV=production`);
+    }
+    return value || fallback;
+}
+
+const ADMIN_USERNAME = requiredInProduction('ADMIN_USERNAME', 'admin');
+const ADMIN_PASSWORD = requiredInProduction('ADMIN_PASSWORD', 'admin1234');
 
 type MutableCard = CardData & {
     sound?: string;

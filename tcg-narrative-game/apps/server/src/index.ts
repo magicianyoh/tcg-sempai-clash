@@ -11,12 +11,21 @@ import { GAME_CONSTANTS } from '@tcg/shared/constants';
 import { store } from './store/memory.store';
 
 const server = Fastify({ logger: true });
+const isProduction = process.env.NODE_ENV === 'production';
+const jwtSecret = process.env.JWT_SECRET || (isProduction ? '' : 'dev-secret-change-me');
+const corsOrigin = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim()).filter(Boolean)
+    : !isProduction;
+
+if (!jwtSecret) {
+    throw new Error('JWT_SECRET is required when NODE_ENV=production');
+}
 
 server.register(cors, {
-    origin: true, // Allow all origins in development
+    origin: corsOrigin,
     credentials: true,
 });
-server.register(jwt, { secret: 'supersecret' });
+server.register(jwt, { secret: jwtSecret });
 
 // HTTP Routes
 server.register(authRoutes);
@@ -106,7 +115,7 @@ const start = async () => {
     try {
         await server.ready();
         wsGateway(server); // Attach WS
-        const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+        const port = process.env.PORT ? parseInt(process.env.PORT) : 3002;
         await server.listen({ port, host: '0.0.0.0' });
         console.log(`Server running on http://0.0.0.0:${port}`);
     } catch (err) {

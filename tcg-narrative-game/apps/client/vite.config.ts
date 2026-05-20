@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import path from 'path';
 
 const clientPort = Number(process.env.VITE_PORT || 8080);
-const backendPort = Number(process.env.VITE_BACKEND_PORT || process.env.BACKEND_PORT || process.env.PORT || 3000);
+const backendPort = Number(process.env.VITE_BACKEND_PORT || process.env.BACKEND_PORT || process.env.PORT || 3002);
 const backendTarget = `http://127.0.0.1:${backendPort}`;
 const apiProxy = {
     target: backendTarget,

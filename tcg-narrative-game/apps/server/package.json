@@ -4,7 +4,11 @@
     "main": "dist/index.js",
     "scripts": {
         "dev": "ts-node -r tsconfig-paths/register src/index.ts",
-        "build": "tsc"
+        "build": "tsc",
+        "test": "npm run test:content && npm run test:rules",
+        "test:content": "ts-node -r tsconfig-paths/register src/scripts/contentIntegrity.ts",
+        "test:rules": "ts-node -r tsconfig-paths/register src/scripts/rulesSmoke.ts",
+        "test:smoke": "ts-node -r tsconfig-paths/register src/scripts/apiSmoke.ts"
     },
     "dependencies": {
         "fastify": "^4.0.0",

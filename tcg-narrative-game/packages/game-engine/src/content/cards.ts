@@ -464,7 +464,7 @@ export const CARDS: Record<string, CardData> = {
         archetype: ARCHETYPES.MECHA,
         image: 'mecha-protagonist-hot',
         maxCopies: 1,
-        likesData: { likes: ['mecha-item-battery', 'mecha-loc-hangar'], dislikes: ['mecha-loc-beach'] },
+        likesData: { likes: ['mecha-item-battery', 'mecha-loc-hangar'], dislikes: ['mecha-loc-ruined-city'] },
         affinity: { compatibleWith: ['mecha-char-mechanic'] }
     },
     'mecha-protagonist-calm': {
@@ -1285,7 +1285,7 @@ export const CARDS: Record<string, CardData> = {
         archetype: ARCHETYPES.SLICE_OF_LIFE,
         image: 'slice-protagonist-president',
         maxCopies: 1,
-        likesData: { likes: ['slice-item-tea', 'slice-loc-council'], dislikes: ['slice-loc-karaoke'] },
+        likesData: { likes: ['slice-item-tea', 'slice-loc-council'], dislikes: ['slice-loc-cafe'] },
         affinity: { compatibleWith: ['slice-char-treasurer'] }
     },
     'slice-protagonist-loner': {
@@ -1298,7 +1298,7 @@ export const CARDS: Record<string, CardData> = {
         archetype: ARCHETYPES.SLICE_OF_LIFE,
         image: 'slice-protagonist-loner',
         maxCopies: 1,
-        likesData: { likes: ['slice-item-headphones'], dislikes: ['slice-event-festival'] },
+        likesData: { likes: ['slice-item-notebook'], dislikes: ['slice-event-festival'] },
         affinity: { compatibleWith: ['slice-char-friend'] }
     },
     'slice-protagonist-band': {
@@ -1311,7 +1311,7 @@ export const CARDS: Record<string, CardData> = {
         archetype: ARCHETYPES.SLICE_OF_LIFE,
         image: 'slice-protagonist-band',
         maxCopies: 1,
-        likesData: { likes: ['slice-item-guitar', 'slice-loc-music-room'], dislikes: ['slice-loc-library'] },
+        likesData: { likes: ['slice-item-guitar', 'slice-loc-music-room'], dislikes: ['slice-loc-council'] },
         affinity: { compatibleWith: ['slice-char-drummer', 'slice-char-bassist'] }
     },
 
@@ -2478,7 +2478,7 @@ export const CARDS: Record<string, CardData> = {
         archetype: ARCHETYPES.ISEKAI,
         image: 'isekai-protagonist-op',
         maxCopies: 1,
-        likesData: { likes: ['isekai-item-smartphone'], dislikes: ['isekai-loc-office'] },
+        likesData: { likes: ['isekai-item-smartphone'], dislikes: ['isekai-loc-capital'] },
         affinity: { compatibleWith: ['isekai-char-slave'] }
     },
     'isekai-protagonist-monster': {
@@ -2504,8 +2504,8 @@ export const CARDS: Record<string, CardData> = {
         archetype: ARCHETYPES.ISEKAI,
         image: 'isekai-protagonist-villainess',
         maxCopies: 1,
-        likesData: { likes: ['isekai-item-hoe'], dislikes: ['isekai-loc-ballroom'] },
-        affinity: { compatibleWith: ['isekai-char-butler'] }
+        likesData: { likes: ['isekai-item-map'], dislikes: ['isekai-loc-castle'] },
+        affinity: { compatibleWith: ['isekai-char-merchant'] }
     },
 
     // --- CHARACTERS ---
