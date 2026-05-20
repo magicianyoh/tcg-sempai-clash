@@ -512,15 +512,55 @@
         // Auth check
         const token = localStorage.getItem('token');
         const username = localStorage.getItem('username');
-        const activeDeckId = localStorage.getItem('activeDeckId');
+        let activeDeckId = localStorage.getItem('activeDeckId');
 
         if (!token) {
             window.location.href = '/auth.html';
         }
 
-        if (!activeDeckId) {
-            alert('Please create a deck first!');
-            window.location.href = '/build.html';
+        async function refreshActiveDeck() {
+            if (!token) return null;
+
+            try {
+                const meRes = await fetch(`${API_URL}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const me = await meRes.json().catch(() => ({}));
+                if (meRes.ok && me.activeDeckId) {
+                    activeDeckId = me.activeDeckId;
+                    localStorage.setItem('activeDeckId', activeDeckId);
+                    return activeDeckId;
+                }
+
+                const decksRes = await fetch(`${API_URL}/decks`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const decksData = await decksRes.json().catch(() => ({}));
+                const decks = decksData.decks || [];
+                const localDeck = decks.find(deck => deck.id === activeDeckId);
+                const fallbackDeck = localDeck || decks[0];
+                if (decksRes.ok && fallbackDeck) {
+                    activeDeckId = fallbackDeck.id;
+                    localStorage.setItem('activeDeckId', activeDeckId);
+                    return activeDeckId;
+                }
+            } catch (err) {
+                console.error('Failed to refresh active deck:', err);
+            }
+
+            activeDeckId = null;
+            localStorage.removeItem('activeDeckId');
+            return null;
+        }
+
+        async function ensureActiveDeck() {
+            const deckId = await refreshActiveDeck();
+            if (!deckId) {
+                alert('Please create a deck first!');
+                window.location.href = '/build.html';
+                return null;
+            }
+            return deckId;
         }
 
         // Navigation
@@ -601,6 +641,9 @@
 
         // Quick Match
         document.getElementById('quick-match-btn').addEventListener('click', async () => {
+            const deckId = await ensureActiveDeck();
+            if (!deckId) return;
+
             if (!ws || ws.readyState !== WebSocket.OPEN) {
                 await connectWS();
             }
@@ -609,7 +652,7 @@
                 type: 'MATCHMAKE_QUEUE',
                 payload: {
                     formatId: 'standard',
-                    deckId: activeDeckId
+                    deckId
                 }
             }));
 
@@ -655,6 +698,9 @@
             messageEl.className = 'message';
 
             try {
+                const deckId = await ensureActiveDeck();
+                if (!deckId) return;
+
                 const res = await fetch(`${API_URL}/cpu-match`, {
                     method: 'POST',
                     headers: {
@@ -662,7 +708,7 @@
                         'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
-                        deckId: activeDeckId,
+                        deckId,
                         cpuArchetypeId,
                         difficulty,
                         formatId: 'standard'
@@ -700,6 +746,9 @@
 
         // Create Lobby
         document.getElementById('create-lobby-btn').addEventListener('click', async () => {
+            const deckId = await ensureActiveDeck();
+            if (!deckId) return;
+
             if (!ws || ws.readyState !== WebSocket.OPEN) {
                 await connectWS();
             }
@@ -775,14 +824,16 @@
         }
 
         // Ready Button
-        document.getElementById('ready-btn').addEventListener('click', () => {
+        document.getElementById('ready-btn').addEventListener('click', async () => {
             if (!currentLobby) return;
+            const deckId = await ensureActiveDeck();
+            if (!deckId) return;
 
             ws.send(JSON.stringify({
                 type: 'LOBBY_READY',
                 payload: {
                     lobbyId: currentLobby.lobbyId,
-                    deckId: activeDeckId
+                    deckId
                 }
             }));
         });
@@ -802,10 +853,8 @@
         // Show join section by default
         document.getElementById('join-section').classList.add('lobby-section', 'active');
 
-        // Auto connect on load
-        connectWS().catch(err => {
-            console.error('Failed to connect:', err);
-        });
+        // Initial deck sync
+        ensureActiveDeck();
     </script>
 </body>
 

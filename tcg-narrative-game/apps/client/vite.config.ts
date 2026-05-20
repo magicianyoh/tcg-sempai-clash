@@ -16,18 +16,18 @@ export default defineConfig({
         port: clientPort,
         proxy: {
             '^/auth(?:/|$)': apiProxy,
-            '^/decks(?:/|$)': apiProxy,
-            '^/prebuilt-decks$': apiProxy,
-            '^/cards$': apiProxy,
-            '^/cpu-match$': apiProxy,
-            '^/ui-settings$': apiProxy,
-            '^/wiki-content$': apiProxy,
-            '^/admin(?:/|$)': apiProxy,
-            '^/health$': apiProxy,
-            '^/ws(?:/|$)': {
+            '/decks': apiProxy,
+            '/prebuilt-decks': apiProxy,
+            '/cards': apiProxy,
+            '/cpu-match': apiProxy,
+            '/ui-settings': apiProxy,
+            '/wiki-content': apiProxy,
+            '/health': apiProxy,
+            '/ws': {
                 ...apiProxy,
                 ws: true,
             },
+            '^/admin(?:/|$)': apiProxy,
         },
     },
     resolve: {
