@@ -22,6 +22,7 @@ interface CardDisplayData {
     backstory?: string;
     image?: string;
     sound?: string;
+    archetype?: string;
     prereqs?: string[];
     requirements?: Array<{
         type: string;
@@ -29,6 +30,7 @@ interface CardDisplayData {
         cardIds?: string[];
         cardType?: string;
         tag?: string;
+        archetype?: string;
         description?: string;
     }>;
     effects?: Array<{
@@ -561,16 +563,16 @@ export class BattleScene extends Phaser.Scene {
         const blockData = this.getCurrentBlockData(viewed);
 
         if (this.currentView === 'self') {
-            this.handCards.forEach(card => allCards.push(this.getCardDisplayData(card.getCardId())));
+            this.handCards.forEach(card => allCards.push(this.getCardDetailData(card.getCardId())));
         }
 
         blockData?.slots.forEach(slot => {
             if (slot.cardId) {
-                allCards.push(this.getCardDisplayData(slot.cardId));
+                allCards.push(this.getCardDetailData(slot.cardId));
             }
         });
         if (blockData?.eventSlot) {
-            allCards.push(this.getCardDisplayData(blockData.eventSlot));
+            allCards.push(this.getCardDetailData(blockData.eventSlot));
         }
 
         const index = allCards.findIndex(card => card.id === startCardId);
@@ -595,6 +597,7 @@ export class BattleScene extends Phaser.Scene {
                     backstory: card.extendedLore ?? card.backstory,
                     image: card.image,
                     sound: card.sound,
+                    archetype: card.archetype,
                     prereqs: card.prereqs ?? [],
                     requirements: card.requirements ?? [],
                     effects: card.effects ?? [],
@@ -713,8 +716,10 @@ export class BattleScene extends Phaser.Scene {
 
         const summaryPlayer = this.currentView === 'self' ? opp : me;
         const summaryLabel = this.currentView === 'self' ? 'Rival' : 'Yo';
-        this.statText.setText(`Story: ${viewed.storyPoints ?? viewed.historyPoints ?? 0}\nFiller: ${viewed.fillerPoints}`);
-        this.opponentStatText.setText(`${summaryLabel}\nStory: ${summaryPlayer.storyPoints ?? summaryPlayer.historyPoints ?? 0}\nFiller: ${summaryPlayer.fillerPoints}`);
+        const viewedStory = viewed.storyPoints ?? viewed.historyPoints ?? 0;
+        const summaryStory = summaryPlayer.storyPoints ?? summaryPlayer.historyPoints ?? 0;
+        this.statText.setText(`Puntos: ${this.getPlayerScore(viewed)}\nStory: ${viewedStory}\nFiller: ${viewed.fillerPoints}`);
+        this.opponentStatText.setText(`${summaryLabel}\nPuntos: ${this.getPlayerScore(summaryPlayer)}\nStory: ${summaryStory}\nFiller: ${summaryPlayer.fillerPoints}`);
         this.updateObjectivePanel(me, viewed, isMyTurn);
 
         this.viewToggleBtn.setVisible(isMyTurn);
@@ -760,6 +765,12 @@ export class BattleScene extends Phaser.Scene {
         this.opponentStatText
             .setPosition(width - (compact ? 12 : 18), compact ? 14 : 18)
             .setFontSize(compact ? 11 : 13);
+    }
+
+    private getPlayerScore(player: PlayerState): number {
+        const story = player.storyPoints ?? player.historyPoints ?? 0;
+        const completed = player.completedEvents?.length || 0;
+        return story + completed * 4 - player.fillerPoints;
     }
 
     private updateObjectivePanel(me: PlayerState, viewed: PlayerState, isMyTurn: boolean): void {
@@ -861,6 +872,7 @@ export class BattleScene extends Phaser.Scene {
                 if (requirement.cardIds && !requirement.cardIds.includes(slot.cardId)) return;
                 if (requirement.cardType && card.type !== requirement.cardType) return;
                 if (requirement.tag && !card.tags?.includes(requirement.tag)) return;
+                if (requirement.archetype && card.archetype !== requirement.archetype) return;
                 found++;
             });
         });
@@ -872,7 +884,60 @@ export class BattleScene extends Phaser.Scene {
         if (requirement.cardIds?.length) return requirement.cardIds.map(id => this.getCardDisplayData(id).name).join(', ');
         if (requirement.cardType) return `cartas ${requirement.cardType}`;
         if (requirement.tag) return `tag ${requirement.tag}`;
+        if (requirement.archetype) return `cartas ${requirement.archetype}`;
         return 'cartas en campo';
+    }
+
+    private getCardHandDescription(card: CardDisplayData): string {
+        if (!this.isEventType(card.type)) return card.description;
+
+        const reqs = (card.requirements || [])
+            .slice(0, 3)
+            .map(requirement => this.describeRequirement(requirement))
+            .filter(Boolean);
+        const effects = (card.effects || [])
+            .slice(0, 3)
+            .map(effect => this.describeEffect(effect))
+            .filter(Boolean);
+
+        const lines = [
+            card.description,
+            reqs.length ? `Req: ${reqs.join(' / ')}` : 'Req: sin requisitos',
+            effects.length ? `FX: ${effects.join(' / ')}` : 'FX: sin efecto',
+        ];
+        return lines.join('\n');
+    }
+
+    private getCardDetailData(cardId: string): CardDisplayData {
+        const card = this.getCardDisplayData(cardId);
+        return {
+            ...card,
+            description: this.getCardHandDescription(card),
+        };
+    }
+
+    private describeRequirement(requirement: NonNullable<CardDisplayData['requirements']>[number]): string {
+        if (requirement.description) return requirement.description;
+        if (requirement.type === 'STORY_MIN') return `${requirement.value || 0} Story`;
+        if (requirement.type === 'FILLER_MAX') return `Filler <= ${requirement.value || 0}`;
+        if (requirement.type === 'EVENT_COMPLETED') return `evento ${requirement.cardIds?.map(id => this.getCardDisplayData(id).name).join(', ') || 'previo'}`;
+        if (requirement.type === 'CARD_ON_BOARD') return this.describeBoardRequirement(requirement);
+        return requirement.type;
+    }
+
+    private describeEffect(effect: NonNullable<CardDisplayData['effects']>[number]): string {
+        if (effect.description) return effect.description;
+        const target = effect.target === 'OPPONENT' ? 'rival' : 'propio';
+        if (effect.type === 'STORY') return `+${effect.value || 0} Story ${target}`;
+        if (effect.type === 'FILLER') return `${effect.value || 0} Filler ${target}`;
+        if (effect.type === 'DRAW') return `roba ${effect.value || 1}`;
+        if (effect.type === 'DISCARD') return `descarta ${effect.value || 1}`;
+        if (effect.type === 'BLOCK_CARD_TYPE') return `bloquea ${effect.cardType || 'tipo'} ${effect.turns || 1} turno`;
+        if (effect.type === 'BLOCK_EVENTS') return 'bloquea eventos';
+        if (effect.type === 'EXTRA_DRAW_NEXT_TURN') return `robo extra ${effect.value || 1}`;
+        if (effect.type === 'REMOVE_OPPONENT_BOARD_CARD') return 'retira carta rival';
+        if (effect.type === 'VICTORY') return 'victoria';
+        return effect.type;
     }
 
     private getFirstPlayIssue(cardId: string): string | null {
@@ -932,6 +997,7 @@ export class BattleScene extends Phaser.Scene {
                             if (requirement.cardIds && !requirement.cardIds.includes(slot.cardId)) return;
                             if (requirement.cardType && slotCard.type !== requirement.cardType) return;
                             if (requirement.tag && !slotCard.tags?.includes(requirement.tag)) return;
+                            if (requirement.archetype && slotCard.archetype !== requirement.archetype) return;
                             foundCount++;
                         });
                     });
@@ -1044,7 +1110,7 @@ export class BattleScene extends Phaser.Scene {
                 name: cardData.name,
                 type: cardData.type,
                 cost: cardData.cost,
-                description: cardData.description,
+                description: this.getCardHandDescription(cardData),
                 backstory: cardData.backstory,
                 x,
                 y,
@@ -1662,6 +1728,7 @@ export class BattleScene extends Phaser.Scene {
             cost: 1,
             description: 'Efecto de ' + (name || cardId),
             backstory: 'Sin lore cargado.',
+            archetype: '',
             prereqs: [],
             requirements: [],
             effects: [],

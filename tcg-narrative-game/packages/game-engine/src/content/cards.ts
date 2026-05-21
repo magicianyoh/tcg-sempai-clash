@@ -3259,7 +3259,258 @@ const BLOCK_BY_ARCHETYPE: Record<string, CardType> = {
     [ARCHETYPES.KAIJU]: CardType.LOCATION,
 };
 
+const EVENT_STORY_FLOORS = [0, 5, 10, 18, 24, 30, 36, 42];
+
+const ARCHETYPE_EVENT_BLOCK: Record<string, CardType> = {
+    [ARCHETYPES.SHONEN]: CardType.PERSONAJE,
+    [ARCHETYPES.MECHA]: CardType.ITEM,
+    [ARCHETYPES.HAREM_INVERSO]: CardType.PERSONAJE,
+    [ARCHETYPES.SLICE_OF_LIFE]: CardType.LOCATION,
+    [ARCHETYPES.SHOJO]: CardType.PERSONAJE,
+    [ARCHETYPES.HAREM]: CardType.PERSONAJE,
+    [ARCHETYPES.ISEKAI]: CardType.ITEM,
+    [ARCHETYPES.SURVIVAL_GAME]: CardType.ITEM,
+    [ARCHETYPES.SPOKON]: CardType.LOCATION,
+    [ARCHETYPES.KAIJU]: CardType.LOCATION,
+};
+
+function isEventCard(card: CardData): boolean {
+    return card.type === CardType.EVENT || card.type === CardType.EVENT_KEY || card.type === CardType.EVENT_FINAL;
+}
+
+function isBoardCard(card: CardData): boolean {
+    return card.type === CardType.PROTAGONIST
+        || card.type === CardType.PERSONAJE
+        || card.type === CardType.CHARACTER
+        || card.type === CardType.UNIT
+        || card.type === CardType.ITEM
+        || card.type === CardType.LOCATION;
+}
+
+function isCharacterCard(card: CardData): boolean {
+    return card.type === CardType.PROTAGONIST
+        || card.type === CardType.PERSONAJE
+        || card.type === CardType.CHARACTER
+        || card.type === CardType.UNIT;
+}
+
+function storyRequirement(card: CardData): number {
+    return card.requirements?.find(requirement => requirement.type === 'STORY_MIN')?.value ?? 0;
+}
+
+function upsertStoryRequirement(card: CardData, value: number): void {
+    card.requirements ||= [];
+    const existing = card.requirements.find(requirement => requirement.type === 'STORY_MIN');
+    if (existing) {
+        existing.value = Math.max(existing.value || 0, value);
+        existing.description ||= `Requiere ${existing.value} Story para sostener el arco.`;
+    } else {
+        card.requirements.unshift({
+            type: 'STORY_MIN',
+            value,
+            description: `Requiere ${value} Story para sostener el arco.`,
+        });
+    }
+}
+
+function ensureBoardRequirement(card: CardData, value: number): void {
+    card.requirements ||= [];
+    const hasBoardRequirement = card.requirements.some(requirement => requirement.type === 'CARD_ON_BOARD');
+    if (hasBoardRequirement) return;
+
+    card.requirements.push({
+        type: 'CARD_ON_BOARD',
+        value,
+        archetype: card.archetype,
+        description: `${value} carta(s) de ${card.archetype} en campo`,
+    });
+}
+
+function ensureEventCompletedRequirement(card: CardData, eventId?: string): void {
+    if (!eventId || eventId === card.id) return;
+    card.requirements ||= [];
+    const existing = card.requirements.find(requirement => requirement.type === 'EVENT_COMPLETED');
+    if (existing) {
+        existing.cardIds = Array.from(new Set([...(existing.cardIds || []), eventId]));
+    } else {
+        card.requirements.push({
+            type: 'EVENT_COMPLETED',
+            cardIds: [eventId],
+            description: `Requiere cerrar ${CARDS[eventId]?.name || eventId}.`,
+        });
+    }
+    card.eventPrerequisites = Array.from(new Set([...(card.eventPrerequisites || []), eventId]));
+}
+
+function addTag(card: CardData, tag: string): void {
+    card.tags = Array.from(new Set([...(card.tags || []), tag]));
+}
+
+function describeEffect(card: CardData, effect: NonNullable<CardData['effects']>[number]): string {
+    switch (effect.type) {
+        case EffectType.STORY:
+        case 'STORY':
+            return `${card.name} suma ${effect.value ?? 1} Story a su jugador.`;
+        case EffectType.FILLER:
+        case 'FILLER':
+            return effect.target === 'OPPONENT'
+                ? `${card.name} agrega ${effect.value ?? 1} Filler al rival.`
+                : `${card.name} ajusta ${Math.abs(effect.value ?? 1)} Filler propio.`;
+        case EffectType.DRAW:
+        case 'DRAW':
+            return `${card.name} permite robar ${effect.value ?? 1} carta(s).`;
+        case EffectType.DISCARD:
+        case 'DISCARD':
+            return `${card.name} fuerza descarte de ${effect.value ?? 1} carta(s).`;
+        case EffectType.BLOCK_EVENTS:
+        case 'BLOCK_EVENTS':
+            return `${card.name} bloquea eventos del objetivo por ${effect.turns || effect.value || 1} turno(s).`;
+        case EffectType.BLOCK_CARD_TYPE:
+        case 'BLOCK_CARD_TYPE':
+            return `${card.name} impide jugar ${effect.cardType || CardType.ITEM} por ${effect.turns || effect.value || 1} turno(s).`;
+        case EffectType.EXTRA_DRAW_NEXT_TURN:
+        case 'EXTRA_DRAW_NEXT_TURN':
+            return `${card.name} prepara ${effect.value ?? 1} robo extra para el proximo turno.`;
+        case EffectType.REMOVE_OPPONENT_BOARD_CARD:
+        case 'REMOVE_OPPONENT_BOARD_CARD':
+            return `${card.name} retira una carta rival del campo.`;
+        case EffectType.VICTORY:
+        case 'VICTORY':
+            return `${card.name} concreta la condicion de victoria.`;
+        default:
+            return `${card.name} aplica ${effect.type}.`;
+    }
+}
+
+function relationScore(card: CardData): number {
+    const value = `${card.id} ${card.name} ${card.description}`.toLowerCase();
+    let score = 0;
+    if (card.type === CardType.ITEM) score += 8;
+    if (card.type === CardType.LOCATION) score += 7;
+    if (card.type === CardType.PERSONAJE || card.type === CardType.CHARACTER || card.type === CardType.UNIT) score += 6;
+    if (/friend|ally|partner|mentor|coach|manager|lab|base|school|arena|goggles|sword|suit|key|training|home/.test(value)) score += 8;
+    if (/rival|enemy|villain|demon|dark|cursed|monster|nuke|ambush|betray|loss|crisis|disaster|trap|curse/.test(value)) score -= 10;
+    return score;
+}
+
+function conflictScore(card: CardData): number {
+    const value = `${card.id} ${card.name} ${card.description}`.toLowerCase();
+    let score = 0;
+    if (/rival|enemy|villain|demon|dark|cursed|monster|nuke|ambush|betray|loss|crisis|disaster|trap|curse|limiter/.test(value)) score += 12;
+    if (card.effects?.some(effect => effect.type === EffectType.FILLER && effect.target === 'OPPONENT')) score += 5;
+    if (card.cost >= 4) score += 2;
+    return score;
+}
+
+function enrichRelations(cards: CardData[]): void {
+    const boardCards = cards.filter(isBoardCard);
+    const positive = [...boardCards].sort((a, b) => relationScore(b) - relationScore(a) || a.name.localeCompare(b.name));
+    const negative = [...boardCards].sort((a, b) => conflictScore(b) - conflictScore(a) || a.name.localeCompare(b.name));
+
+    cards.filter(isCharacterCard).forEach(card => {
+        const likes = [...(card.likesData?.likes || [])];
+        const dislikes = [...(card.likesData?.dislikes || [])];
+        const compatibleWith = [...(card.affinity?.compatibleWith || [])];
+
+        positive
+            .filter(candidate => candidate.id !== card.id && !likes.includes(candidate.id))
+            .slice(0, card.type === CardType.PROTAGONIST ? 4 : 3)
+            .forEach(candidate => likes.push(candidate.id));
+
+        negative
+            .filter(candidate => candidate.id !== card.id && !likes.includes(candidate.id) && !dislikes.includes(candidate.id))
+            .slice(0, card.type === CardType.PROTAGONIST ? 2 : 1)
+            .forEach(candidate => dislikes.push(candidate.id));
+
+        positive
+            .filter(candidate => isCharacterCard(candidate) && candidate.id !== card.id && !compatibleWith.includes(candidate.id))
+            .slice(0, card.type === CardType.PROTAGONIST ? 3 : 2)
+            .forEach(candidate => compatibleWith.push(candidate.id));
+
+        card.likesData = {
+            likes: Array.from(new Set(likes)).slice(0, card.type === CardType.PROTAGONIST ? 5 : 4),
+            dislikes: Array.from(new Set(dislikes)).slice(0, card.type === CardType.PROTAGONIST ? 3 : 2),
+        };
+        card.affinity = { compatibleWith: Array.from(new Set(compatibleWith)).slice(0, card.type === CardType.PROTAGONIST ? 4 : 3) };
+    });
+}
+
+function enrichEventOrder(cards: CardData[]): void {
+    const normalEvents = cards
+        .filter(card => card.type === CardType.EVENT || card.type === CardType.EVENT_KEY)
+        .sort((a, b) => storyRequirement(a) - storyRequirement(b) || a.cost - b.cost || a.name.localeCompare(b.name));
+
+    normalEvents.forEach((card, index) => {
+        const floor = EVENT_STORY_FLOORS[Math.min(index, EVENT_STORY_FLOORS.length - 1)];
+        upsertStoryRequirement(card, floor);
+        ensureBoardRequirement(card, index < 3 ? 1 : 2);
+        addTag(card, index < 3 ? 'act_1' : index < 6 ? 'act_2' : 'act_3');
+        addTag(card, `order_${String(index + 1).padStart(2, '0')}`);
+        card.eventPrerequisites ||= [];
+    });
+
+    const lastNormalEvent = normalEvents[normalEvents.length - 1];
+    cards.filter(card => card.type === CardType.EVENT_FINAL).forEach(card => {
+        upsertStoryRequirement(card, 40);
+        ensureEventCompletedRequirement(card, lastNormalEvent?.id);
+        addTag(card, 'act_final');
+    });
+}
+
+function createFinalEventForProtagonist(protagonist: CardData, cards: CardData[]): void {
+    const finalId = `${protagonist.id}-final-event`;
+    const alreadyExists = CARDS[finalId]
+        || cards.some(card =>
+            card.type === CardType.EVENT_FINAL
+            && card.requirements?.some(requirement => requirement.type === 'CARD_ON_BOARD' && requirement.cardIds?.includes(protagonist.id))
+        );
+    if (alreadyExists) return;
+
+    const normalEvents = cards
+        .filter(card => card.type === CardType.EVENT || card.type === CardType.EVENT_KEY)
+        .sort((a, b) => storyRequirement(a) - storyRequirement(b) || a.cost - b.cost || a.name.localeCompare(b.name));
+    const previousEvent = normalEvents[normalEvents.length - 1];
+
+    CARDS[finalId] = {
+        id: finalId,
+        name: `${protagonist.name}: Final Arc`,
+        type: CardType.EVENT_FINAL,
+        cost: 5,
+        description: `El cierre personal de ${protagonist.name}: sus aliados y conflictos convergen para decidir la temporada.`,
+        backstory: `${protagonist.name} llega al ultimo episodio con todo el arquetipo orbitando su decision final.`,
+        requirements: [
+            { type: 'STORY_MIN', value: 40, description: 'Requiere 40 Story para entrar al arco final.' },
+            { type: 'CARD_ON_BOARD', cardIds: [protagonist.id], value: 1, description: `${protagonist.name} debe estar en campo.` },
+            ...(previousEvent ? [{ type: 'EVENT_COMPLETED', cardIds: [previousEvent.id], description: `Requiere cerrar ${previousEvent.name}.` }] : []),
+        ],
+        eventPrerequisites: previousEvent ? [previousEvent.id] : [],
+        effects: [
+            { type: EffectType.VICTORY, target: 'SELF', description: `${protagonist.name} concreta su final de temporada.` },
+            { type: EffectType.STORY, value: 5, target: 'SELF', description: `${protagonist.name} convierte su cierre en impulso narrativo.` },
+            { type: EffectType.REMOVE_OPPONENT_BOARD_CARD, value: 1, target: 'OPPONENT', description: `${protagonist.name} desplaza una pieza rival antes del ending.` },
+        ],
+        archetype: protagonist.archetype,
+        image: protagonist.image,
+        maxCopies: 1,
+        tags: ['act_final', 'protagonist_final', protagonist.id],
+    };
+}
+
 function enrichCardEffects(): void {
+    const cardsByArchetype = Object.values(CARDS).reduce<Record<string, CardData[]>>((acc, card) => {
+        acc[card.archetype] ||= [];
+        acc[card.archetype].push(card);
+        return acc;
+    }, {});
+
+    Object.values(cardsByArchetype).forEach(cards => {
+        enrichRelations(cards);
+        enrichEventOrder(cards);
+        cards
+            .filter(card => card.type === CardType.PROTAGONIST)
+            .forEach(protagonist => createFinalEventForProtagonist(protagonist, cards));
+    });
+
     Object.values(CARDS).forEach(card => {
         card.effects ||= [];
 
@@ -3283,7 +3534,7 @@ function enrichCardEffects(): void {
             card.effects.push({
                 type: 'BLOCK_CARD_TYPE',
                 target: 'OPPONENT',
-                cardType: BLOCK_BY_ARCHETYPE[card.archetype] || CardType.ITEM,
+                cardType: ARCHETYPE_EVENT_BLOCK[card.archetype] || BLOCK_BY_ARCHETYPE[card.archetype] || CardType.ITEM,
                 turns: 1,
                 description: `${card.name} cambia el ritmo e impide una categoria del rival por un turno.`,
             });
@@ -3306,6 +3557,22 @@ function enrichCardEffects(): void {
                 description: `${card.name} prospera cuando sus afinidades aparecen en escena.`,
             });
         }
+
+        if (isEventCard(card)) {
+            ensureBoardRequirement(card, card.type === CardType.EVENT_FINAL ? 2 : 1);
+            card.requirements?.forEach(requirement => {
+                if (!requirement.description) {
+                    if (requirement.type === 'STORY_MIN') requirement.description = `Requiere ${requirement.value || 0} Story.`;
+                    if (requirement.type === 'FILLER_MAX') requirement.description = `Filler debe ser ${requirement.value || 0} o menos.`;
+                    if (requirement.type === 'CARD_ON_BOARD') requirement.description = 'Requiere cartas compatibles en campo.';
+                    if (requirement.type === 'EVENT_COMPLETED') requirement.description = 'Requiere completar eventos anteriores.';
+                }
+            });
+        }
+
+        card.effects.forEach(effect => {
+            effect.description ||= describeEffect(card, effect);
+        });
     });
 }
 

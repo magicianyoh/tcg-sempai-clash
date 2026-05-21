@@ -58,6 +58,7 @@ export function evaluateRequirements(
                             if (req.cardIds && !req.cardIds.includes(card.id)) matches = false;
                             if (req.cardType && card.type !== req.cardType) matches = false;
                             if (req.tag && !card.tags?.includes(req.tag)) matches = false;
+                            if (req.archetype && card.archetype !== req.archetype) matches = false;
 
                             if (matches) foundCount++;
                         }
