@@ -48,6 +48,18 @@ for (const deck of prebuiltDecks) {
         if (card.archetype !== deck.archetypeId) {
             issues.push(`${deck.id} includes ${id} from ${card.archetype}, expected ${deck.archetypeId}`);
         }
+        if (card.type === CardType.PROTAGONIST && card.id !== deck.protagonistId) {
+            issues.push(`${deck.id} includes other protagonist ${card.id}`);
+        }
+        if (
+            card.type === CardType.EVENT_FINAL
+            && !card.requirements?.some(requirement =>
+                requirement.type === 'CARD_ON_BOARD'
+                && requirement.cardIds?.includes(deck.protagonistId)
+            )
+        ) {
+            issues.push(`${deck.id} includes unrelated final event ${card.id}`);
+        }
     }
 
     const protagonistFinal = cards.find(card =>
@@ -62,6 +74,11 @@ for (const deck of prebuiltDecks) {
         issues.push(`${deck.id} has no protagonist final for ${deck.protagonistId}`);
     } else if (!deck.cards.includes(protagonistFinal.id)) {
         issues.push(`${deck.id} does not include protagonist final ${protagonistFinal.id}`);
+    }
+
+    const uniqueCards = new Set(deck.cards);
+    if (deck.cards.length - uniqueCards.size < 3) {
+        issues.push(`${deck.id} has too many singletons; expected at least 3 duplicate slots`);
     }
 }
 

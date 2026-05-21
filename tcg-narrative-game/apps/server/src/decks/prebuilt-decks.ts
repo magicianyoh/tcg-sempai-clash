@@ -57,10 +57,67 @@ function cardPriority(card: CardData, protagonist: CardData): number {
     if (card.eventPrerequisites?.length) score += 12;
     if (card.effects?.some(effect => effect.type === 'DRAW')) score += 15;
     if (card.effects?.some(effect => effect.type === 'STORY')) score += 10;
+    score += strategyScore(card, protagonist);
     if (card.cost <= 2) score += 10;
     if (card.cost >= 4) score -= 5;
 
     return score;
+}
+
+function strategyScore(card: CardData, protagonist: CardData): number {
+    const protagonistText = `${protagonist.id} ${protagonist.name} ${protagonist.description}`.toLowerCase();
+    const cardText = `${card.id} ${card.name} ${card.description}`.toLowerCase();
+    const effects = card.effects || [];
+
+    let score = 0;
+    const isAggro = /hot|dragon|ace|force|surviv|kaiju|hunter|attack|rival/.test(protagonistText);
+    const isEngine = /training|disciplined|calm|quiet|manager|coach|scientist|support|plain/.test(protagonistText);
+    const isTeam = /friend|team|harem|shojo|otome|bond|ally|love/.test(protagonistText);
+    const isControl = /reluctant|calm|quiet|survival|villain|curse|dark/.test(protagonistText);
+
+    if (isAggro) {
+        if (effects.some(effect => effect.type === 'FILLER' && effect.target === 'OPPONENT')) score += 34;
+        if (effects.some(effect => effect.type === 'STORY')) score += 18;
+        if (/rival|attack|battle|weapon|sword|rifle|arena|monster|villain/.test(cardText)) score += 16;
+    }
+
+    if (isEngine) {
+        if (effects.some(effect => effect.type === 'DRAW' || effect.type === 'EXTRA_DRAW_NEXT_TURN')) score += 28;
+        if (card.type === CardType.ITEM || card.type === CardType.LOCATION) score += 18;
+        if (/training|coach|mentor|lab|base|program|scroll|school|dojo/.test(cardText)) score += 16;
+    }
+
+    if (isTeam) {
+        if (card.type === CardType.PERSONAJE || card.type === CardType.CHARACTER || card.type === CardType.UNIT) score += 24;
+        if (card.affinity?.compatibleWith?.includes(protagonist.id) || protagonist.affinity?.compatibleWith?.includes(card.id)) score += 28;
+        if (/friend|ally|partner|team|love|prince|rival|school|festival/.test(cardText)) score += 14;
+    }
+
+    if (isControl) {
+        if (effects.some(effect => effect.type === 'BLOCK_CARD_TYPE' || effect.type === 'BLOCK_EVENTS')) score += 26;
+        if (effects.some(effect => effect.type === 'FILLER' && (effect.value || 0) < 0)) score += 22;
+        if (effects.some(effect => effect.type === 'DISCARD' || effect.type === 'REMOVE_OPPONENT_BOARD_CARD')) score += 22;
+        if (/trap|ambush|limiter|shield|hideout|base|retreat|lab/.test(cardText)) score += 14;
+    }
+
+    return score;
+}
+
+function strategyLabel(protagonist: CardData): string {
+    const protagonistText = `${protagonist.id} ${protagonist.name} ${protagonist.description}`.toLowerCase();
+    if (/hot|dragon|ace|force|surviv|kaiju|hunter|attack|rival/.test(protagonistText)) {
+        return 'presion temprana, eventos ofensivos y cierre por tempo';
+    }
+    if (/training|disciplined|calm|quiet|manager|coach|scientist|support|plain/.test(protagonistText)) {
+        return 'motor estable de robo, items/locaciones y curva progresiva';
+    }
+    if (/friend|team|harem|shojo|otome|bond|ally|love/.test(protagonistText)) {
+        return 'sinergias de personajes, afinidades y arco final consistente';
+    }
+    if (/reluctant|villain|curse|dark/.test(protagonistText)) {
+        return 'control, bloqueo y recuperacion antes del final';
+    }
+    return 'plan balanceado de soporte, eventos y final propio';
 }
 
 function storyRequirement(card: CardData): number {
@@ -80,16 +137,28 @@ function isFinalForProtagonist(card: CardData, protagonist: CardData): boolean {
         ) === true;
 }
 
+function getReferencedCardIds(card: CardData): string[] {
+    return Array.from(new Set([
+        ...(card.eventPrerequisites || []),
+        ...(card.requirements || []).flatMap(requirement => requirement.cardIds || []),
+    ]));
+}
+
+function isPlayableForProtagonist(card: CardData, protagonist: CardData, protagonists: CardData[]): boolean {
+    if (card.archetype !== protagonist.archetype) return false;
+    if (card.type === CardType.PROTAGONIST) return card.id === protagonist.id;
+    if (card.type === CardType.EVENT_FINAL) return isFinalForProtagonist(card, protagonist);
+
+    const otherProtagonistIds = new Set(protagonists.filter(item => item.id !== protagonist.id).map(item => item.id));
+    return !getReferencedCardIds(card).some(cardId => otherProtagonistIds.has(cardId));
+}
+
 function getProtagonistFinal(cards: CardData[], protagonist: CardData): CardData | undefined {
     return cards.find(card => isFinalForProtagonist(card, protagonist));
 }
 
 function getRequiredCardIds(card: CardData): string[] {
-    const requirementIds = (card.requirements || [])
-        .filter(requirement => requirement.type === 'EVENT_COMPLETED' || requirement.type === 'CARD_ON_BOARD')
-        .flatMap(requirement => requirement.cardIds || []);
-
-    return Array.from(new Set([...(card.eventPrerequisites || []), ...requirementIds]));
+    return getReferencedCardIds(card);
 }
 
 function getNarrativeChain(card: CardData | undefined, cardsById: Map<string, CardData>, protagonist: CardData): CardData[] {
@@ -140,48 +209,92 @@ function sortByStoryLine(cards: CardData[], protagonist: CardData): CardData[] {
 function buildDeckForProtagonist(archetypeId: string, protagonist: CardData, cards: CardData[]): string[] {
     const deck: string[] = [];
     const counts: Record<string, number> = {};
-    const sorted = sortByStoryLine(cards, protagonist);
+    const protagonists = cards.filter(card => card.type === CardType.PROTAGONIST);
+    const playableCards = cards.filter(card => isPlayableForProtagonist(card, protagonist, protagonists));
+    const sorted = sortByStoryLine(playableCards, protagonist);
     const cardsById = new Map(cards.map(card => [card.id, card]));
     const protagonistFinal = getProtagonistFinal(cards, protagonist);
     const narrativeChain = getNarrativeChain(protagonistFinal, cardsById, protagonist);
+    const isAlreadyIncluded = (card: CardData) => deck.includes(card.id);
 
     pushCard(deck, counts, protagonist);
 
-    narrativeChain.forEach(card => pushCard(deck, counts, card));
+    narrativeChain
+        .filter(card => isPlayableForProtagonist(card, protagonist, protagonists))
+        .forEach(card => pushCard(deck, counts, card));
     if (protagonistFinal) {
         pushCard(deck, counts, protagonistFinal);
     }
 
-    const explicitStoryLine = sorted.filter(card =>
+    const supportCore = sorted.filter(card =>
         card.id !== protagonist.id &&
         card.id !== protagonistFinal?.id &&
         !narrativeChain.some(chainCard => chainCard.id === card.id) &&
         card.type !== CardType.EVENT_FINAL &&
+        !isEvent(card) &&
+        card.type !== CardType.FILLER &&
         (
             protagonist.likesData?.likes?.includes(card.id) ||
             protagonist.affinity?.compatibleWith?.includes(card.id) ||
             card.affinity?.compatibleWith?.includes(protagonist.id) ||
-            card.requirements?.some(req => req.cardIds?.includes(protagonist.id))
+            card.requirements?.some(req => req.cardIds?.includes(protagonist.id)) ||
+            card.likesData?.likes?.includes(protagonist.id)
         )
     );
-    explicitStoryLine.forEach(card => pushCard(deck, counts, card));
 
-    sorted
-        .filter(card => (card.type === CardType.EVENT || card.type === CardType.EVENT_KEY) && !deck.includes(card.id))
+    supportCore.slice(0, 7).forEach(card => pushCard(deck, counts, card));
+    supportCore.slice(0, 5).forEach(card => pushCard(deck, counts, card));
+
+    const eventPlan = sorted
+        .filter(card => (card.type === CardType.EVENT || card.type === CardType.EVENT_KEY) && !isAlreadyIncluded(card))
+        .sort((a, b) => storyRequirement(a) - storyRequirement(b) || cardPriority(b, protagonist) - cardPriority(a, protagonist));
+
+    eventPlan
+        .slice(0, Math.max(4, 8 - narrativeChain.filter(isEvent).length))
         .forEach(card => pushCard(deck, counts, card));
 
-    sorted
-        .filter(card => card.type !== CardType.EVENT_FINAL)
-        .forEach(card => pushCard(deck, counts, card));
+    const tacticalSingles = sorted
+        .filter(card =>
+            !isAlreadyIncluded(card) &&
+            card.id !== protagonist.id &&
+            card.type !== CardType.PROTAGONIST &&
+            card.type !== CardType.EVENT_FINAL &&
+            card.type !== CardType.FILLER
+        );
 
-    const copyCandidates = sorted.filter(card =>
-        card.id !== protagonist.id &&
-        card.type !== CardType.EVENT_FINAL &&
-        card.type !== CardType.FILLER &&
-        !isEvent(card)
-    );
+    tacticalSingles.slice(0, 4).forEach(card => pushCard(deck, counts, card));
+
+    const copyCandidates = [
+        ...supportCore,
+        ...sorted.filter(card =>
+            !isEvent(card) &&
+            card.type !== CardType.PROTAGONIST &&
+            card.type !== CardType.EVENT_FINAL &&
+            card.type !== CardType.FILLER
+        ),
+        ...eventPlan.filter(card => storyRequirement(card) <= 18),
+    ];
 
     let guard = 0;
+    while (deck.length < GAME_CONSTANTS.DECK_SIZE && guard < 200) {
+        for (const card of copyCandidates) {
+            pushCard(deck, counts, card);
+            if (deck.length >= GAME_CONSTANTS.DECK_SIZE) break;
+        }
+        guard++;
+    }
+
+    sorted
+        .filter(card =>
+            !isAlreadyIncluded(card) &&
+            card.id !== protagonist.id &&
+            card.type !== CardType.PROTAGONIST &&
+            card.type !== CardType.EVENT_FINAL &&
+            card.type !== CardType.FILLER
+        )
+        .forEach(card => pushCard(deck, counts, card));
+
+    guard = 0;
     while (deck.length < GAME_CONSTANTS.DECK_SIZE && guard < 200) {
         for (const card of copyCandidates) {
             pushCard(deck, counts, card);
@@ -217,7 +330,7 @@ export function getPrebuiltDecks(settings: PrebuiltDeckSettings): PrebuiltDeckDa
             archetypeId,
             protagonistId: protagonist.id,
             protagonistName: protagonist.name,
-            description: `Mazo pre-armado centrado en ${protagonist.name}, priorizando afinidades, likes, eventos clave y cierre de arco.`,
+            description: `Mazo pre-armado centrado en ${protagonist.name}: ${strategyLabel(protagonist)}. Incluye su evento final propio y evita protagonistas/finales ajenos.`,
             cards: buildDeckForProtagonist(archetypeId, protagonist, archetypeCards),
             backgroundId: BACKGROUND_BY_ARCHETYPE[archetypeId] || 'bg_01',
         }));
