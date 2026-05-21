@@ -49,6 +49,20 @@ for (const deck of prebuiltDecks) {
             issues.push(`${deck.id} includes ${id} from ${card.archetype}, expected ${deck.archetypeId}`);
         }
     }
+
+    const protagonistFinal = cards.find(card =>
+        card.type === CardType.EVENT_FINAL
+        && card.archetype === deck.archetypeId
+        && card.requirements?.some(requirement =>
+            requirement.type === 'CARD_ON_BOARD'
+            && requirement.cardIds?.includes(deck.protagonistId)
+        )
+    );
+    if (!protagonistFinal) {
+        issues.push(`${deck.id} has no protagonist final for ${deck.protagonistId}`);
+    } else if (!deck.cards.includes(protagonistFinal.id)) {
+        issues.push(`${deck.id} does not include protagonist final ${protagonistFinal.id}`);
+    }
 }
 
 const summary = {

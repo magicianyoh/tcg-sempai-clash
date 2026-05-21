@@ -33,6 +33,7 @@ function slug(value: string): string {
 
 function cardPriority(card: CardData, protagonist: CardData): number {
     if (card.id === protagonist.id) return 1000;
+    if (isFinalForProtagonist(card, protagonist)) return 980;
 
     let score = 0;
     const protagonistLikes = protagonist.likesData?.likes || [];
@@ -45,7 +46,7 @@ function cardPriority(card: CardData, protagonist: CardData): number {
     if (card.likesData?.likes?.includes(protagonist.id)) score += 50;
     if (protagonistDislikes.includes(card.id)) score -= 180;
 
-    if (card.type === CardType.EVENT_FINAL) score += 95;
+    if (card.type === CardType.EVENT_FINAL) score += isFinalForProtagonist(card, protagonist) ? 180 : -120;
     if (card.type === CardType.EVENT || card.type === CardType.EVENT_KEY) score += 85;
     if (card.type === CardType.PERSONAJE || card.type === CardType.CHARACTER || card.type === CardType.UNIT) score += 55;
     if (card.type === CardType.ITEM) score += 42;
@@ -60,6 +61,55 @@ function cardPriority(card: CardData, protagonist: CardData): number {
     if (card.cost >= 4) score -= 5;
 
     return score;
+}
+
+function storyRequirement(card: CardData): number {
+    return card.requirements?.find(requirement => requirement.type === 'STORY_MIN')?.value ?? 0;
+}
+
+function isEvent(card: CardData): boolean {
+    return card.type === CardType.EVENT || card.type === CardType.EVENT_KEY || card.type === CardType.EVENT_FINAL;
+}
+
+function isFinalForProtagonist(card: CardData, protagonist: CardData): boolean {
+    return card.type === CardType.EVENT_FINAL
+        && card.archetype === protagonist.archetype
+        && card.requirements?.some(requirement =>
+            requirement.type === 'CARD_ON_BOARD'
+            && requirement.cardIds?.includes(protagonist.id)
+        ) === true;
+}
+
+function getProtagonistFinal(cards: CardData[], protagonist: CardData): CardData | undefined {
+    return cards.find(card => isFinalForProtagonist(card, protagonist));
+}
+
+function getRequiredCardIds(card: CardData): string[] {
+    const requirementIds = (card.requirements || [])
+        .filter(requirement => requirement.type === 'EVENT_COMPLETED' || requirement.type === 'CARD_ON_BOARD')
+        .flatMap(requirement => requirement.cardIds || []);
+
+    return Array.from(new Set([...(card.eventPrerequisites || []), ...requirementIds]));
+}
+
+function getNarrativeChain(card: CardData | undefined, cardsById: Map<string, CardData>, protagonist: CardData): CardData[] {
+    if (!card) return [];
+
+    const chain: CardData[] = [];
+    const visited = new Set<string>();
+    const visit = (current: CardData) => {
+        for (const requiredId of getRequiredCardIds(current)) {
+            if (requiredId === protagonist.id || visited.has(requiredId)) continue;
+            const requiredCard = cardsById.get(requiredId);
+            if (!requiredCard || requiredCard.archetype !== protagonist.archetype) continue;
+            visited.add(requiredId);
+            visit(requiredCard);
+            chain.push(requiredCard);
+        }
+    };
+
+    visit(card);
+    return chain.sort((a, b) => storyRequirement(a) - storyRequirement(b) || a.cost - b.cost || a.name.localeCompare(b.name));
 }
 
 function maxCopies(card: CardData): number {
@@ -91,11 +141,22 @@ function buildDeckForProtagonist(archetypeId: string, protagonist: CardData, car
     const deck: string[] = [];
     const counts: Record<string, number> = {};
     const sorted = sortByStoryLine(cards, protagonist);
+    const cardsById = new Map(cards.map(card => [card.id, card]));
+    const protagonistFinal = getProtagonistFinal(cards, protagonist);
+    const narrativeChain = getNarrativeChain(protagonistFinal, cardsById, protagonist);
 
     pushCard(deck, counts, protagonist);
 
+    narrativeChain.forEach(card => pushCard(deck, counts, card));
+    if (protagonistFinal) {
+        pushCard(deck, counts, protagonistFinal);
+    }
+
     const explicitStoryLine = sorted.filter(card =>
         card.id !== protagonist.id &&
+        card.id !== protagonistFinal?.id &&
+        !narrativeChain.some(chainCard => chainCard.id === card.id) &&
+        card.type !== CardType.EVENT_FINAL &&
         (
             protagonist.likesData?.likes?.includes(card.id) ||
             protagonist.affinity?.compatibleWith?.includes(card.id) ||
@@ -106,19 +167,18 @@ function buildDeckForProtagonist(archetypeId: string, protagonist: CardData, car
     explicitStoryLine.forEach(card => pushCard(deck, counts, card));
 
     sorted
-        .filter(card => card.type === CardType.EVENT || card.type === CardType.EVENT_KEY)
+        .filter(card => (card.type === CardType.EVENT || card.type === CardType.EVENT_KEY) && !deck.includes(card.id))
         .forEach(card => pushCard(deck, counts, card));
 
     sorted
-        .filter(card => card.type === CardType.EVENT_FINAL)
+        .filter(card => card.type !== CardType.EVENT_FINAL)
         .forEach(card => pushCard(deck, counts, card));
-
-    sorted.forEach(card => pushCard(deck, counts, card));
 
     const copyCandidates = sorted.filter(card =>
         card.id !== protagonist.id &&
         card.type !== CardType.EVENT_FINAL &&
-        card.type !== CardType.FILLER
+        card.type !== CardType.FILLER &&
+        !isEvent(card)
     );
 
     let guard = 0;
@@ -132,6 +192,10 @@ function buildDeckForProtagonist(archetypeId: string, protagonist: CardData, car
 
     if (deck.length !== GAME_CONSTANTS.DECK_SIZE) {
         throw new Error(`Could not build prebuilt deck for ${archetypeId}/${protagonist.id}`);
+    }
+
+    if (protagonistFinal && !deck.includes(protagonistFinal.id)) {
+        throw new Error(`Prebuilt deck for ${archetypeId}/${protagonist.id} is missing ${protagonistFinal.id}`);
     }
 
     return deck;
