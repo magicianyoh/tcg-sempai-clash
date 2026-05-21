@@ -131,6 +131,21 @@
             transform: none;
         }
 
+        .btn.secondary {
+            margin-top: 14px;
+            border: 1px solid rgba(78, 205, 196, 0.55);
+            background: rgba(78, 205, 196, 0.12);
+            color: #dffcf9;
+        }
+
+        .demo-note {
+            margin-top: 8px;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.58);
+            font-size: 0.78rem;
+            line-height: 1.35;
+        }
+
         .error {
             color: #ff6b6b;
             font-size: 0.85rem;
@@ -204,6 +219,8 @@
             <p class="error" id="register-error"></p>
             <p class="success" id="register-success"></p>
         </form>
+        <button type="button" class="btn secondary" id="demo-btn">Jugar demo sin cuenta</button>
+        <p class="demo-note">Crea una sesion temporal con mazo pre-armado para probar builder, match y batalla.</p>
         <a class="wiki-link" href="/wiki.html">Wiki y reglas</a>
     </div>
 
@@ -304,6 +321,31 @@
                 localStorage.setItem('username', data.username);
                 window.location.href = '/build.html';
 
+            } catch (err) {
+                errorEl.textContent = err.message;
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        document.getElementById('demo-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('demo-btn');
+            const errorEl = document.getElementById('login-error');
+            btn.disabled = true;
+            errorEl.textContent = '';
+
+            try {
+                const res = await fetch(`${API_URL}/auth/demo`, { method: 'POST' });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'No se pudo iniciar demo');
+                }
+
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('username', data.username);
+                localStorage.setItem('activeDeckId', data.activeDeckId);
+                window.location.href = '/match.html';
             } catch (err) {
                 errorEl.textContent = err.message;
             } finally {

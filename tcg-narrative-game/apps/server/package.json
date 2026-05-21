@@ -9,7 +9,9 @@
         "test:content": "ts-node -r tsconfig-paths/register src/scripts/contentIntegrity.ts",
         "test:rules": "ts-node -r tsconfig-paths/register src/scripts/rulesSmoke.ts",
         "test:smoke": "ts-node -r tsconfig-paths/register src/scripts/apiSmoke.ts",
-        "balance:playtest": "ts-node -r tsconfig-paths/register src/scripts/balancePlaytest.ts"
+        "test:e2e:publication": "ts-node -r tsconfig-paths/register src/scripts/publicationE2E.ts",
+        "balance:playtest": "ts-node -r tsconfig-paths/register src/scripts/balancePlaytest.ts",
+        "seed:demo": "ts-node -r tsconfig-paths/register src/scripts/seedDemoUsers.ts"
     },
     "dependencies": {
         "fastify": "^4.0.0",

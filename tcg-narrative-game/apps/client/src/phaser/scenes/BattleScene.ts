@@ -709,7 +709,7 @@ export class BattleScene extends Phaser.Scene {
 
         const viewedLabel = this.currentView === 'self' ? 'PLAYER 1' : 'PLAYER 2';
         this.playerTitleText.setText(`${viewedLabel}\n${viewed.username}`);
-        this.playerTitleText.setFontSize(this.scale.width < 680 ? 30 : 42);
+        this.updateHudLayout();
 
         const summaryPlayer = this.currentView === 'self' ? opp : me;
         const summaryLabel = this.currentView === 'self' ? 'Rival' : 'Yo';
@@ -719,10 +719,10 @@ export class BattleScene extends Phaser.Scene {
 
         this.viewToggleBtn.setVisible(isMyTurn);
         this.viewToggleBtn.setAlpha(isMyTurn ? 1 : 0.35);
-        this.viewToggleBtn.setPosition(this.getActionButtonX(), 108);
+        this.viewToggleBtn.setPosition(this.getActionButtonX(), this.getActionButtonY(0));
         this.updateViewToggleLabel();
 
-        this.endTurnBtn.setPosition(this.getActionButtonX(), 150);
+        this.endTurnBtn.setPosition(this.getActionButtonX(), this.getActionButtonY(1));
         this.endTurnBtn.setAlpha(isMyTurn && this.currentView === 'self' ? 1 : 0.45);
         this.updateEndTurnLabel();
         this.renderViewedBoard(viewed);
@@ -739,10 +739,33 @@ export class BattleScene extends Phaser.Scene {
         label?.setText(this.isPreparedEventReady(this.myPlayerIndex) ? 'SIGUIENTE ARCO' : 'PASAR TURNO');
     }
 
+    private updateHudLayout(): void {
+        const { width } = this.scale;
+        const compact = width < 560;
+        const titleSize = compact ? 24 : width < 680 ? 30 : 42;
+
+        this.playerTitleText
+            .setPosition(width / 2, compact ? 42 : 20)
+            .setFontSize(titleSize)
+            .setLineSpacing(compact ? -8 : 0);
+        this.turnIndicator
+            .setPosition(width / 2, compact ? 116 : 78)
+            .setFontSize(compact ? 14 : 18);
+        this.turnCountText
+            .setPosition(width / 2, compact ? 136 : 102)
+            .setFontSize(compact ? 11 : 12);
+        this.statText
+            .setPosition(compact ? 12 : 18, compact ? 14 : 18)
+            .setFontSize(compact ? 12 : 14);
+        this.opponentStatText
+            .setPosition(width - (compact ? 12 : 18), compact ? 14 : 18)
+            .setFontSize(compact ? 11 : 13);
+    }
+
     private updateObjectivePanel(me: PlayerState, viewed: PlayerState, isMyTurn: boolean): void {
         const { width } = this.scale;
         const panelWidth = width < 720 ? Math.max(220, width - 36) : 292;
-        this.objectivePanel.setPosition(18, width < 720 ? 118 : 82);
+        this.objectivePanel.setPosition(18, width < 560 ? 232 : width < 720 ? 118 : 82);
         this.objectivePanelBg.setSize(panelWidth, 116);
         this.objectiveText.setWordWrapWidth(panelWidth - 24);
         this.objectiveText.setFontSize(width < 720 ? 11 : 12);
@@ -1004,7 +1027,8 @@ export class BattleScene extends Phaser.Scene {
         }
 
         const playWidth = this.scale.width >= 920 ? this.scale.width - 350 : this.scale.width;
-        const cardWidth = Math.min(CardSprite.DEFAULT_WIDTH, Math.max(70, (playWidth - 36) / Math.max(hand.length, 1) - 8));
+        const minCardWidth = this.scale.width < 560 ? 54 : 70;
+        const cardWidth = Math.min(CardSprite.DEFAULT_WIDTH, Math.max(minCardWidth, (playWidth - 36) / Math.max(hand.length, 1) - 8));
         const cardHeight = cardWidth * 1.4;
         const spacing = Math.max(4, Math.min(10, cardWidth * 0.09));
         const totalWidth = hand.length * cardWidth + Math.max(0, hand.length - 1) * spacing;
@@ -1069,7 +1093,10 @@ export class BattleScene extends Phaser.Scene {
     }
 
     private getBoardY(): number {
-        const { height } = this.scale;
+        const { width, height } = this.scale;
+        if (width < 560) {
+            return Phaser.Math.Clamp(height * 0.62, 510, Math.max(510, height - 210));
+        }
         return Phaser.Math.Clamp(height * 0.48, 275, Math.max(275, height - 235));
     }
 
@@ -1083,10 +1110,21 @@ export class BattleScene extends Phaser.Scene {
         return width >= 920 ? width - 430 : width - 100;
     }
 
+    private getActionButtonY(index: 0 | 1): number {
+        const { width } = this.scale;
+        if (width < 560) return index === 0 ? 164 : 206;
+        return index === 0 ? 108 : 150;
+    }
+
     private getBoardScale(): number {
         const { width, height } = this.scale;
         const playWidth = width >= 920 ? width - 350 : width;
-        return Phaser.Math.Clamp(Math.min(playWidth / 470, (height - 230) / 470), 0.64, 1.08);
+        const reservedHeight = width < 560 ? height - 370 : height - 230;
+        return Phaser.Math.Clamp(
+            Math.min(playWidth / 470, reservedHeight / 470),
+            width < 560 ? 0.58 : 0.64,
+            width < 560 ? 0.72 : 1.08,
+        );
     }
 
     private processAnnouncements(previous: MatchState | null, next: MatchState): void {
