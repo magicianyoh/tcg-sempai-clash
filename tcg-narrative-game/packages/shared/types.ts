@@ -10,6 +10,7 @@ export enum CardType {
     PERSONAJE = 'PERSONAJE',     // Supporting characters
     ITEM = 'ITEM',               // Objects/Items
     LOCATION = 'LOCATION',       // Locations
+    TOKEN = 'TOKEN',             // Temporary shared story token card type
     EVENT = 'EVENT',             // Key events (with prerequisites)
     EVENT_FINAL = 'EVENT_FINAL', // Final event (win condition)
 

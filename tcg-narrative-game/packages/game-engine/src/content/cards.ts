@@ -210,9 +210,11 @@ function eventEffects(strategy: Strategy, step: number, final = false): CardEffe
 
 function requirements(protagonistId: string, supportId: string, itemId: string, locationId: string, previousEventId: string | undefined, floor: number, step: number, final = false): CardRequirement[] {
     const story = final ? Math.max(36, floor) : floor;
+    const secondaryMaterial = step % 2 === 0 ? itemId : locationId;
     const reqs: CardRequirement[] = [
         { type: 'STORY_MIN', value: story, description: `Requiere ${story} Story.` },
         { type: 'CARD_ON_BOARD', cardIds: [protagonistId], value: 1, description: 'Requiere al protagonista en campo.' },
+        { type: 'CARD_ON_BOARD', cardIds: [secondaryMaterial], value: 1, description: 'Requiere una pieza material de la ruta en campo.' },
     ];
     void previousEventId;
     if (step >= 2) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [supportId], value: 1, description: 'Requiere el soporte narrativo de esta ruta.' });
@@ -220,6 +222,97 @@ function requirements(protagonistId: string, supportId: string, itemId: string, 
     if (final) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [locationId, supportId, itemId], value: 1, description: 'Requiere al menos una pieza clave de la ruta en campo.' });
     return reqs;
 }
+
+const COMMON_TOKEN_ARCHETYPES = Object.values(ARCHETYPES);
+const commonTokenCards: Array<{
+    slug: string;
+    name: string;
+    description: string;
+    cost: number;
+    effects: CardEffect[];
+    requirements?: CardRequirement[];
+}> = [
+    {
+        slug: 'cold-open',
+        name: 'Cold Open',
+        description: 'La escena arranca antes del opening y te da una opcion rapida.',
+        cost: 1,
+        effects: [fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta al activar el evento.')],
+        requirements: [{ type: 'CARD_ON_BOARD', cardType: CardType.PROTAGONIST, value: 1, description: 'Requiere un protagonista en campo.' }],
+    },
+    {
+        slug: 'commercial-break',
+        name: 'Commercial Break',
+        description: 'Corta el ritmo rival justo cuando intenta tomar velocidad.',
+        cost: 2,
+        effects: [fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Silencia 1 carta aleatoria de la mano rival durante el proximo turno.', { turns: 1 })],
+        requirements: [{ type: 'STORY_MIN', value: 6, description: 'Requiere 6 SP.' }],
+    },
+    {
+        slug: 'training-montage',
+        name: 'Training Montage',
+        description: 'Condensa esfuerzo en progreso visible para cualquier historia.',
+        cost: 2,
+        effects: [fx(EffectType.STORY, 3, 'SELF', 'Otorga +3 SP al activar el evento.')],
+        requirements: [{ type: 'CARD_ON_BOARD', cardType: CardType.ITEM, value: 1, description: 'Requiere un item en campo.' }],
+    },
+    {
+        slug: 'misunderstanding',
+        name: 'Misunderstanding',
+        description: 'Un malentendido llena la pantalla de ruido narrativo.',
+        cost: 1,
+        effects: [fx(EffectType.FILLER, 2, 'OPPONENT', 'Otorga +2 FP al rival al activar el evento.')],
+        requirements: [{ type: 'CARD_ON_BOARD', cardType: CardType.PERSONAJE, value: 1, description: 'Requiere un personaje en campo.' }],
+    },
+    {
+        slug: 'recap-episode',
+        name: 'Recap Episode',
+        description: 'Reordena lo ya visto y compra una carta extra.',
+        cost: 2,
+        effects: [fx(EffectType.DRAW, 2, 'SELF', 'Roba +2 cartas al activar el evento.'), fx(EffectType.FILLER, 1, 'SELF', 'Recibes +1 FP por perder ritmo.')],
+        requirements: [{ type: 'STORY_MIN', value: 10, description: 'Requiere 10 SP.' }],
+    },
+    {
+        slug: 'rival-interrupts',
+        name: 'Rival Interrupts',
+        description: 'El rival entra en plano y obliga a cambiar el orden de jugadas.',
+        cost: 3,
+        effects: [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', 'Impide al rival jugar items durante 1 turno.', { cardType: CardType.ITEM, turns: 1 }), fx(EffectType.FILLER, 1, 'OPPONENT', 'Otorga +1 FP al rival.')],
+        requirements: [{ type: 'STORY_MIN', value: 12, description: 'Requiere 12 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.LOCATION, value: 1, description: 'Requiere una locacion en campo.' }],
+    },
+    {
+        slug: 'last-minute-save',
+        name: 'Last Minute Save',
+        description: 'Una aparicion a ultimo segundo limpia el desastre acumulado.',
+        cost: 3,
+        effects: [fx(EffectType.FILLER, -3, 'SELF', 'Reduce en 3 tus FP.'), fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta.')],
+        requirements: [{ type: 'FILLER_MAX', value: 8, description: 'Requiere tener 8 FP o menos.' }, { type: 'CARD_ON_BOARD', cardType: CardType.PERSONAJE, value: 1, description: 'Requiere un personaje en campo.' }],
+    },
+    {
+        slug: 'genre-shift',
+        name: 'Genre Shift',
+        description: 'La serie cambia de tono y reduce una condicion del siguiente evento.',
+        cost: 4,
+        effects: [fx(EffectType.NEXT_EVENT_REDUCE_REQUIREMENT, 1, 'SELF', 'Tu proximo evento ignora 1 requisito.', { turns: 2 }), fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta.')],
+        requirements: [{ type: 'STORY_MIN', value: 16, description: 'Requiere 16 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.LOCATION, value: 1, description: 'Requiere una locacion en campo.' }],
+    },
+    {
+        slug: 'plot-armor',
+        name: 'Plot Armor',
+        description: 'La historia protege al protagonista, aunque el rival proteste.',
+        cost: 4,
+        effects: [fx(EffectType.FILLER, -2, 'SELF', 'Reduce en 2 tus FP.'), fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Silencia 1 carta aleatoria rival.', { turns: 1 }), fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP.')],
+        requirements: [{ type: 'STORY_MIN', value: 20, description: 'Requiere 20 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.PROTAGONIST, value: 1, description: 'Requiere protagonista en campo.' }, { type: 'CARD_ON_BOARD', cardType: CardType.ITEM, value: 1, description: 'Requiere item en campo.' }],
+    },
+    {
+        slug: 'season-finale-teaser',
+        name: 'Season Finale Teaser',
+        description: 'Muestra el cierre de temporada y acelera el camino al final.',
+        cost: 5,
+        effects: [fx(EffectType.STORY, 4, 'SELF', 'Otorga +4 SP.'), fx(EffectType.DRAW, 2, 'SELF', 'Roba +2 cartas.'), fx(EffectType.FILLER, 2, 'OPPONENT', 'Otorga +2 FP al rival.')],
+        requirements: [{ type: 'STORY_MIN', value: 26, description: 'Requiere 26 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.PROTAGONIST, value: 1, description: 'Requiere protagonista en campo.' }, { type: 'CARD_ON_BOARD', cardType: CardType.LOCATION, value: 1, description: 'Requiere locacion en campo.' }],
+    },
+];
 
 function lineId(prefix: string, type: 'protagonist' | 'char' | 'item' | 'loc' | 'event', slug: string): string {
     return `${prefix}-${type}-${slug}`;
@@ -368,6 +461,25 @@ for (const plan of plans) {
                 compatibleWith: Array.from(new Set([...(CARDS[sharedId].affinity?.compatibleWith || []), protagonistId])),
             };
         }
+    }
+}
+
+for (const archetype of COMMON_TOKEN_ARCHETYPES) {
+    for (const token of commonTokenCards) {
+        add({
+            id: `common-token-${String(archetype).toLowerCase()}-${token.slug}`,
+            name: token.name,
+            type: CardType.TOKEN,
+            cost: token.cost,
+            description: token.description,
+            backstory: `${token.name} es un recurso comun de estructura narrativa que puede aparecer en cualquier arquetipo.`,
+            effects: token.effects,
+            requirements: token.requirements,
+            archetype,
+            image: `common-token-${token.slug}`,
+            maxCopies: 2,
+            tags: ['common_token', 'shared_story_tool'],
+        });
     }
 }
 

@@ -272,6 +272,7 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
             case 'CHARACTER': return 0x3498db;
             case 'ITEM': return 0xf39c12;
             case 'LOCATION': return 0x8e44ad;
+            case 'TOKEN': return 0x22c55e;
             case 'EVENT':
             case 'EVENT_KEY': return 0x2ecc71;
             case 'EVENT_FINAL': return 0xffd166;
@@ -286,6 +287,7 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
             case 'PERSONAJE':
             case 'CHARACTER': return 'PERS';
             case 'LOCATION': return 'LOC';
+            case 'TOKEN': return 'TOK';
             case 'EVENT_FINAL': return 'FINAL';
             case 'EVENT':
             case 'EVENT_KEY': return 'EVT';

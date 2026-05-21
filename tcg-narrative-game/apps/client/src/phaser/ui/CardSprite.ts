@@ -35,6 +35,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
     private nameText!: Phaser.GameObjects.Text;
     private descText!: Phaser.GameObjects.Text;
     private backstoryText!: Phaser.GameObjects.Text;
+    private hoverLabel: Phaser.GameObjects.Container | null = null;
 
     private isDragging: boolean = false;
     private originalPosition: { x: number; y: number } = { x: 0, y: 0 };
@@ -157,6 +158,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
             case 'CHARACTER': return 0x3498db;
             case 'ITEM': return 0xf39c12;
             case 'LOCATION': return 0x9b59b6;
+            case 'TOKEN': return 0x22c55e;
             case 'EVENT':
             case 'EVENT_KEY': return 0x2ecc71;
             case 'EVENT_FINAL': return 0xffd700;
@@ -172,6 +174,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
             case 'CHARACTER': return 'PERS';
             case 'ITEM': return 'ITEM';
             case 'LOCATION': return 'LOC';
+            case 'TOKEN': return 'TOK';
             case 'EVENT':
             case 'EVENT_KEY': return 'EVT';
             case 'EVENT_FINAL': return 'FINAL';
@@ -198,6 +201,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
                     ease: 'Sine.Out',
                 });
                 this.background.setStrokeStyle(3, 0x4ecdc4);
+                this.showHoverName();
                 this.setDepth(10); // Bring to front slightly
             }
         });
@@ -212,6 +216,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
                     ease: 'Sine.Out',
                 });
                 this.background.setStrokeStyle(2, 0xffffff);
+                this.hideHoverName();
                 this.setDepth(0);
             }
         });
@@ -227,6 +232,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
             this.setDepth(100);
             this.background.setStrokeStyle(3, 0xe94560);
             this.scene.events.emit('hand-card-drag-start', this);
+            this.hideHoverName();
         });
 
         this.on('dragend', () => {
@@ -336,6 +342,49 @@ export class CardSprite extends Phaser.GameObjects.Container {
             this.background.setAlpha(1);
             this.background.setStrokeStyle(2, 0xffffff);
         }
+    }
+
+    private showHoverName(): void {
+        if (this.hoverLabel || this.scene.scale.width < 760) return;
+        const labelWidth = Math.max(this.width + 22, Math.min(230, this.cardName.length * 8 + 34));
+        const container = this.scene.add.container(0, -this.height / 2 - 22);
+        const bg = this.scene.add.rectangle(0, 0, labelWidth, 30, 0x020609, 0.96)
+            .setStrokeStyle(2, 0x4ecdc4, 0.85);
+        const text = this.scene.add.text(0, 0, this.cardName, {
+            fontSize: '15px',
+            color: '#ffffff',
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontStyle: 'bold',
+            align: 'center',
+            wordWrap: { width: labelWidth - 18 },
+        }).setOrigin(0.5);
+        container.add([bg, text]);
+        container.setAlpha(0).setScale(0.92);
+        this.add(container);
+        this.hoverLabel = container;
+        this.scene.tweens.add({
+            targets: container,
+            alpha: 1,
+            y: container.y - 8,
+            scale: 1,
+            duration: 150,
+            ease: 'Back.Out',
+        });
+    }
+
+    private hideHoverName(): void {
+        if (!this.hoverLabel) return;
+        const label = this.hoverLabel;
+        this.hoverLabel = null;
+        this.scene.tweens.add({
+            targets: label,
+            alpha: 0,
+            y: label.y + 6,
+            scale: 0.94,
+            duration: 120,
+            ease: 'Sine.In',
+            onComplete: () => label.destroy(),
+        });
     }
 
     setSilenced(silenced: boolean): void {

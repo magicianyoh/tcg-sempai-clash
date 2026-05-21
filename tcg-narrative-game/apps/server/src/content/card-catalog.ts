@@ -587,6 +587,9 @@ function validateCardForAudit(card: MutableCard, knownIds: Set<string>): CardAud
 
     for (const message of validateEffects(card.effects || [])) add('error', 'effects', message);
     for (const message of validateRequirements(card.requirements || [], knownIds)) add('error', 'reference', message);
+    if ((card.type === CardType.EVENT || card.type === CardType.EVENT_FINAL || card.type === CardType.EVENT_KEY) && !hasMaterialRequirement(card.requirements || [])) {
+        add('warning', 'reference', 'El evento deberia requerir al menos una carta material en campo.');
+    }
     for (const id of card.eventPrerequisites || []) {
         if (!knownIds.has(id)) add('error', 'reference', `Prerequisito inexistente: ${id}.`);
     }
@@ -601,6 +604,20 @@ function validateCardForAudit(card: MutableCard, knownIds: Set<string>): CardAud
     }
 
     return issues;
+}
+
+function hasMaterialRequirement(requirements: CardRequirement[]): boolean {
+    return requirements.some(req =>
+        req.type === 'CARD_ON_BOARD'
+        && (
+            Boolean(req.cardIds?.length)
+            || req.cardType === CardType.PROTAGONIST
+            || req.cardType === CardType.PERSONAJE
+            || req.cardType === CardType.ITEM
+            || req.cardType === CardType.LOCATION
+            || req.cardType === CardType.TOKEN
+        )
+    );
 }
 
 function validateEffects(effects: unknown[]): string[] {

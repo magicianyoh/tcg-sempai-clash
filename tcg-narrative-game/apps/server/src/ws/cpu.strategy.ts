@@ -31,6 +31,7 @@ const ARCHETYPE_PRIORITIES: Record<string, Partial<Record<CardType, number>>> = 
         [CardType.PROTAGONIST]: 42,
         [CardType.PERSONAJE]: 28,
         [CardType.EVENT]: 34,
+        [CardType.TOKEN]: 24,
         [CardType.EVENT_FINAL]: 120,
     },
     MECHA: {
@@ -264,6 +265,10 @@ function scoreEffects(effects: CardEffect[], context: CpuContext): number {
                 return total + Math.max(1, value) * 10;
             case 'REMOVE_OPPONENT_BOARD_CARD':
                 return total + (effect.target === 'OPPONENT' ? 34 : 0);
+            case 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN':
+                return total + (effect.target === 'OPPONENT' ? 26 : 0);
+            case 'NEXT_EVENT_REDUCE_REQUIREMENT':
+                return total + 18;
             case 'VICTORY':
                 return total + 120;
             default:

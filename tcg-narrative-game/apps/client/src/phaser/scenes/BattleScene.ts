@@ -93,6 +93,7 @@ function displayEnum(value?: string): string {
         CHARACTER: 'Personaje',
         LOCATION: 'Locacion',
         ITEM: 'Item',
+        TOKEN: 'Token',
         EVENT: 'Evento',
         FILLER: 'Filler',
         ISEKAI: 'Isekai',
@@ -2054,6 +2055,7 @@ export class BattleScene extends Phaser.Scene {
         if (cardId.includes('final')) return 'EVENT_FINAL';
         if (cardId.includes('event') || cardId.includes('training') || cardId.includes('tournament') || cardId.includes('arc')) return 'EVENT';
         if (cardId.includes('filler')) return 'FILLER';
+        if (cardId.includes('token')) return 'TOKEN';
         if (cardId.includes('dojo') || cardId.includes('school') || cardId.includes('arena')) return 'LOCATION';
         if (cardId.includes('item')) return 'ITEM';
         return 'PERSONAJE';

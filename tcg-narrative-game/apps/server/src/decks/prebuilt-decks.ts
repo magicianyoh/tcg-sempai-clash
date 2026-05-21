@@ -52,6 +52,7 @@ function cardPriority(card: CardData, protagonist: CardData): number {
     if (card.type === CardType.PERSONAJE || card.type === CardType.CHARACTER || card.type === CardType.UNIT) score += 55;
     if (card.type === CardType.ITEM) score += 42;
     if (card.type === CardType.LOCATION) score += 36;
+    if (card.type === CardType.TOKEN) score += 30;
     if (card.type === CardType.FILLER) score -= 60;
 
     if (card.requirements?.some(req => req.cardIds?.includes(protagonist.id))) score += 45;

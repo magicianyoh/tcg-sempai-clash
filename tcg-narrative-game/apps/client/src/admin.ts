@@ -275,7 +275,7 @@ function renderSelectedCard() {
     ($<HTMLElement>('card-dislikes-label')).style.display = supportsLikes ? '' : 'none';
     ($<HTMLTextAreaElement>('card-likes')).value = supportsLikes ? (card.likes || []).join(', ') : '';
     ($<HTMLTextAreaElement>('card-dislikes')).value = supportsLikes ? (card.dislikes || []).join(', ') : '';
-    ($<HTMLTextAreaElement>('card-requirements')).value = JSON.stringify(card.requirements || [], null, 2);
+    ($<HTMLTextAreaElement>('card-requirements')).value = formatRequirementsText(card.requirements || []);
     ($<HTMLTextAreaElement>('card-effects')).value = JSON.stringify(card.effects || [], null, 2);
     renderEffectList();
 }
@@ -295,6 +295,39 @@ function parseEffectsFromEditor(): AdminEffect[] {
     } catch {
         return [];
     }
+}
+
+function cardName(id: string): string {
+    return cards.find(card => card.id === id)?.name || id;
+}
+
+function parseRequirementsText(value: string): unknown[] {
+    const raw = value.trim();
+    if (!raw) return [];
+    if (raw.startsWith('[')) {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    }
+    return raw
+        .split(/[\n,]+/)
+        .map(item => item.trim())
+        .filter(Boolean)
+        .map(item => {
+            const story = item.match(/^SP\s*>=\s*(\d+)$/i);
+            if (story) return { type: 'STORY_MIN', value: Number(story[1]), description: `Requiere ${story[1]} SP.` };
+            const filler = item.match(/^FP\s*<=\s*(\d+)$/i);
+            if (filler) return { type: 'FILLER_MAX', value: Number(filler[1]), description: `FP maximo ${filler[1]}.` };
+            return { type: 'CARD_ON_BOARD', cardIds: [item], value: 1, description: `Requiere ${cardName(item)} en campo.` };
+        });
+}
+
+function formatRequirementsText(requirements: unknown[] = []): string {
+    return requirements.map((requirement: any) => {
+        if (requirement?.type === 'STORY_MIN') return `SP>=${requirement.value || 0}`;
+        if (requirement?.type === 'FILLER_MAX') return `FP<=${requirement.value || 0}`;
+        if (requirement?.type === 'CARD_ON_BOARD' && Array.isArray(requirement.cardIds)) return requirement.cardIds.join(', ');
+        return JSON.stringify(requirement);
+    }).join('\n');
 }
 
 function writeEffectsToEditor(effects: AdminEffect[]) {
@@ -397,7 +430,7 @@ async function saveCard() {
     if (!id) return;
 
     try {
-        const requirements = JSON.parse(($<HTMLTextAreaElement>('card-requirements')).value || '[]');
+        const requirements = parseRequirementsText(($<HTMLTextAreaElement>('card-requirements')).value);
         const effects = JSON.parse(($<HTMLTextAreaElement>('card-effects')).value || '[]');
         const maxCopiesValue = ($<HTMLInputElement>('card-max')).value;
         const cardType = ($<HTMLInputElement>('card-type')).value;
@@ -990,6 +1023,7 @@ function bindEvents() {
     $('card-effects').addEventListener('input', renderEffectList);
     setupCardReferenceAutocomplete('card-likes');
     setupCardReferenceAutocomplete('card-dislikes');
+    setupCardReferenceAutocomplete('card-requirements');
     $('import-btn').addEventListener('click', importCsv);
     $('validate-import-btn').addEventListener('click', validateCsvImport);
     $('download-card-template-btn').addEventListener('click', () => downloadCsvTemplate('cards'));

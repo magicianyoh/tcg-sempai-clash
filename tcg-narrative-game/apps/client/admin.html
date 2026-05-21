@@ -443,8 +443,8 @@
                     <label id="card-dislikes-label">Dislikes
                         <textarea id="card-dislikes" placeholder="ids separados por coma"></textarea>
                     </label>
-                    <label>Requisitos JSON
-                        <textarea id="card-requirements"></textarea>
+                    <label style="grid-column: 1 / -1;">Requisitos de activaciÃ³n
+                        <textarea id="card-requirements" placeholder="Escribe : para buscar cartas del mismo arquetipo. TambiÃ©n puedes usar SP>=12 o FP<=6."></textarea>
                     </label>
                     <label>Efectos JSON
                         <textarea id="card-effects"></textarea>
@@ -484,6 +484,7 @@
                                     <option value="PERSONAJE">Personaje</option>
                                     <option value="ITEM">Item</option>
                                     <option value="LOCATION">Locacion</option>
+                                    <option value="TOKEN">Token</option>
                                     <option value="EVENT">Evento</option>
                                     <option value="EVENT_FINAL">Evento final</option>
                                 </select>
