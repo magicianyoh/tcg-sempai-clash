@@ -34,6 +34,10 @@ export enum EffectType {
     BLOCK_CARD_TYPE = 'BLOCK_CARD_TYPE', // Block one card type for N turns
     EXTRA_DRAW_NEXT_TURN = 'EXTRA_DRAW_NEXT_TURN',
     REMOVE_OPPONENT_BOARD_CARD = 'REMOVE_OPPONENT_BOARD_CARD',
+    BLOCK_RANDOM_HAND_CARD_NEXT_TURN = 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN',
+    NEXT_EVENT_REDUCE_REQUIREMENT = 'NEXT_EVENT_REDUCE_REQUIREMENT',
+    INVOKE_CARD_TO_OPPONENT_HAND = 'INVOKE_CARD_TO_OPPONENT_HAND',
+    HAND_SP_DECAY_PERCENT = 'HAND_SP_DECAY_PERCENT',
 
     // Victory
     VICTORY = 'VICTORY',           // Win condition (Final Event)
@@ -89,6 +93,7 @@ export interface CardEffect {
     condition?: EffectCondition;
     description?: string;        // Human-readable effect description
     cardType?: CardType | string;
+    cardId?: string;
     turns?: number;
 }
 
@@ -268,6 +273,7 @@ export interface StatusEffect {
     sourceName: string;
     turnsRemaining: number;
     cardType?: CardType | string;
+    cardId?: string;
     value?: number;
     message: string;
 }

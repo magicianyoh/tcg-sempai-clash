@@ -30,13 +30,13 @@ export function resolveEffects(
                 target.storyPoints = (target.storyPoints || 0) + val;
                 // Sync legacy historyPoints
                 target.historyPoints = target.storyPoints;
-                logs.push(`${target.username} gana ${val} Story por ${card.name}.`);
+                logs.push(`${target.username} gana ${val} SP (Story Points) por ${card.name}.`);
                 break;
 
             case EffectType.FILLER:
             case 'FILLER':
                 target.fillerPoints = (target.fillerPoints || 0) + val;
-                logs.push(`${target.username} ${val >= 0 ? 'recibe' : 'limpia'} ${Math.abs(val)} Filler por ${card.name}.`);
+                logs.push(`${target.username} ${val >= 0 ? 'recibe' : 'limpia'} ${Math.abs(val)} FP (Filler Points) por ${card.name}.`);
                 break;
 
             case EffectType.DRAW:
@@ -110,6 +110,49 @@ export function resolveEffects(
                 if (removed) {
                     target.discard.push(removed);
                     logs.push(`${card.name} expulsa ${CARDS[removed]?.name || removed} del campo de ${target.username}.`);
+                }
+                break;
+            }
+
+            case EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN:
+            case 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN': {
+                const blockedCardId = target.hand[Math.floor(Math.random() * target.hand.length)];
+                if (blockedCardId) {
+                    const blockedName = CARDS[blockedCardId]?.name || blockedCardId;
+                    target.statusEffects.push({
+                        id: `status_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                        type: 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN',
+                        sourceCardId: card.id,
+                        sourceName: card.name,
+                        turnsRemaining: effect.turns || 1,
+                        cardId: blockedCardId,
+                        message: `No puedes jugar ${blockedName} este turno por ${card.name}.`,
+                    });
+                    logs.push(`${card.name} bloquea ${blockedName} en la mano de ${target.username} por 1 turno.`);
+                }
+                break;
+            }
+
+            case EffectType.NEXT_EVENT_REDUCE_REQUIREMENT:
+            case 'NEXT_EVENT_REDUCE_REQUIREMENT':
+                target.statusEffects.push({
+                    id: `status_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                    type: 'NEXT_EVENT_REDUCE_REQUIREMENT',
+                    sourceCardId: card.id,
+                    sourceName: card.name,
+                    turnsRemaining: effect.turns || 2,
+                    value: Math.max(1, val || 1),
+                    message: `Tu proximo evento ignora 1 requisito por ${card.name}.`,
+                });
+                logs.push(`${target.username} prepara su proximo evento con 1 requisito menos por ${card.name}.`);
+                break;
+
+            case EffectType.INVOKE_CARD_TO_OPPONENT_HAND:
+            case 'INVOKE_CARD_TO_OPPONENT_HAND': {
+                const cardToInvoke = effect.cardId || 'isekai-char-demon-lord-gouki';
+                if (CARDS[cardToInvoke] && target.hand.length < 10) {
+                    target.hand.push(cardToInvoke);
+                    logs.push(`${card.name} invoca ${CARDS[cardToInvoke].name} en la mano de ${target.username}.`);
                 }
                 break;
             }

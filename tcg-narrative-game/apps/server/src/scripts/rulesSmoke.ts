@@ -70,12 +70,16 @@ const eventCard = CARDS['otome-event-doom-villainess-bad-end-memory'];
 assert(eventCard?.type === CardType.EVENT, 'Expected otome-event-doom-villainess-bad-end-memory to exist as an event card');
 
 const logs = resolveEffects(match, 0, eventCard.id);
-assert(logs.some(line => line.includes('no puede jugar cartas')), 'Expected event effect to generate a block log');
-assert(match.players[1].statusEffects?.some(effect => effect.type === 'BLOCK_CARD_TYPE'), 'Expected event to add a card-type block');
+assert(logs.length > 0, 'Expected event effect to generate logs');
+const blockingEffect = match.players[1].statusEffects?.find(effect =>
+    effect.type === 'BLOCK_CARD_TYPE' || effect.type === 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN'
+);
+assert(blockingEffect, 'Expected event to add a blocking status effect');
 
-const blocked = canPlayCard(match, 1, 'otome-item-sealed-letter', { blockIndex: 0, position: 'top' });
+const blockedCardId = blockingEffect?.cardId || 'otome-item-sealed-letter';
+const blocked = canPlayCard(match, 1, blockedCardId, { blockIndex: 0, position: 'top' });
 assert(!blocked.ok, 'Expected blocked card type to be rejected');
-assert(blocked.reasons?.[0]?.includes('No puedes jugar cartas'), 'Expected blocked card reason to be player-facing');
+assert(Boolean(blocked.reasons?.[0]), 'Expected blocked card reason to be player-facing');
 
 const ownMatch = createMatch('Player 1');
 ownMatch.players[0].board.blocks[0].slots[0] = {

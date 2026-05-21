@@ -39,8 +39,12 @@ interface CardDisplayData {
         target?: 'SELF' | 'OPPONENT';
         description?: string;
         cardType?: string;
+        cardId?: string;
         turns?: number;
     }>;
+    likes?: string[];
+    dislikes?: string[];
+    affinity?: { compatibleWith?: string[] };
     tags?: string[];
 }
 
@@ -76,6 +80,31 @@ type UiSettings = {
 
 const CARD_DB: Record<string, CardDisplayData> = {};
 const API_URL = window.location.origin;
+
+function displayEnum(value?: string): string {
+    const map: Record<string, string> = {
+        SLICE_OF_LIFE: 'Slice of Life',
+        SURVIVAL_GAME: 'Survival Game',
+        HAREM_INVERSO: 'Harem Inverso',
+        EVENT_FINAL: 'Final Event',
+        EVENT_KEY: 'Key Event',
+        PROTAGONIST: 'Protagonista',
+        PERSONAJE: 'Personaje',
+        CHARACTER: 'Personaje',
+        LOCATION: 'Locacion',
+        ITEM: 'Item',
+        EVENT: 'Evento',
+        FILLER: 'Filler',
+        ISEKAI: 'Isekai',
+        SHONEN: 'Shonen',
+        MECHA: 'Mecha',
+        SHOJO: 'Shojo',
+        HAREM: 'Harem',
+        SPOKON: 'Spokon',
+        KAIJU: 'Kaiju',
+    };
+    return map[value || ''] || String(value || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, char => char.toUpperCase());
+}
 
 function getWebSocketUrl(token?: string): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -205,13 +234,13 @@ export class BattleScene extends Phaser.Scene {
             color: '#aab2c2',
         }).setOrigin(0.5);
 
-        this.statText = this.add.text(18, 18, 'Story: 0\nFiller: 0', {
+        this.statText = this.add.text(18, 18, 'SP: 0\nFP: 0', {
             fontSize: '14px',
             color: '#ffffff',
             lineSpacing: 5,
         });
 
-        this.opponentStatText = this.add.text(width - 18, 18, 'Rival\nStory: 0\nFiller: 0', {
+        this.opponentStatText = this.add.text(width - 18, 18, 'Rival\nSP: 0\nFP: 0', {
             fontSize: '13px',
             color: '#aab2c2',
             align: 'right',
@@ -601,6 +630,9 @@ export class BattleScene extends Phaser.Scene {
                     prereqs: card.prereqs ?? [],
                     requirements: card.requirements ?? [],
                     effects: card.effects ?? [],
+                    likes: card.likes ?? card.likesData?.likes ?? [],
+                    dislikes: card.dislikes ?? card.likesData?.dislikes ?? [],
+                    affinity: card.affinity,
                     tags: card.tags ?? [],
                 };
             });
@@ -718,8 +750,8 @@ export class BattleScene extends Phaser.Scene {
         const summaryLabel = this.currentView === 'self' ? 'Rival' : 'Yo';
         const viewedStory = viewed.storyPoints ?? viewed.historyPoints ?? 0;
         const summaryStory = summaryPlayer.storyPoints ?? summaryPlayer.historyPoints ?? 0;
-        this.statText.setText(`Puntos: ${this.getPlayerScore(viewed)}\nStory: ${viewedStory}\nFiller: ${viewed.fillerPoints}`);
-        this.opponentStatText.setText(`${summaryLabel}\nPuntos: ${this.getPlayerScore(summaryPlayer)}\nStory: ${summaryStory}\nFiller: ${summaryPlayer.fillerPoints}`);
+        this.statText.setText(`Puntos: ${this.getPlayerScore(viewed)}\nSP: ${viewedStory}\nFP: ${viewed.fillerPoints}`);
+        this.opponentStatText.setText(`${summaryLabel}\nPuntos: ${this.getPlayerScore(summaryPlayer)}\nSP: ${summaryStory}\nFP: ${summaryPlayer.fillerPoints}`);
         this.updateObjectivePanel(me, viewed, isMyTurn);
 
         this.viewToggleBtn.setVisible(isMyTurn);
@@ -840,11 +872,11 @@ export class BattleScene extends Phaser.Scene {
             switch (requirement.type) {
                 case 'STORY_MIN': {
                     const story = player.storyPoints ?? player.historyPoints ?? 0;
-                    if (story < (requirement.value || 0)) missing.push(`Story ${story}/${requirement.value || 0}`);
+                    if (story < (requirement.value || 0)) missing.push(`SP ${story}/${requirement.value || 0}`);
                     break;
                 }
                 case 'FILLER_MAX':
-                    if (player.fillerPoints > (requirement.value || 99)) missing.push(`Filler max ${requirement.value}`);
+                    if (player.fillerPoints > (requirement.value || 99)) missing.push(`FP max ${requirement.value}`);
                     break;
                 case 'EVENT_COMPLETED': {
                     const required = requirement.cardIds || [];
@@ -908,35 +940,43 @@ export class BattleScene extends Phaser.Scene {
         return lines.join('\n');
     }
 
-    private getCardDetailData(cardId: string): CardDisplayData {
+    private getCardDetailData(cardId: string): CardInfo {
         const card = this.getCardDisplayData(cardId);
         return {
             ...card,
             description: this.getCardHandDescription(card),
+            typeLabel: displayEnum(card.type),
+            archetypeLabel: displayEnum(card.archetype),
+            likes: (card.likes || []).map(id => this.getCardDisplayData(id).name),
+            dislikes: (card.dislikes || []).map(id => this.getCardDisplayData(id).name),
+            requirementsText: (card.requirements || []).map(requirement => this.describeRequirement(requirement)),
+            effectsText: (card.effects || []).map(effect => this.describeEffect(effect)),
         };
     }
 
     private describeRequirement(requirement: NonNullable<CardDisplayData['requirements']>[number]): string {
-        if (requirement.description) return requirement.description;
-        if (requirement.type === 'STORY_MIN') return `${requirement.value || 0} Story`;
-        if (requirement.type === 'FILLER_MAX') return `Filler <= ${requirement.value || 0}`;
-        if (requirement.type === 'EVENT_COMPLETED') return `evento ${requirement.cardIds?.map(id => this.getCardDisplayData(id).name).join(', ') || 'previo'}`;
+        if (requirement.type === 'STORY_MIN') return `${requirement.value || 0} SP (Story Points)`;
+        if (requirement.type === 'FILLER_MAX') return `FP (Filler Points) <= ${requirement.value || 0}`;
+        if (requirement.type === 'EVENT_COMPLETED') return `Completar evento: ${requirement.cardIds?.map(id => this.getCardDisplayData(id).name).join(', ') || 'previo'}`;
         if (requirement.type === 'CARD_ON_BOARD') return this.describeBoardRequirement(requirement);
         return requirement.type;
     }
 
     private describeEffect(effect: NonNullable<CardDisplayData['effects']>[number]): string {
-        if (effect.description) return effect.description;
         const target = effect.target === 'OPPONENT' ? 'rival' : 'propio';
-        if (effect.type === 'STORY') return `+${effect.value || 0} Story ${target}`;
-        if (effect.type === 'FILLER') return `${effect.value || 0} Filler ${target}`;
-        if (effect.type === 'DRAW') return `roba ${effect.value || 1}`;
-        if (effect.type === 'DISCARD') return `descarta ${effect.value || 1}`;
-        if (effect.type === 'BLOCK_CARD_TYPE') return `bloquea ${effect.cardType || 'tipo'} ${effect.turns || 1} turno`;
-        if (effect.type === 'BLOCK_EVENTS') return 'bloquea eventos';
-        if (effect.type === 'EXTRA_DRAW_NEXT_TURN') return `robo extra ${effect.value || 1}`;
-        if (effect.type === 'REMOVE_OPPONENT_BOARD_CARD') return 'retira carta rival';
-        if (effect.type === 'VICTORY') return 'victoria';
+        if (effect.type === 'STORY') return `Otorga +${effect.value || 0} SP (Story Points) al jugador ${target}.`;
+        if (effect.type === 'FILLER') return `${(effect.value || 0) >= 0 ? 'Otorga' : 'Reduce'} ${Math.abs(effect.value || 0)} FP (Filler Points) al jugador ${target}.`;
+        if (effect.type === 'DRAW') return `Roba +${effect.value || 1} carta(s).`;
+        if (effect.type === 'DISCARD') return `Descarta ${effect.value || 1} carta(s) del ${target}.`;
+        if (effect.type === 'BLOCK_CARD_TYPE') return `Impide al ${target} jugar cartas de ${displayEnum(effect.cardType || 'un tipo')} por ${effect.turns || 1} turno(s).`;
+        if (effect.type === 'BLOCK_EVENTS') return `Impide al ${target} jugar eventos por ${effect.turns || effect.value || 1} turno(s).`;
+        if (effect.type === 'EXTRA_DRAW_NEXT_TURN') return `Roba +${effect.value || 1} carta(s) al inicio del proximo turno.`;
+        if (effect.type === 'REMOVE_OPPONENT_BOARD_CARD') return 'Remueve 1 carta del campo rival.';
+        if (effect.type === 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN') return 'Impide que el rival use 1 carta al azar de su mano durante el proximo turno.';
+        if (effect.type === 'NEXT_EVENT_REDUCE_REQUIREMENT') return 'Tu proximo evento ignora 1 requisito para poder jugarse.';
+        if (effect.type === 'INVOKE_CARD_TO_OPPONENT_HAND') return `Invoca ${this.getCardDisplayData(effect.cardId || 'isekai-char-demon-lord-gouki').name} en la mano del rival.`;
+        if (effect.type === 'HAND_SP_DECAY_PERCENT') return `Mientras esta carta este en tu mano, pierdes ${effect.value || 5}% de tus SP (Story Points) al inicio de cada turno.`;
+        if (effect.type === 'VICTORY') return 'Ganas la partida al concretar este Evento Final.';
         return effect.type;
     }
 
@@ -1140,6 +1180,7 @@ export class BattleScene extends Phaser.Scene {
                     slotData.cardId,
                     cardData.name,
                     slotData.cardType || cardData.type,
+                    data.eventCompleted === true,
                 );
             }
         }
@@ -1222,7 +1263,7 @@ export class BattleScene extends Phaser.Scene {
             next.players.forEach(player => {
                 const prevFiller = this.previousFillerByPlayer[player.username] ?? previous.players.find(p => p.username === player.username)?.fillerPoints ?? 0;
                 if (prevFiller < GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD && player.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD) {
-                    this.enqueueBanner('ARCO DE RELLENO', `${player.username} llego a ${GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD} Filler`, 'danger');
+                    this.enqueueBanner('ARCO DE RELLENO', `${player.username} llego a ${GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD} FP`, 'danger');
                 }
                 this.previousFillerByPlayer[player.username] = player.fillerPoints;
             });

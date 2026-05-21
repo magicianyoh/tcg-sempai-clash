@@ -87,7 +87,7 @@ export function applyPersistedCardOverrides(): void {
             continue;
         }
 
-        const copy = toMutableCard(card);
+        const copy = sanitizeFinalEventEffects(toMutableCard(card));
         CARDS[copy.id] = copy;
     }
 }
@@ -373,6 +373,7 @@ function mergeCard(existing: MutableCard, updates: Partial<AdminCardRecord>): Mu
         likes,
         dislikes,
     };
+    sanitizeFinalEventEffects(merged);
     if (!canHaveLikes) {
         delete merged.likesData;
         delete merged.affinity;
@@ -380,6 +381,13 @@ function mergeCard(existing: MutableCard, updates: Partial<AdminCardRecord>): Mu
         delete merged.dislikes;
     }
     return merged;
+}
+
+function sanitizeFinalEventEffects(card: MutableCard): MutableCard {
+    if (card.type === CardType.EVENT_FINAL && card.effects?.some(effect => effect.type === EffectType.VICTORY || effect.type === 'VICTORY')) {
+        card.effects = card.effects.filter(effect => effect.type === EffectType.VICTORY || effect.type === 'VICTORY').slice(0, 1);
+    }
+    return card;
 }
 
 function upsertCsvRow(row: CsvRow): MutableCard {

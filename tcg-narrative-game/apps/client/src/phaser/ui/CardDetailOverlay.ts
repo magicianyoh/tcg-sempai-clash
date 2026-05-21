@@ -8,6 +8,12 @@ export interface CardInfo {
     description: string;
     backstory?: string;
     image?: string;
+    typeLabel?: string;
+    archetypeLabel?: string;
+    likes?: string[];
+    dislikes?: string[];
+    requirementsText?: string[];
+    effectsText?: string[];
 }
 
 export interface CardDetailOverlayConfig {
@@ -213,9 +219,13 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         if (!card) return;
 
         this.nameText.setText(card.name.toUpperCase());
-        this.typeText.setText(`${card.type} | COSTO ${card.cost}`);
+        this.typeText.setText(`${card.typeLabel || card.type}${card.archetypeLabel ? ` | ${card.archetypeLabel}` : ''} | COSTO ${card.cost}`);
         this.idText.setText(`ID: ${card.id}`);
-        this.descText.setText(card.description || 'Sin descripcion.');
+        const likes = card.likes?.length ? `\nLe gusta: ${card.likes.join(', ')}` : '';
+        const dislikes = card.dislikes?.length ? `\nNo le gusta: ${card.dislikes.join(', ')}` : '';
+        const requirements = card.requirementsText?.length ? `\n\nRequisitos:\n${card.requirementsText.join('\n')}` : '';
+        const effects = card.effectsText?.length ? `\n\nEfectos:\n${card.effectsText.join('\n')}` : '';
+        this.descText.setText(`${card.description || 'Sin descripcion.'}${likes}${dislikes}${requirements}${effects}`);
         this.loreText.setText(card.backstory || 'Sin lore cargado.');
         this.imageText.setText(card.image ? `IMAGEN\n${card.image}` : `IMAGEN\n${card.name}`);
 

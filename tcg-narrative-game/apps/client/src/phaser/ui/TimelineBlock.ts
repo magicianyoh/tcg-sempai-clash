@@ -117,7 +117,7 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
         return Array.from(this.slots.values());
     }
 
-    placeCard(position: SlotPosition, cardId: string, cardName: string, cardType: string): boolean {
+    placeCard(position: SlotPosition, cardId: string, cardName: string, cardType: string, revealed = false): boolean {
         const slot = this.slots.get(position);
         if (!slot || !slot.isEmpty()) {
             return false;
@@ -136,31 +136,38 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
             0,
             TimelineBlock.SLOT_WIDTH - 8,
             TimelineBlock.SLOT_HEIGHT - 8,
-            this.getCardColor(cardType),
+            revealed ? this.getCardColor(cardType) : 0x111827,
             0.98
-        ).setStrokeStyle(2, 0xffffff);
+        ).setStrokeStyle(2, revealed ? 0xffffff : 0x94a3b8);
 
-        const typeText = this.scene.add.text(0, -TimelineBlock.SLOT_HEIGHT / 2 + 15, this.getShortTypeName(cardType), {
+        const typeText = this.scene.add.text(0, -TimelineBlock.SLOT_HEIGHT / 2 + 15, revealed ? this.getShortTypeName(cardType) : '?', {
             fontSize: '10px',
-            color: '#0a0a0f',
-            backgroundColor: '#ffffff',
+            color: revealed ? '#0a0a0f' : '#e5e7eb',
+            backgroundColor: revealed ? '#ffffff' : '#334155',
             padding: { x: 4, y: 2 },
         }).setOrigin(0.5);
 
-        const cardLabel = this.scene.add.text(0, -20, cardName, {
-            fontSize: '12px',
-            color: '#ffffff',
+        const cardLabel = this.scene.add.text(0, -20, revealed ? cardName : 'Boca abajo', {
+            fontSize: revealed ? '12px' : '11px',
+            color: revealed ? '#ffffff' : '#cbd5e1',
             wordWrap: { width: TimelineBlock.SLOT_WIDTH - 18 },
             align: 'center',
             fontStyle: 'bold',
         }).setOrigin(0.5);
+
+        const faceDownMark = !revealed ? this.scene.add.text(0, 28, 'Sempai\nClash', {
+                fontSize: '13px',
+                color: '#ffffff',
+                align: 'center',
+                fontStyle: 'bold',
+            }).setOrigin(0.5) : null;
 
         cardBg.setInteractive({ useHandCursor: true });
         cardBg.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
             this.scene.events.emit('card-clicked', cardId, pointer, this.blockIndex, position);
         });
 
-        slot.add([cardBg, typeText, cardLabel]);
+        slot.add(faceDownMark ? [cardBg, typeText, cardLabel, faceDownMark] : [cardBg, typeText, cardLabel]);
         return true;
     }
 

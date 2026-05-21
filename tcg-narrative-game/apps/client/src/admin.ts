@@ -21,6 +21,7 @@ type AdminEffect = {
     target?: 'SELF' | 'OPPONENT';
     value?: number;
     cardType?: string;
+    cardId?: string;
     turns?: number;
     description?: string;
 };
@@ -306,7 +307,7 @@ function renderEffectList() {
     $('effect-list').innerHTML = effects.map((effect, index) => `
         <div class="row">
             <strong>${effect.type}</strong>
-            <span class="meta">${effect.target || 'SELF'}${effect.value !== undefined ? ` / valor ${effect.value}` : ''}${effect.cardType ? ` / bloquea ${effect.cardType}` : ''}${effect.turns ? ` / ${effect.turns} turno(s)` : ''}</span>
+            <span class="meta">${effect.target || 'SELF'}${effect.value !== undefined ? ` / valor ${effect.value}` : ''}${effect.cardType ? ` / bloquea ${effect.cardType}` : ''}${effect.cardId ? ` / carta ${effect.cardId}` : ''}${effect.turns ? ` / ${effect.turns} turno(s)` : ''}</span>
             <span class="meta">${effect.description || ''}</span>
             <button class="btn danger" data-remove-effect="${index}" type="button">Quitar</button>
         </div>
@@ -329,11 +330,13 @@ function addEffectFromControls() {
     };
     const value = ($<HTMLInputElement>('effect-value')).value;
     const cardType = ($<HTMLSelectElement>('effect-card-type')).value;
+    const cardId = ($<HTMLInputElement>('effect-card-id')).value.trim();
     const turns = ($<HTMLInputElement>('effect-turns')).value;
     const description = ($<HTMLInputElement>('effect-description')).value.trim();
 
     if (value !== '') effect.value = Number(value);
     if (cardType) effect.cardType = cardType;
+    if (cardId) effect.cardId = cardId;
     if (turns !== '') effect.turns = Number(turns);
     if (description) effect.description = description;
 
@@ -711,6 +714,16 @@ function addCardToPrebuiltDraft(cardId: string) {
     renderPrebuiltDeckEditor();
 }
 
+function setPrebuiltDraftCount(cardId: string, count: number) {
+    const card = cardById(cardId);
+    if (!card) return;
+    const max = card.maxCopies ?? 3;
+    const safeCount = Math.max(0, Math.min(max, count));
+    const withoutCard = prebuiltDeckDraft.filter(id => id !== cardId);
+    prebuiltDeckDraft = [...withoutCard, ...Array.from({ length: safeCount }, () => cardId)].slice(0, 20);
+    renderPrebuiltDeckEditor();
+}
+
 function removeCardFromPrebuiltDraft(index: number) {
     prebuiltDeckDraft.splice(index, 1);
     renderPrebuiltDeckEditor();
@@ -719,29 +732,10 @@ function removeCardFromPrebuiltDraft(index: number) {
 function renderPrebuiltDeckEditor() {
     const deck = selectedPrebuiltDeck();
     if (!deck) {
-        $('prebuilt-card-pool').innerHTML = '<div class="row">No hay plantillas.</div>';
         $('prebuilt-deck-list').innerHTML = '';
         $('prebuilt-deck-count').textContent = '0/20';
         return;
     }
-
-    const search = ($<HTMLInputElement>('prebuilt-card-search')).value.toLowerCase();
-    const pool = cards
-        .filter(card => card.archetype === deck.archetypeId)
-        .filter(card => !search || card.name.toLowerCase().includes(search) || card.id.toLowerCase().includes(search))
-        .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
-
-    $('prebuilt-card-pool').innerHTML = pool.map(card => {
-        const count = prebuiltDeckDraft.filter(id => id === card.id).length;
-        const max = card.maxCopies ?? 3;
-        return `
-            <button class="row" data-add-prebuilt-card="${card.id}" type="button">
-                <strong>${escapeHtml(card.name)}</strong>
-                <span class="meta">${card.type} / ${card.id} / ${count}/${max}</span>
-                <span>${escapeHtml(card.description || card.desc || '')}</span>
-            </button>
-        `;
-    }).join('');
 
     const grouped = new Map<string, number[]>();
     prebuiltDeckDraft.forEach((id, index) => {
@@ -758,16 +752,33 @@ function renderPrebuiltDeckEditor() {
                     <strong>${indices.length}x ${escapeHtml(card?.name || id)}</strong>
                     <span class="meta">${card?.type || ''} / ${id}</span>
                 </div>
+                <div class="actions" style="margin-top:0;">
+                    <button class="btn" data-prebuilt-minus="${id}" type="button">-</button>
+                    <input data-prebuilt-count="${id}" type="number" min="0" max="${card?.maxCopies ?? 3}" value="${indices.length}" style="width:70px; text-align:center;">
+                    <button class="btn" data-prebuilt-plus="${id}" type="button">+</button>
+                </div>
                 <button class="btn danger" data-remove-prebuilt-index="${lastIndex}" type="button">Quitar</button>
             </div>
         `;
     }).join('');
 
-    document.querySelectorAll<HTMLButtonElement>('[data-add-prebuilt-card]').forEach(button => {
-        button.addEventListener('click', () => addCardToPrebuiltDraft(button.dataset.addPrebuiltCard || ''));
-    });
     document.querySelectorAll<HTMLButtonElement>('[data-remove-prebuilt-index]').forEach(button => {
         button.addEventListener('click', () => removeCardFromPrebuiltDraft(Number(button.dataset.removePrebuiltIndex)));
+    });
+    document.querySelectorAll<HTMLButtonElement>('[data-prebuilt-minus]').forEach(button => {
+        button.addEventListener('click', () => {
+            const id = button.dataset.prebuiltMinus || '';
+            setPrebuiltDraftCount(id, prebuiltDeckDraft.filter(cardId => cardId === id).length - 1);
+        });
+    });
+    document.querySelectorAll<HTMLButtonElement>('[data-prebuilt-plus]').forEach(button => {
+        button.addEventListener('click', () => {
+            const id = button.dataset.prebuiltPlus || '';
+            setPrebuiltDraftCount(id, prebuiltDeckDraft.filter(cardId => cardId === id).length + 1);
+        });
+    });
+    document.querySelectorAll<HTMLInputElement>('[data-prebuilt-count]').forEach(input => {
+        input.addEventListener('change', () => setPrebuiltDraftCount(input.dataset.prebuiltCount || '', Number(input.value || 0)));
     });
 }
 
@@ -990,7 +1001,6 @@ function bindEvents() {
     $('save-prebuilt-deck-btn').addEventListener('click', saveSelectedPrebuiltDeck);
     $('reset-prebuilt-deck-btn').addEventListener('click', resetSelectedPrebuiltDeck);
     $('prebuilt-editor-select').addEventListener('change', () => selectPrebuiltDeck(($<HTMLSelectElement>('prebuilt-editor-select')).value));
-    $('prebuilt-card-search').addEventListener('input', renderPrebuiltDeckEditor);
     $('save-ui-btn').addEventListener('click', saveSettings);
     $('upload-media-btn').addEventListener('click', uploadMedia);
     $('close-media-modal').addEventListener('click', () => $('media-modal').classList.remove('open'));

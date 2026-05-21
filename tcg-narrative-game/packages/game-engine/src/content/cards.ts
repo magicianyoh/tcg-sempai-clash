@@ -168,48 +168,44 @@ function fx(type: EffectType | string, value?: number, target: Target = 'SELF', 
 }
 
 function protagonistEffects(strategy: Strategy): CardEffect[] {
-    if (strategy === 'aggro') return [fx(EffectType.STORY, 2, 'SELF', 'Abre con presion inmediata.')];
-    if (strategy === 'engine') return [fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'Prepara robo extra para sostener el motor.')];
-    if (strategy === 'team') return [fx(EffectType.DRAW, 1, 'SELF', 'Busca aliados para activar afinidades.')];
-    if (strategy === 'control') return [fx(EffectType.FILLER, -1, 'SELF', 'Ordena la escena y limpia ruido narrativo.')];
-    return [fx(EffectType.FILLER, -2, 'SELF', 'Reduce caos antes de que bloquee eventos.')];
+    if (strategy === 'aggro') return [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP (Story Points) al jugarse.')];
+    if (strategy === 'engine') return [fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'Roba +1 carta al inicio de tu proximo turno.')];
+    if (strategy === 'team') return [fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta al jugarse.')];
+    if (strategy === 'control') return [fx(EffectType.FILLER, -1, 'SELF', 'Reduce en 1 tus FP (Filler Points) al jugarse.')];
+    return [fx(EffectType.FILLER, -2, 'SELF', 'Reduce en 2 tus FP (Filler Points) al jugarse.')];
 }
 
 function supportEffects(strategy: Strategy, index: number): CardEffect[] {
-    if (strategy === 'aggro') return [fx(EffectType.FILLER, 1 + (index % 2), 'OPPONENT', 'Presiona al rival con una escena agresiva.')];
-    if (strategy === 'engine') return [fx(index % 2 === 0 ? EffectType.DRAW : EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'Acelera recursos para la linea principal.')];
-    if (strategy === 'team') return [fx(EffectType.STORY, 1, 'SELF', 'La afinidad del grupo suma Story.')];
-    if (strategy === 'control') return [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', 'Corta una linea de juego rival.', { cardType: index % 2 === 0 ? CardType.ITEM : CardType.PERSONAJE, turns: 1 })];
-    return [fx(EffectType.FILLER, -1, 'SELF', 'Protege el arco y baja Filler.')];
+    if (strategy === 'aggro') return [fx(EffectType.FILLER, 1 + (index % 2), 'OPPONENT', `Otorga +${1 + (index % 2)} FP (Filler Points) al rival al jugarse.`)];
+    if (strategy === 'engine') return [fx(index % 2 === 0 ? EffectType.DRAW : EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', index % 2 === 0 ? 'Roba +1 carta al jugarse.' : 'Roba +1 carta al inicio de tu proximo turno.')];
+    if (strategy === 'team') return [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP (Story Points) al jugarse.')];
+    if (strategy === 'control') return [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', `Impide al rival jugar cartas de ${index % 2 === 0 ? 'Item' : 'Personaje'} durante 1 turno.`, { cardType: index % 2 === 0 ? CardType.ITEM : CardType.PERSONAJE, turns: 1 })];
+    return [fx(EffectType.FILLER, -1, 'SELF', 'Reduce en 1 tus FP (Filler Points) al jugarse.')];
 }
 
 function itemEffects(strategy: Strategy, index: number): CardEffect[] {
-    if (strategy === 'aggro') return [fx(EffectType.STORY, 1, 'SELF', 'Convierte equipo ofensivo en Story.')];
-    if (strategy === 'engine') return [fx(EffectType.DRAW, 1, 'SELF', 'Roba una carta para estabilizar la curva.')];
-    if (strategy === 'team') return [fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'Prepara la siguiente escena de afinidad.')];
-    if (strategy === 'control') return [fx(EffectType.DISCARD, 1, 'OPPONENT', 'Obliga al rival a perder una opcion.')];
-    return [fx(EffectType.FILLER, -1 - (index % 2), 'SELF', 'Reduce dano colateral del arco.')];
+    if (strategy === 'aggro') return [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP (Story Points) al jugarse.')];
+    if (strategy === 'engine') return [fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta al jugarse.')];
+    if (strategy === 'team') return [fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'Roba +1 carta al inicio de tu proximo turno.')];
+    if (strategy === 'control') return [fx(EffectType.DISCARD, 1, 'OPPONENT', 'El rival descarta 1 carta al azar al jugarse.')];
+    return [fx(EffectType.FILLER, -1 - (index % 2), 'SELF', `Reduce en ${1 + (index % 2)} tus FP (Filler Points) al jugarse.`)];
 }
 
 function locationEffects(strategy: Strategy, index: number): CardEffect[] {
-    if (strategy === 'aggro') return [fx(EffectType.STORY, 1, 'SELF', 'El escenario favorece ataques rapidos.')];
-    if (strategy === 'engine') return [fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'La locacion prepara recursos futuros.')];
-    if (strategy === 'team') return [fx(EffectType.STORY, 1, 'SELF', 'El grupo se coordina mejor en este lugar.')];
-    if (strategy === 'control') return [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', 'El terreno limita una categoria rival.', { cardType: index % 2 === 0 ? CardType.EVENT : CardType.ITEM, turns: 1 })];
-    return [fx(EffectType.FILLER, -2, 'SELF', 'El refugio baja el Filler acumulado.')];
+    if (strategy === 'aggro') return [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP (Story Points) al jugarse.')];
+    if (strategy === 'engine') return [fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'Roba +1 carta al inicio de tu proximo turno.')];
+    if (strategy === 'team') return [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP (Story Points) al jugarse.')];
+    if (strategy === 'control') return [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', `Impide al rival jugar cartas de ${index % 2 === 0 ? 'Evento' : 'Item'} durante 1 turno.`, { cardType: index % 2 === 0 ? CardType.EVENT : CardType.ITEM, turns: 1 })];
+    return [fx(EffectType.FILLER, -2, 'SELF', 'Reduce en 2 tus FP (Filler Points) al jugarse.')];
 }
 
 function eventEffects(strategy: Strategy, step: number, final = false): CardEffect[] {
-    if (final) return [
-        fx(EffectType.VICTORY, 1, 'SELF', 'Concreta la condicion de victoria.'),
-        fx(EffectType.STORY, 5, 'SELF', 'El final concentra todo el arco.'),
-        fx(EffectType.REMOVE_OPPONENT_BOARD_CARD, 1, 'OPPONENT', 'La resolucion desplaza una pieza rival.'),
-    ];
-    if (strategy === 'aggro') return [fx(EffectType.STORY, 2 + (step % 2), 'SELF', 'El arco gana velocidad.'), fx(EffectType.FILLER, 1, 'OPPONENT', 'La presion agrega Filler al rival.')];
-    if (strategy === 'engine') return [fx(EffectType.DRAW, step % 2 === 0 ? 2 : 1, 'SELF', 'El evento alimenta el motor.'), fx(EffectType.STORY, 1, 'SELF', 'La preparacion suma Story.')];
-    if (strategy === 'team') return [fx(EffectType.STORY, 2, 'SELF', 'Las afinidades vuelven clave la escena.'), fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'El equipo prepara la siguiente jugada.')];
-    if (strategy === 'control') return [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', 'El evento bloquea una categoria rival.', { cardType: step % 2 === 0 ? CardType.ITEM : CardType.PERSONAJE, turns: 1 }), fx(EffectType.FILLER, -1, 'SELF', 'El jugador ordena su propio arco.')];
-    return [fx(EffectType.FILLER, -2, 'SELF', 'La defensa reduce Filler.'), fx(EffectType.DRAW, 1, 'SELF', 'La supervivencia abre una salida.')];
+    if (final) return [fx(EffectType.VICTORY, 1, 'SELF', 'Ganas la partida al concretar este Evento Final.')];
+    if (strategy === 'aggro') return [fx(EffectType.STORY, 2 + (step % 2), 'SELF', `Otorga +${2 + (step % 2)} SP (Story Points) al activar este evento.`), fx(EffectType.FILLER, 1, 'OPPONENT', 'Otorga +1 FP (Filler Points) al rival al activar este evento.')];
+    if (strategy === 'engine') return [fx(EffectType.DRAW, step % 2 === 0 ? 2 : 1, 'SELF', `Roba +${step % 2 === 0 ? 2 : 1} carta(s) al activar este evento.`), fx(EffectType.NEXT_EVENT_REDUCE_REQUIREMENT, 1, 'SELF', 'Tu proximo evento ignora 1 requisito para poder jugarse.', { turns: 2 })];
+    if (strategy === 'team') return [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP (Story Points) al activar este evento.'), fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'Roba +1 carta al inicio de tu proximo turno.')];
+    if (strategy === 'control') return [fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Impide que el rival use 1 carta al azar de su mano durante el proximo turno.', { turns: 1 }), fx(EffectType.FILLER, -1, 'SELF', 'Reduce en 1 tus FP (Filler Points) al activar este evento.')];
+    return [fx(EffectType.FILLER, -2, 'SELF', 'Reduce en 2 tus FP (Filler Points) al activar este evento.'), fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta al activar este evento.')];
 }
 
 function requirements(protagonistId: string, supportId: string, itemId: string, locationId: string, previousEventId: string | undefined, floor: number, step: number, final = false): CardRequirement[] {
@@ -372,5 +368,40 @@ for (const plan of plans) {
                 compatibleWith: Array.from(new Set([...(CARDS[sharedId].affinity?.compatibleWith || []), protagonistId])),
             };
         }
+    }
+}
+
+add({
+    id: 'isekai-char-demon-lord-gouki',
+    name: 'Demon Lord Gouki',
+    type: CardType.PERSONAJE,
+    cost: 4,
+    description: 'Un demonio que excede las dimensiones y disfruta incomodar a seres de otros mundos.',
+    backstory: 'Gouki no conquista mundos: los dobla, los mira desde afuera y deja que sus habitantes entiendan tarde que ya estaban dentro de su sombra.',
+    effects: [
+        fx(EffectType.HAND_SP_DECAY_PERCENT, 5, 'SELF', 'Mientras esta carta este en tu mano, pierdes 5% de tus SP (Story Points) al inicio de cada turno.'),
+    ],
+    archetype: ARCHETYPES.ISEKAI,
+    image: 'isekai-char-demon-lord-gouki',
+    maxCopies: 1,
+    tags: ['demon_lord', 'curse', 'admin-custom-safe'],
+});
+
+const demonLordEvent = CARDS['isekai-event-cheat-hero-demon-battle'] || CARDS['isekai-event-slime-founder-demon-council'];
+if (demonLordEvent) {
+    demonLordEvent.effects.push(
+        fx(
+            EffectType.INVOKE_CARD_TO_OPPONENT_HAND,
+            1,
+            'OPPONENT',
+            'Invoca Demon Lord Gouki en la mano del rival al activar este evento.',
+            { cardId: 'isekai-char-demon-lord-gouki' },
+        ),
+    );
+}
+
+for (const card of Object.values(CARDS)) {
+    if (card.type === CardType.EVENT_FINAL && card.effects.some(effect => effect.type === EffectType.VICTORY || effect.type === 'VICTORY')) {
+        card.effects = card.effects.filter(effect => effect.type === EffectType.VICTORY || effect.type === 'VICTORY').slice(0, 1);
     }
 }

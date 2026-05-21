@@ -293,14 +293,6 @@
             margin-top: 8px;
         }
 
-        .deck-builder-grid {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(280px, 0.75fr);
-            gap: 12px;
-            margin-top: 12px;
-        }
-
-        .deck-card-pool,
         .deck-edit-list {
             display: grid;
             gap: 7px;
@@ -349,9 +341,6 @@
                 grid-template-columns: 1fr;
             }
 
-            .deck-builder-grid {
-                grid-template-columns: 1fr;
-            }
         }
     </style>
 </head>
@@ -465,12 +454,16 @@
                         <div class="grid" style="margin-top: 8px;">
                             <label>Tipo
                                 <select id="effect-type">
-                                    <option value="STORY">Story</option>
-                                    <option value="FILLER">Filler</option>
+                                    <option value="STORY">SP (Story Points)</option>
+                                    <option value="FILLER">FP (Filler Points)</option>
                                     <option value="DRAW">Robar</option>
                                     <option value="DISCARD">Descartar</option>
                                     <option value="BLOCK_EVENTS">Bloquear eventos</option>
                                     <option value="BLOCK_CARD_TYPE">Bloquear tipo de carta</option>
+                                    <option value="BLOCK_RANDOM_HAND_CARD_NEXT_TURN">Bloquear carta aleatoria rival</option>
+                                    <option value="NEXT_EVENT_REDUCE_REQUIREMENT">Reducir requisito del proximo evento</option>
+                                    <option value="INVOKE_CARD_TO_OPPONENT_HAND">Invocar carta a mano rival</option>
+                                    <option value="HAND_SP_DECAY_PERCENT">Perdida de SP en mano</option>
                                     <option value="EXTRA_DRAW_NEXT_TURN">Robo extra proximo turno</option>
                                     <option value="REMOVE_OPPONENT_BOARD_CARD">Remover carta rival del campo</option>
                                     <option value="VICTORY">Victoria</option>
@@ -494,6 +487,9 @@
                                     <option value="EVENT">Evento</option>
                                     <option value="EVENT_FINAL">Evento final</option>
                                 </select>
+                            </label>
+                            <label>Carta objetivo/invocada
+                                <input id="effect-card-id" placeholder="id de carta">
                             </label>
                             <label>Turnos
                                 <input id="effect-turns" type="number" value="1">
@@ -589,23 +585,16 @@
                 </div>
                 <p id="prebuilt-message" class="message"></p>
                 <div style="height: 14px"></div>
-                <h3>Plantillas disponibles</h3>
-                <div id="prebuilt-preview" class="card-list"></div>
+                <details>
+                    <summary class="row"><strong>Plantillas disponibles</strong><span class="meta">Abrir/cerrar lista de decks pre-armados</span></summary>
+                    <div id="prebuilt-preview" class="card-list"></div>
+                </details>
                 <div style="height: 14px"></div>
                 <h3>Editor manual de deck</h3>
                 <div class="grid" style="margin-top: 8px;">
                     <label>Plantilla
                         <select id="prebuilt-editor-select"></select>
                     </label>
-                    <label>Buscar carta
-                        <input id="prebuilt-card-search" placeholder="Nombre o id">
-                    </label>
-                </div>
-                <div class="deck-builder-grid">
-                    <div>
-                        <h4>Cartas del arquetipo</h4>
-                        <div id="prebuilt-card-pool" class="deck-card-pool"></div>
-                    </div>
                     <div>
                         <h4>Deck seleccionado <span id="prebuilt-deck-count" class="meta">0/20</span></h4>
                         <div id="prebuilt-deck-list" class="deck-edit-list"></div>

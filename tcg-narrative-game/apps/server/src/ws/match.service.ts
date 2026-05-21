@@ -3,7 +3,7 @@ import { ARCHETYPES, GAME_CONSTANTS, SLOT_POSITIONS } from '@tcg/shared/constant
 import { MatchActionType } from '@tcg/shared/protocol';
 import { store } from '../store/memory.store';
 import { CARDS } from '@tcg/game-engine/content/cards';
-import { canPlayCard, canReturnToHand, evaluateRequirements } from '@tcg/game-engine/rules/validation';
+import { canPlayCard, canReturnToHand, evaluateRequirements, getEffectiveRequirements } from '@tcg/game-engine/rules/validation';
 import { resolveEffects } from '@tcg/game-engine/rules/effect';
 import { chooseCpuPlay } from './cpu.strategy';
 
@@ -545,7 +545,7 @@ export class MatchService {
 
         const nextPlayer = match.players[nextPlayerIndex];
 
-        // +2 Story Points per turn
+        // +2 SP (Story Points) per turn
         nextPlayer.storyPoints += GAME_CONSTANTS.STORY_POINTS_PER_TURN;
         nextPlayer.historyPoints = nextPlayer.storyPoints;
 
@@ -553,6 +553,7 @@ export class MatchService {
 
         const extraDraw = this.consumeExtraDraw(nextPlayer);
         this.drawCards(nextPlayer, GAME_CONSTANTS.CARDS_DRAWN_PER_TURN + extraDraw);
+        this.applyHandStartEffects(match, nextPlayer);
         if (extraDraw > 0) {
             this.addLog(match, nextPlayer.username, 'effect_resolved', `${nextPlayer.username} roba ${extraDraw} carta extra por un efecto activo.`);
         }
@@ -572,7 +573,7 @@ export class MatchService {
         if (!card) return;
 
         const validation = card.requirements?.length
-            ? evaluateRequirements(match, playerIndex, card.requirements)
+            ? evaluateRequirements(match, playerIndex, getEffectiveRequirements(match, playerIndex, card.requirements))
             : { ok: true, reasons: [] };
 
         if (!validation.ok) {
@@ -598,6 +599,7 @@ export class MatchService {
 
         this.addLog(match, player.username, 'event_complete', `${card.name}`);
         effectLogs.forEach(details => this.addLog(match, player.username, 'effect_resolved', details));
+        this.consumeReducedRequirement(player);
         this.resolveActCheckpoint(match, completedBlockIndex);
 
         if (card.type === CardType.EVENT_FINAL) {
@@ -670,7 +672,7 @@ export class MatchService {
             match,
             'system',
             'act_checkpoint',
-            `${label}: ${leader.username} lidera tempo ${Math.max(p1Tempo, p2Tempo)}-${Math.min(p1Tempo, p2Tempo)}; ${trailing.username} roba ${isActTwo ? 2 : 1} y baja ${fillerRelief} Filler`
+            `${label}: ${leader.username} lidera tempo ${Math.max(p1Tempo, p2Tempo)}-${Math.min(p1Tempo, p2Tempo)}; ${trailing.username} roba ${isActTwo ? 2 : 1} y baja ${fillerRelief} FP (Filler Points)`
         );
     }
 
@@ -702,6 +704,32 @@ export class MatchService {
             return false;
         });
         return extra;
+    }
+
+    private consumeReducedRequirement(player: PlayerState): void {
+        player.statusEffects ||= [];
+        let consumed = false;
+        player.statusEffects = player.statusEffects.filter(effect => {
+            if (!consumed && effect.type === 'NEXT_EVENT_REDUCE_REQUIREMENT') {
+                consumed = true;
+                return false;
+            }
+            return true;
+        });
+    }
+
+    private applyHandStartEffects(match: MatchState, player: PlayerState): void {
+        for (const cardId of player.hand) {
+            const card = CARDS[cardId];
+            const handDecay = card?.effects?.filter(effect => effect.type === 'HAND_SP_DECAY_PERCENT') || [];
+            for (const effect of handDecay) {
+                const percent = Math.max(1, effect.value || 5);
+                const loss = Math.max(1, Math.ceil((player.storyPoints || 0) * (percent / 100)));
+                player.storyPoints = Math.max(0, (player.storyPoints || 0) - loss);
+                player.historyPoints = player.storyPoints;
+                this.addLog(match, player.username, 'effect_resolved', `${card.name} incomoda a ${player.username}: pierde ${loss} SP (Story Points).`);
+            }
+        }
     }
 
     private tickStatusEffects(player: PlayerState): void {

@@ -24,14 +24,14 @@ export function evaluateRequirements(
             case 'STORY_MIN':
                 const story = player.storyPoints ?? player.historyPoints ?? 0;
                 if (story < (req.value || 0)) {
-                    reasons.push(`Requiere ${req.value} Story Points (tienes ${story}).`);
+                    reasons.push(`Requiere ${req.value} SP (Story Points), tienes ${story}.`);
                 }
                 break;
 
             case 'FILLER_MAX':
                 // Note: Hard cap of 10 usually blocks events entirely, this might be for specific cards
                 if (player.fillerPoints > (req.value || 99)) {
-                    reasons.push(`Demasiado Filler (${player.fillerPoints}/${req.value}).`);
+                    reasons.push(`Demasiados FP (Filler Points): ${player.fillerPoints}/${req.value}.`);
                 }
                 break;
 
@@ -83,6 +83,26 @@ export function evaluateRequirements(
     };
 }
 
+export function getEffectiveRequirements(
+    state: MatchState,
+    playerIndex: number,
+    requirements: CardRequirement[]
+): CardRequirement[] {
+    const player = state.players[playerIndex];
+    const hasReduction = player.statusEffects?.some(effect =>
+        effect.type === 'NEXT_EVENT_REDUCE_REQUIREMENT' && effect.turnsRemaining > 0
+    );
+    if (!hasReduction || requirements.length <= 1) return requirements;
+
+    const removeIndex = [...requirements]
+        .map((req, index) => ({ req, index }))
+        .reverse()
+        .find(item => item.req.type === 'CARD_ON_BOARD' || item.req.type === 'EVENT_COMPLETED')?.index;
+
+    if (removeIndex === undefined) return requirements.slice(0, -1);
+    return requirements.filter((_, index) => index !== removeIndex);
+}
+
 export function canPlayCard(
     state: MatchState,
     playerIndex: number,
@@ -119,6 +139,15 @@ export function canPlayCard(
         return { ok: false, reasons: [blockedType.message || `No puedes jugar cartas de ${card.type}`] };
     }
 
+    const blockedCard = player.statusEffects?.find(effect =>
+        effect.type === 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN' &&
+        effect.turnsRemaining > 0 &&
+        effect.cardId === cardId
+    );
+    if (blockedCard) {
+        return { ok: false, reasons: [blockedCard.message || `No puedes jugar ${card.name} este turno.`] };
+    }
+
     // 3. Event Specific Checks
     if (card.type === CardType.EVENT || card.type === CardType.EVENT_KEY || card.type === CardType.EVENT_FINAL) {
 
@@ -129,12 +158,12 @@ export function canPlayCard(
 
         // Filler Cap Check
         if (!player.canPlayEvents || (player.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD && player.board.currentBlockIndex >= 3)) {
-            return { ok: false, reasons: [`Bloqueado por exceso de Filler (${GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD}+)`] };
+            return { ok: false, reasons: [`Bloqueado por exceso de FP (Filler Points) (${GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD}+)`] };
         }
 
         // Requirements
         if (card.requirements) {
-            const reqResult = evaluateRequirements(state, playerIndex, card.requirements);
+            const reqResult = evaluateRequirements(state, playerIndex, getEffectiveRequirements(state, playerIndex, card.requirements));
             if (!reqResult.ok) return reqResult;
         }
 
