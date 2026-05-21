@@ -936,17 +936,26 @@
         }
 
         async function loadPrebuiltDecks() {
+            const messageEl = document.getElementById('message');
             try {
                 const res = await fetch(`${API_URL}/prebuilt-decks`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (res.ok) {
-                    const data = await res.json();
-                    prebuiltDecks = data.decks || [];
-                    renderDeckDropdown();
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || 'No se pudieron cargar los decks pre-armados');
+                }
+
+                prebuiltDecks = data.decks || [];
+                renderDeckDropdown();
+                if (prebuiltDecks.length === 0) {
+                    messageEl.textContent = 'No hay decks pre-armados activos. Revisá la configuración del admin panel.';
+                    messageEl.className = 'message error';
                 }
             } catch (err) {
                 console.error('Failed to load prebuilt decks:', err);
+                messageEl.textContent = err.message || 'No se pudieron cargar los decks pre-armados';
+                messageEl.className = 'message error';
             }
         }
 
@@ -954,9 +963,10 @@
             const dropdown = document.getElementById('deck-dropdown');
             const savedOptions = savedDecks.map(d => `<option value="saved:${d.id}">${d.name} (${d.archetypeId})</option>`).join('');
             const prebuiltOptions = prebuiltDecks.map(d => `<option value="prebuilt:${d.id}">Plantilla: ${d.name}</option>`).join('');
+            const emptyPrebuiltOption = '<option value="" disabled>No hay decks pre-armados activos</option>';
             dropdown.innerHTML = '<option value="">--- Nuevo Mazo ---</option>' +
                 (savedOptions ? `<optgroup label="Mis mazos">${savedOptions}</optgroup>` : '') +
-                (prebuiltOptions ? `<optgroup label="Decks pre-armados">${prebuiltOptions}</optgroup>` : '');
+                `<optgroup label="Decks pre-armados">${prebuiltOptions || emptyPrebuiltOption}</optgroup>`;
         }
 
         function loadSelectedDeckFromDropdown() {

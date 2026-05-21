@@ -71,8 +71,14 @@ function validateDeck(archetypeId: string, cardIds: string[]): { valid: boolean;
 // ============================================
 
 export async function deckRoutes(fastify: FastifyInstance) {
+    fastify.get('/prebuilt-decks', async () => {
+        return { decks: getPrebuiltDecks(store.getPrebuiltDeckSettings()) };
+    });
+
     // Auth hook for all deck routes
     fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+        if (request.url.startsWith('/prebuilt-decks')) return;
+
         try {
             await request.jwtVerify();
         } catch (err) {
@@ -85,10 +91,6 @@ export async function deckRoutes(fastify: FastifyInstance) {
         const user = request.user as { username: string };
         const decks = store.getDecksForUser(user.username);
         return { decks };
-    });
-
-    fastify.get('/prebuilt-decks', async () => {
-        return { decks: getPrebuiltDecks(store.getPrebuiltDeckSettings()) };
     });
 
     // GET /decks/:id - Get single deck
