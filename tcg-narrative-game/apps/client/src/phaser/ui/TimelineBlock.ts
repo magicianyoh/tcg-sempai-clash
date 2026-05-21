@@ -173,9 +173,11 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
         slot.add(cardFace);
         if (revealed) {
             cardFace.setScale(0, 1);
+            const revealDelay = ['top', 'right', 'bottom', 'left'].indexOf(position) * 110;
             this.scene.tweens.add({
                 targets: cardFace,
                 scaleX: 1,
+                delay: Math.max(0, revealDelay),
                 duration: 180,
                 ease: 'Back.Out',
             });

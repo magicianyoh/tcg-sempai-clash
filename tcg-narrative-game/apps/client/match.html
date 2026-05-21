@@ -214,6 +214,25 @@
             background: #1a1a2e;
         }
 
+        .timer-option {
+            margin: 4px 0 18px;
+            padding: 12px 14px;
+            border: 1px solid rgba(78, 205, 196, 0.35);
+            background: rgba(0, 0, 0, 0.22);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            color: #d7dee9;
+            font-weight: 700;
+        }
+
+        .timer-option input {
+            width: 18px;
+            height: 18px;
+            accent-color: #4ecdc4;
+        }
+
         .cpu-actions {
             display: flex;
             gap: 10px;
@@ -416,6 +435,10 @@
                     <div class="desc">Pick archetype and difficulty</div>
                 </button>
             </div>
+            <label class="timer-option">
+                <input id="match-timer-enabled" type="checkbox">
+                Timer competitivo: 1 minuto por jugador
+            </label>
         </div>
 
         <!-- CPU Match -->
@@ -446,6 +469,10 @@
                     </select>
                 </div>
             </div>
+            <label class="timer-option">
+                <input id="cpu-timer-enabled" type="checkbox">
+                Timer competitivo: 1 minuto por jugador
+            </label>
             <div class="cpu-actions">
                 <button class="leave-btn" id="cpu-back-btn">Back</button>
                 <button class="start-cpu-btn" id="start-cpu-btn">Start CPU Match</button>
@@ -669,7 +696,8 @@
                 type: 'MATCHMAKE_QUEUE',
                 payload: {
                     formatId: 'standard',
-                    deckId
+                    deckId,
+                    timerEnabled: document.getElementById('match-timer-enabled').checked
                 }
             }));
 
@@ -728,7 +756,8 @@
                         deckId,
                         cpuArchetypeId,
                         difficulty,
-                        formatId: 'standard'
+                        formatId: 'standard',
+                        timerEnabled: document.getElementById('cpu-timer-enabled').checked
                     })
                 });
 
@@ -850,7 +879,8 @@
                 type: 'LOBBY_READY',
                 payload: {
                     lobbyId: currentLobby.lobbyId,
-                    deckId
+                    deckId,
+                    timerEnabled: document.getElementById('match-timer-enabled').checked
                 }
             }));
         });

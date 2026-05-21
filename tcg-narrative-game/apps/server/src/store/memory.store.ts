@@ -97,7 +97,7 @@ export class MemoryStore {
     private lobbyByCode: Map<string, string> = new Map(); // code -> lobbyId
 
     // Quick Match Queue: formatId -> [{ username, deckId }]
-    private queues: Map<string, Array<{ username: string; deckId: string }>> = new Map();
+    private queues: Map<string, Array<{ username: string; deckId: string; timerEnabled?: boolean }>> = new Map();
 
     private adminUiSettings: AdminUiSettings = {
         victoryImage: '',
@@ -393,14 +393,14 @@ export class MemoryStore {
 
     // ========== Queue Methods ==========
 
-    addToQueue(formatId: string, username: string, deckId: string): void {
+    addToQueue(formatId: string, username: string, deckId: string, timerEnabled = false): void {
         if (!this.queues.has(formatId)) {
             this.queues.set(formatId, []);
         }
         const queue = this.queues.get(formatId)!;
         // Avoid duplicates
         if (!queue.find(q => q.username === username)) {
-            queue.push({ username, deckId });
+            queue.push({ username, deckId, timerEnabled });
         }
     }
 
@@ -414,7 +414,7 @@ export class MemoryStore {
         }
     }
 
-    getQueuePair(formatId: string): Array<{ username: string; deckId: string }> | null {
+    getQueuePair(formatId: string): Array<{ username: string; deckId: string; timerEnabled?: boolean }> | null {
         const queue = this.queues.get(formatId);
         if (queue && queue.length >= 2) {
             return [queue.shift()!, queue.shift()!];

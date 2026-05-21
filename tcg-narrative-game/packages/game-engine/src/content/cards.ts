@@ -214,7 +214,7 @@ function requirements(protagonistId: string, supportId: string, itemId: string, 
         { type: 'STORY_MIN', value: story, description: `Requiere ${story} Story.` },
         { type: 'CARD_ON_BOARD', cardIds: [protagonistId], value: 1, description: 'Requiere al protagonista en campo.' },
     ];
-    if (step >= 1 && previousEventId) reqs.push({ type: 'EVENT_COMPLETED', cardIds: [previousEventId], description: 'Requiere cerrar el evento anterior de esta ruta.' });
+    void previousEventId;
     if (step >= 2) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [supportId], value: 1, description: 'Requiere el soporte narrativo de esta ruta.' });
     if (step >= 3) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [itemId], value: 1, description: 'Requiere el item clave de esta ruta.' });
     if (final) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [locationId, supportId, itemId], value: 1, description: 'Requiere al menos una pieza clave de la ruta en campo.' });

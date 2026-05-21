@@ -88,6 +88,7 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         this.nameText = scene.add.text(infoX, infoY, '', {
             fontSize: compact ? '22px' : '30px',
             color: '#ffffff',
+            fontFamily: 'Arial, Helvetica, sans-serif',
             fontStyle: 'bold',
             wordWrap: { width: infoWidth },
         });
@@ -96,6 +97,7 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         this.typeText = scene.add.text(infoX, infoY + (compact ? 42 : 54), '', {
             fontSize: '15px',
             color: '#4ecdc4',
+            fontFamily: 'Arial, Helvetica, sans-serif',
             wordWrap: { width: infoWidth },
         });
         this.add(this.typeText);
@@ -117,6 +119,7 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         this.descText = scene.add.text(infoX, infoY + (compact ? 116 : 146), '', {
             fontSize: '14px',
             color: '#d7dee9',
+            fontFamily: 'Arial, Helvetica, sans-serif',
             wordWrap: { width: infoWidth },
             lineSpacing: 4,
         });
@@ -132,6 +135,7 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         this.loreText = scene.add.text(infoX, infoY + (compact ? 220 : 274), '', {
             fontSize: '13px',
             color: '#aeb8c8',
+            fontFamily: 'Arial, Helvetica, sans-serif',
             fontStyle: 'italic',
             wordWrap: { width: infoWidth },
             lineSpacing: 3,
@@ -230,7 +234,7 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         const effects = card.effectsText?.length ? `\n\nEfectos:\n${card.effectsText.join('\n')}` : '';
         this.descText.setText(`${card.description || 'Sin descripcion.'}${likes}${dislikes}${requirements}${effects}`);
         this.loreText.setText(card.backstory || 'Sin lore cargado.');
-        this.imageText.setText(card.image ? `IMAGEN\n${card.image}` : `IMAGEN\n${card.name}`);
+        this.imageText.setText(card.image ? `IMAGEN\n${card.image}` : 'SIN IMAGEN');
 
         this.navLeft.setAlpha(this.currentIndex > 0 ? 1 : 0.25);
         this.navRight.setAlpha(this.currentIndex < this.cards.length - 1 ? 1 : 0.25);

@@ -41,6 +41,8 @@ export enum MatchActionType {
     END_TURN = 'END_TURN',
     ACTIVATE_EVENT = 'ACTIVATE_EVENT',
     RETURN_TO_HAND = 'RETURN_TO_HAND',
+    FORFEIT = 'FORFEIT',
+    TIMER_EXPIRED = 'TIMER_EXPIRED',
 }
 
 // ============================================
@@ -50,6 +52,7 @@ export enum MatchActionType {
 export interface MatchmakeQueuePayload {
     formatId: string;
     deckId: string;
+    timerEnabled?: boolean;
 }
 
 export interface LobbyCreatePayload {
@@ -63,6 +66,7 @@ export interface LobbyJoinPayload {
 export interface LobbyReadyPayload {
     lobbyId: string;
     deckId: string;
+    timerEnabled?: boolean;
 }
 
 export interface PlayCardAction {
@@ -86,7 +90,15 @@ export interface EndTurnAction {
     type: MatchActionType.END_TURN;
 }
 
-export type MatchAction = PlayCardAction | EndTurnAction | ActivateEventAction | ReturnToHandAction;
+export interface ForfeitAction {
+    type: MatchActionType.FORFEIT;
+}
+
+export interface TimerExpiredAction {
+    type: MatchActionType.TIMER_EXPIRED;
+}
+
+export type MatchAction = PlayCardAction | EndTurnAction | ActivateEventAction | ReturnToHandAction | ForfeitAction | TimerExpiredAction;
 
 export interface MatchActionPayload {
     matchId: string;
@@ -124,6 +136,7 @@ export interface LobbyPlayer {
     username: string;
     deckId?: string;
     ready: boolean;
+    timerEnabled?: boolean;
 }
 
 export interface LobbyState {

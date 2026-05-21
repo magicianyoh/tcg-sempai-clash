@@ -17,6 +17,7 @@ import {
     MatchFoundPayload,
     MatchStatePayload,
     MatchEndedPayload,
+    MatchActionType,
 } from '@tcg/shared/protocol';
 import { matchService } from './match.service';
 import { lobbyService } from './lobby.service';
@@ -143,8 +144,8 @@ function handleMessage(
     switch (type) {
         // ========== Matchmaking ==========
         case ClientMessageType.MATCHMAKE_QUEUE: {
-            const { formatId, deckId } = payload as MatchmakeQueuePayload;
-            handleMatchmakeQueue(client, formatId, deckId, connections);
+            const { formatId, deckId, timerEnabled } = payload as MatchmakeQueuePayload;
+            handleMatchmakeQueue(client, formatId, deckId, timerEnabled === true, connections);
             break;
         }
 
@@ -167,8 +168,8 @@ function handleMessage(
         }
 
         case ClientMessageType.LOBBY_READY: {
-            const { lobbyId, deckId } = payload as LobbyReadyPayload;
-            handleLobbyReady(client, lobbyId, deckId, connections);
+            const { lobbyId, deckId, timerEnabled } = payload as LobbyReadyPayload;
+            handleLobbyReady(client, lobbyId, deckId, timerEnabled === true, connections);
             break;
         }
 
@@ -198,7 +199,7 @@ function handleMessage(
             const user = store.findUser(client.username);
             const deckId = user?.activeDeckId;
             if (deckId) {
-                handleMatchmakeQueue(client, GAME_CONSTANTS.DEFAULT_FORMAT, deckId, connections);
+                handleMatchmakeQueue(client, GAME_CONSTANTS.DEFAULT_FORMAT, deckId, false, connections);
             } else {
                 sendError(client, ErrorCode.DECK_NOT_FOUND, 'No active deck set');
             }
@@ -237,6 +238,7 @@ function handleMatchmakeQueue(
     client: AuthenticatedClient,
     formatId: string,
     deckId: string,
+    timerEnabled: boolean,
     connections: Map<string, AuthenticatedClient>
 ) {
     if (!client.username) return;
@@ -254,14 +256,14 @@ function handleMatchmakeQueue(
     }
 
     // Add to queue
-    store.addToQueue(formatId, client.username, deckId);
+    store.addToQueue(formatId, client.username, deckId, timerEnabled);
     console.log(`WS: ${client.username} joined queue for ${formatId}`);
 
     // Check for match
     const pair = store.getQueuePair(formatId);
     if (pair) {
         const [p1, p2] = pair;
-        const match = matchService.createMatch(p1.username, p1.deckId, p2.username, p2.deckId, formatId);
+        const match = matchService.createMatch(p1.username, p1.deckId, p2.username, p2.deckId, formatId, p1.timerEnabled === true || p2.timerEnabled === true);
 
         // Notify both players
         const client1 = connections.get(p1.username);
@@ -334,11 +336,12 @@ function handleLobbyReady(
     client: AuthenticatedClient,
     lobbyId: string,
     deckId: string,
+    timerEnabled: boolean,
     connections: Map<string, AuthenticatedClient>
 ) {
     if (!client.username) return;
 
-    const result = lobbyService.setReady(lobbyId, client.username, deckId);
+    const result = lobbyService.setReady(lobbyId, client.username, deckId, timerEnabled);
     if (!result.success) {
         sendError(client, ErrorCode.INVALID_ACTION, result.error || 'Failed to set ready');
         return;
@@ -362,7 +365,8 @@ function handleLobbyReady(
         const match = matchService.createMatch(
             p1.username, p1.deckId!,
             p2.username, p2.deckId!,
-            lobby.formatId
+            lobby.formatId,
+            p1.timerEnabled === true || p2.timerEnabled === true
         );
 
         // Notify both and set matchId
@@ -420,8 +424,9 @@ function handleMatchAction(
         return;
     }
 
-    // Verify it's this player's turn
-    if (match.activePlayerId !== client.username) {
+    const isForfeit = action?.type === 'FORFEIT' || action?.type === MatchActionType.FORFEIT;
+    // Verify it's this player's turn, except surrender can happen at any time.
+    if (!isForfeit && match.activePlayerId !== client.username) {
         sendError(client, ErrorCode.NOT_YOUR_TURN, 'Not your turn');
         return;
     }

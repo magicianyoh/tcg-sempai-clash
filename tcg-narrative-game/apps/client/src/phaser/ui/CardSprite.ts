@@ -260,10 +260,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
                     this.flip();
                 } else {
                     const sourceEvent = pointer.event as (MouseEvent & PointerEvent & { ctrlKey?: boolean; metaKey?: boolean; pointerType?: string });
-                    const isDetailTap = sourceEvent.ctrlKey === true
-                        || sourceEvent.metaKey === true
-                        || sourceEvent.pointerType === 'touch'
-                        || (pointer as any).wasTouch === true;
+                    const isDetailTap = sourceEvent.ctrlKey === true || sourceEvent.metaKey === true;
                     this.emit('card-tapped', this.cardId, isDetailTap);
                 }
             }

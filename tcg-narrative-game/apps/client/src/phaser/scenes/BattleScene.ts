@@ -136,11 +136,13 @@ export class BattleScene extends Phaser.Scene {
     private handCards: CardSprite[] = [];
 
     private endTurnBtn!: Phaser.GameObjects.Container;
+    private forfeitBtn!: Phaser.GameObjects.Container;
     private viewToggleBtn!: Phaser.GameObjects.Container;
     private turnIndicator!: Phaser.GameObjects.Text;
     private turnCountText!: Phaser.GameObjects.Text;
     private playerTitleText!: Phaser.GameObjects.Text;
     private statText!: Phaser.GameObjects.Text;
+    private timerText!: Phaser.GameObjects.Text;
     private opponentStatText!: Phaser.GameObjects.Text;
     private objectivePanel!: Phaser.GameObjects.Container;
     private objectivePanelBg!: Phaser.GameObjects.Rectangle;
@@ -158,6 +160,9 @@ export class BattleScene extends Phaser.Scene {
     private bannerQueue: Array<{ title: string; subtitle?: string; tone: BannerTone }> = [];
     private bannerActive = false;
     private narrativeEntries: string[] = [];
+    private effectEntries: string[] = [];
+    private localTimerEvent: Phaser.Time.TimerEvent | null = null;
+    private timerExpiredSentForTurn = '';
     private narrativePanel: HTMLElement | null = null;
     private narrativeContent: HTMLDivElement | null = null;
     private narrativeEffectsContent: HTMLDivElement | null = null;
@@ -198,6 +203,7 @@ export class BattleScene extends Phaser.Scene {
         this.createNarrativeLog();
         this.createViewToggleButton();
         this.createEndTurnButton();
+        this.createForfeitButton();
         this.setupDragAndDrop();
         this.setupGlobalEvents();
 
@@ -245,10 +251,21 @@ export class BattleScene extends Phaser.Scene {
             color: '#aab2c2',
         }).setOrigin(0.5);
 
-        this.statText = this.add.text(18, 18, 'SP: 0\nFP: 0', {
-            fontSize: '14px',
+        const statBg = this.add.rectangle(12, 12, 218, 94, 0x020609, 0.88)
+            .setOrigin(0)
+            .setStrokeStyle(2, 0x4ecdc4, 0.75);
+        this.statText = this.add.text(26, 22, 'Puntos: 0\nSP: 0  FP: 0', {
+            fontSize: '22px',
             color: '#ffffff',
-            lineSpacing: 5,
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontStyle: 'bold',
+            lineSpacing: 7,
+        });
+        this.timerText = this.add.text(26, 78, '', {
+            fontSize: '16px',
+            color: '#ffd166',
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontStyle: 'bold',
         });
 
         this.opponentStatText = this.add.text(width - 18, 18, 'Rival\nSP: 0\nFP: 0', {
@@ -274,7 +291,9 @@ export class BattleScene extends Phaser.Scene {
             this.playerTitleText,
             this.turnIndicator,
             this.turnCountText,
+            statBg,
             this.statText,
+            this.timerText,
             this.opponentStatText,
             this.objectivePanel,
         ]);
@@ -378,6 +397,23 @@ export class BattleScene extends Phaser.Scene {
         this.endTurnBtn.setSize(164, 38);
         this.endTurnBtn.setInteractive({ useHandCursor: true });
         this.endTurnBtn.on('pointerdown', () => this.sendEndTurn());
+    }
+
+    private createForfeitButton(): void {
+        const { width } = this.scale;
+        this.forfeitBtn = this.add.container(width - 74, 214).setDepth(1200);
+        const bg = this.add.rectangle(0, 0, 104, 34, 0x3b0b16, 0.94)
+            .setStrokeStyle(2, 0xe94560);
+        const text = this.add.text(0, 0, 'FORFEIT', {
+            fontSize: '12px',
+            color: '#ffffff',
+            fontStyle: 'bold',
+        }).setOrigin(0.5);
+        this.forfeitBtn.add([bg, text]);
+        this.forfeitBtn.setSize(104, 34);
+        this.forfeitBtn.setInteractive({ useHandCursor: true });
+        this.forfeitBtn.on('pointerdown', () => this.sendForfeit());
+        this.hudContainer.add(this.forfeitBtn);
     }
 
     private setupDragAndDrop(): void {
@@ -824,6 +860,24 @@ export class BattleScene extends Phaser.Scene {
         }));
     }
 
+    private sendForfeit(): void {
+        if (!this.matchState || this.matchState.winner) return;
+        const ok = window.confirm('Abandonar la partida le da la victoria al rival. ¿Confirmar Forfeit?');
+        if (!ok) return;
+        this.ws?.send(JSON.stringify({
+            type: 'MATCH_ACTION',
+            payload: { matchId: this.matchState.matchId, action: { type: 'FORFEIT' } },
+        }));
+    }
+
+    private sendTimerExpired(): void {
+        if (!this.matchState || this.matchState.activePlayerId !== this.myUsername) return;
+        this.ws?.send(JSON.stringify({
+            type: 'MATCH_ACTION',
+            payload: { matchId: this.matchState.matchId, action: { type: 'TIMER_EXPIRED' } },
+        }));
+    }
+
     private updateDisplay(): void {
         if (!this.matchState) return;
         this.myPlayerIndex = this.matchState.playerOrder.indexOf(this.myUsername);
@@ -851,7 +905,8 @@ export class BattleScene extends Phaser.Scene {
         const summaryLabel = this.currentView === 'self' ? 'Rival' : 'Yo';
         const viewedStory = viewed.storyPoints ?? viewed.historyPoints ?? 0;
         const summaryStory = summaryPlayer.storyPoints ?? summaryPlayer.historyPoints ?? 0;
-        this.statText.setText(`Puntos: ${this.getPlayerScore(viewed)}\nSP: ${viewedStory}\nFP: ${viewed.fillerPoints}`);
+        this.statText.setText(`Puntos: ${this.getPlayerScore(viewed)}\nSP: ${viewedStory}  FP: ${viewed.fillerPoints}`);
+        this.updateTimerText();
         this.opponentStatText.setText(`${summaryLabel}\nPuntos: ${this.getPlayerScore(summaryPlayer)}\nSP: ${summaryStory}\nFP: ${summaryPlayer.fillerPoints}`);
         this.updateObjectivePanel(me, viewed, isMyTurn);
 
@@ -861,6 +916,7 @@ export class BattleScene extends Phaser.Scene {
         this.updateViewToggleLabel();
 
         this.endTurnBtn.setPosition(this.getActionButtonX(), this.getActionButtonY(1));
+        this.forfeitBtn.setPosition(Math.max(70, this.scale.width - 74), 214);
         this.endTurnBtn.setAlpha(isMyTurn && this.currentView === 'self' ? 1 : 0.45);
         this.updateEndTurnLabel();
         this.renderViewedBoard(viewed);
@@ -875,6 +931,33 @@ export class BattleScene extends Phaser.Scene {
     private updateEndTurnLabel(): void {
         const label = this.endTurnBtn.getAll().find(child => child.getData('label') === true) as Phaser.GameObjects.Text | undefined;
         label?.setText(this.isPreparedEventReady(this.myPlayerIndex) ? 'SIGUIENTE ARCO' : 'PASAR TURNO');
+    }
+
+    private updateTimerText(): void {
+        if (!this.matchState?.timerEnabled || !this.matchState.playerTimers) {
+            this.timerText.setText('');
+            this.localTimerEvent?.remove(false);
+            this.localTimerEvent = null;
+            return;
+        }
+
+        this.localTimerEvent?.remove(false);
+        const render = () => {
+            if (!this.matchState?.timerEnabled || !this.matchState.playerTimers) return;
+            const active = this.matchState.activePlayerId;
+            const stored = this.matchState.playerTimers[active] ?? 60;
+            const elapsed = this.matchState.turnStartedAt ? Math.floor((Date.now() - this.matchState.turnStartedAt) / 1000) : 0;
+            const remaining = Math.max(0, stored - elapsed);
+            this.timerText.setColor(remaining <= 10 ? '#e94560' : '#ffd166');
+            this.timerText.setText(`Timer ${active}: 0:${String(remaining).padStart(2, '0')}`);
+            const turnKey = `${this.matchState.matchId}:${this.matchState.turnNumber}:${active}`;
+            if (remaining === 0 && active === this.myUsername && this.timerExpiredSentForTurn !== turnKey) {
+                this.timerExpiredSentForTurn = turnKey;
+                this.sendTimerExpired();
+            }
+        };
+        render();
+        this.localTimerEvent = this.time.addEvent({ delay: 500, loop: true, callback: render });
     }
 
     private updateHudLayout(): void {
@@ -893,8 +976,11 @@ export class BattleScene extends Phaser.Scene {
             .setPosition(width / 2, compact ? 136 : 102)
             .setFontSize(compact ? 11 : 12);
         this.statText
-            .setPosition(compact ? 12 : 18, compact ? 14 : 18)
-            .setFontSize(compact ? 12 : 14);
+            .setPosition(compact ? 20 : 26, compact ? 18 : 22)
+            .setFontSize(compact ? 16 : 22);
+        this.timerText
+            .setPosition(compact ? 20 : 26, compact ? 72 : 78)
+            .setFontSize(compact ? 13 : 16);
         this.opponentStatText
             .setPosition(width - (compact ? 12 : 18), compact ? 14 : 18)
             .setFontSize(compact ? 11 : 13);
@@ -1382,7 +1468,6 @@ export class BattleScene extends Phaser.Scene {
                 this.previousHandCountByPlayer[player.username] = player.hand.length;
             });
             this.renderActiveEffects();
-            this.enqueueBanner('CAMBIO DE TURNO', `Turno de ${next.activePlayerId}`, 'turn');
             return;
         }
 
@@ -1396,9 +1481,6 @@ export class BattleScene extends Phaser.Scene {
         if (previous) {
             next.players.forEach(player => {
                 const prevFiller = this.previousFillerByPlayer[player.username] ?? previous.players.find(p => p.username === player.username)?.fillerPoints ?? 0;
-                if (prevFiller < GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD && player.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD) {
-                    this.enqueueBanner('ARCO DE RELLENO', `${player.username} llego a ${GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD} FP`, 'danger');
-                }
                 this.previousFillerByPlayer[player.username] = player.fillerPoints;
                 const prevHandCount = this.previousHandCountByPlayer[player.username]
                     ?? previous.players.find(p => p.username === player.username)?.hand.length
@@ -1412,7 +1494,6 @@ export class BattleScene extends Phaser.Scene {
 
         const hasTurnLog = newEntries.some(entry => entry.action === 'turn_start');
         if (!hasTurnLog && this.lastActivePlayerId !== next.activePlayerId) {
-            this.enqueueBanner('CAMBIO DE TURNO', `Turno de ${next.activePlayerId}`, 'turn');
         }
         this.lastActivePlayerId = next.activePlayerId;
         this.renderActiveEffects();
@@ -1421,24 +1502,17 @@ export class BattleScene extends Phaser.Scene {
     private announceLogEntry(entry: LogEntry): void {
         switch (entry.action) {
             case 'turn_start':
-                this.enqueueBanner('CAMBIO DE TURNO', `Turno de ${entry.player}`, 'turn');
                 break;
             case 'play_card': {
                 const card = this.findCardFromLog(entry.details);
                 this.playConfiguredSound(card?.sound || this.uiSettings.playCardSound);
                 this.playConfiguredEffect(this.uiSettings.playCardEffect, card?.type === 'FILLER' ? 'danger' : 'neutral');
-                if (card?.type === 'FILLER') {
-                    this.enqueueBanner('ARCO DE RELLENO', `${entry.player} jugo ${card.name}`, 'danger');
-                } else {
-                    this.enqueueBanner('CARTA JUGADA', `${entry.player}: ${card?.name ?? entry.details ?? ''}`, 'neutral');
-                }
                 break;
             }
             case 'event_prepared': {
                 const card = this.findCardFromLog(entry.details);
                 this.playConfiguredSound(card?.sound || this.uiSettings.playCardSound);
                 this.playConfiguredEffect(this.uiSettings.eventReadyEffect, 'event');
-                this.enqueueBanner('EVENTO PREPARADO', `${card?.name ?? entry.details ?? ''} se activa al pasar turno`, 'event');
                 break;
             }
             case 'event_complete': {
@@ -1458,10 +1532,11 @@ export class BattleScene extends Phaser.Scene {
             }
             case 'act_checkpoint':
                 this.playConfiguredEffect(this.uiSettings.phaseAdvanceEffect, 'turn');
-                this.enqueueBanner('PUNTO DE ACTO', entry.details ?? 'La historia recalibra el tempo', 'turn');
                 break;
             case 'effect_resolved':
-                this.enqueueBanner('EFECTO ACTIVO', entry.details ?? 'Un efecto cambia el campo', 'neutral');
+                this.effectEntries.push(`<strong>${this.escapeHtml(entry.player)}</strong>: ${this.escapeHtml(entry.details ?? 'Efecto resuelto')}`);
+                this.effectEntries = this.effectEntries.slice(-18);
+                this.renderActiveEffects();
                 break;
             case 'victory':
                 this.playConfiguredEffect(this.uiSettings.victoryEffect, 'final');
@@ -1580,9 +1655,10 @@ export class BattleScene extends Phaser.Scene {
         const rows = this.matchState.players.flatMap(player =>
             (player.statusEffects || []).map(effect => this.formatStatusEffect(player.username, effect))
         );
+        const allRows = [...rows, ...this.effectEntries];
 
-        this.narrativeEffectsContent.innerHTML = rows.length
-            ? rows.map(row => `<p>${row}</p>`).join('')
+        this.narrativeEffectsContent.innerHTML = allRows.length
+            ? allRows.map(row => `<p>${row}</p>`).join('')
             : '<p>No hay efectos persistentes activos.</p>';
     }
 
@@ -1591,6 +1667,13 @@ export class BattleScene extends Phaser.Scene {
         const source = this.escapeHtml(effect.sourceName || effect.sourceCardId);
         if (effect.type === 'BLOCK_CARD_TYPE') {
             return `<strong>${owner}</strong>: No puedes jugar cartas de <strong>${this.escapeHtml(String(effect.cardType || 'ese tipo'))}</strong> por ${source}. Restan ${effect.turnsRemaining} turno(s).`;
+        }
+        if (effect.type === 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN') {
+            const card = effect.cardId ? this.getCardDisplayData(effect.cardId).name : 'una carta';
+            return `<strong>${owner}</strong>: <strong>${this.escapeHtml(card)}</strong> esta silenciada por ${source}. Restan ${effect.turnsRemaining} turno(s).`;
+        }
+        if (effect.type === 'NEXT_EVENT_REDUCE_REQUIREMENT') {
+            return `<strong>${owner}</strong>: el proximo Evento requiere 1 condicion menos por ${source}.`;
         }
         if (effect.type === 'EXTRA_DRAW_NEXT_TURN') {
             return `<strong>${owner}</strong>: Robara ${effect.value || 1} carta extra por ${source}.`;

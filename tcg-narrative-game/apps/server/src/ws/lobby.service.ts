@@ -81,7 +81,7 @@ export class LobbyService {
     }
 
     // Set player ready with deck
-    setReady(lobbyId: string, username: string, deckId: string): LobbyServiceResult {
+    setReady(lobbyId: string, username: string, deckId: string, timerEnabled = false): LobbyServiceResult {
         const lobby = store.getLobby(lobbyId);
 
         if (!lobby) {
@@ -100,6 +100,7 @@ export class LobbyService {
 
         player.deckId = deckId;
         player.ready = true;
+        player.timerEnabled = timerEnabled;
 
         // Check if all players ready
         const allReady = lobby.players.length === 2 && lobby.players.every(p => p.ready);

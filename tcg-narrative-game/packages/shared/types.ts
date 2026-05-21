@@ -249,6 +249,9 @@ export interface MatchState {
 
     // Active player helper
     activePlayerId: string;
+    timerEnabled?: boolean;
+    turnStartedAt?: number;
+    playerTimers?: Record<string, number>;
 
     // Result
     winner?: string;

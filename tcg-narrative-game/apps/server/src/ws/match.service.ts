@@ -15,6 +15,8 @@ function generateMatchId(): string {
     return 'match_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
 }
 
+const MATCH_TIMER_SECONDS = 60;
+
 function shuffle<T>(array: T[]): T[] {
     const result = [...array];
     for (let i = result.length - 1; i > 0; i--) {
@@ -264,7 +266,8 @@ export class MatchService {
         p1DeckId: string,
         p2Username: string,
         p2DeckId: string,
-        formatId: string
+        formatId: string,
+        timerEnabled = false
     ): MatchState {
         const matchId = generateMatchId();
 
@@ -290,6 +293,9 @@ export class MatchService {
             players: [player1, player2],
             playerOrder: [p1Username, p2Username],
             activePlayerId: firstPlayer === 0 ? p1Username : p2Username,
+            timerEnabled,
+            turnStartedAt: Date.now(),
+            playerTimers: timerEnabled ? { [p1Username]: MATCH_TIMER_SECONDS, [p2Username]: MATCH_TIMER_SECONDS } : undefined,
             actCheckpointsResolved: [],
             log: [{
                 turn: 1,
@@ -309,7 +315,8 @@ export class MatchService {
         humanDeckId: string,
         cpuArchetypeId: string,
         difficulty: CpuDifficulty,
-        formatId: string
+        formatId: string,
+        timerEnabled = false
     ): MatchState {
         if (!Object.values(ARCHETYPES).includes(cpuArchetypeId as any)) {
             throw new Error(`Invalid CPU archetype: ${cpuArchetypeId}`);
@@ -334,6 +341,9 @@ export class MatchService {
             players: [humanPlayer, cpuPlayer],
             playerOrder: [humanUsername, cpuUsername],
             activePlayerId: humanUsername,
+            timerEnabled,
+            turnStartedAt: Date.now(),
+            playerTimers: timerEnabled ? { [humanUsername]: MATCH_TIMER_SECONDS, [cpuUsername]: MATCH_TIMER_SECONDS } : undefined,
             actCheckpointsResolved: [],
             cpuOpponent: {
                 username: cpuUsername,
@@ -362,10 +372,19 @@ export class MatchService {
             throw new Error('Match has ended');
         }
 
+        if (action.type === 'FORFEIT' || action.type === MatchActionType.FORFEIT) {
+            const playerIndex = match.playerOrder.indexOf(playerId);
+            if (playerIndex === -1) throw new Error('Player not in match');
+            this.handleForfeit(match, playerIndex);
+            store.saveMatch(matchId, match);
+            return match;
+        }
+
         if (match.activePlayerId !== playerId) {
             throw new Error('Not your turn');
         }
 
+        this.applyTimerElapsed(match);
         const playerIndex = match.playerOrder.indexOf(playerId);
         if (playerIndex === -1) throw new Error('Player not in match');
 
@@ -390,6 +409,11 @@ export class MatchService {
             case MatchActionType.END_TURN:
             case 'END_TURN':
                 this.handleEndTurn(match, playerIndex);
+                break;
+
+            case MatchActionType.TIMER_EXPIRED:
+            case 'TIMER_EXPIRED':
+                this.handleEndTurn(match, playerIndex, false);
                 break;
 
             default:
@@ -479,8 +503,6 @@ export class MatchService {
                 this.addLog(match, player.username, 'event_prepared', `${card.name}`);
             }
         } else if (slotPosition) {
-            const effectLogs = resolveEffects(match, playerIndex, cardId);
-
             const block = player.board.blocks[targetBlockIndex];
             const slot = block.slots.find(s => s.position === slotPosition);
             if (slot) {
@@ -488,7 +510,6 @@ export class MatchService {
                 slot.cardType = card.type;
                 slot.placedTurn = match.turnNumber;
                 this.addLog(match, player.username, 'play_card', `${card.name} @ ${slotPosition}`);
-                effectLogs.forEach(details => this.addLog(match, player.username, 'effect_resolved', details));
             }
         }
 
@@ -521,9 +542,13 @@ export class MatchService {
     }
 
     // End turn
-    private handleEndTurn(match: MatchState, currentPlayerIndex: number): void {
+    private handleEndTurn(match: MatchState, currentPlayerIndex: number, resolveEvent = true): void {
         const player = match.players[currentPlayerIndex];
-        this.resolvePreparedEvent(match, currentPlayerIndex);
+        if (resolveEvent) {
+            this.resolvePreparedEvent(match, currentPlayerIndex);
+        } else {
+            this.addLog(match, player.username, 'timer_expired', `${player.username} se queda sin tiempo; el turno pasa sin activar evento.`);
+        }
 
         this.checkVictory(match);
         if (match.winner) return;
@@ -542,14 +567,9 @@ export class MatchService {
         match.currentTurn = nextPlayerIndex;
         match.activePlayerId = match.playerOrder[nextPlayerIndex];
         match.turnNumber++;
+        match.turnStartedAt = Date.now();
 
         const nextPlayer = match.players[nextPlayerIndex];
-
-        // +2 SP (Story Points) per turn
-        nextPlayer.storyPoints += GAME_CONSTANTS.STORY_POINTS_PER_TURN;
-        nextPlayer.historyPoints = nextPlayer.storyPoints;
-
-        // Filler reduction? Usually no.
 
         const extraDraw = this.consumeExtraDraw(nextPlayer);
         this.drawCards(nextPlayer, GAME_CONSTANTS.CARDS_DRAWN_PER_TURN + extraDraw);
@@ -560,6 +580,23 @@ export class MatchService {
         this.tickStatusEffects(player);
 
         this.addLog(match, match.activePlayerId, 'turn_start', `Turn ${match.turnNumber}`);
+    }
+
+    private handleForfeit(match: MatchState, playerIndex: number): void {
+        const loser = match.players[playerIndex];
+        const winner = match.players[1 - playerIndex];
+        match.winner = winner.username;
+        match.winReason = 'surrender';
+        match.phase = 'ended';
+        this.addLog(match, loser.username, 'forfeit', `${loser.username} abandono la partida. ${winner.username} gana.`);
+    }
+
+    private applyTimerElapsed(match: MatchState): void {
+        if (!match.timerEnabled || !match.playerTimers || !match.turnStartedAt) return;
+        const active = match.activePlayerId;
+        const elapsed = Math.max(0, Math.floor((Date.now() - match.turnStartedAt) / 1000));
+        match.playerTimers[active] = Math.max(0, (match.playerTimers[active] ?? MATCH_TIMER_SECONDS) - elapsed);
+        match.turnStartedAt = Date.now();
     }
 
     private resolvePreparedEvent(match: MatchState, playerIndex: number): void {
@@ -581,7 +618,11 @@ export class MatchService {
             return;
         }
 
-        const effectLogs = resolveEffects(match, playerIndex, cardId);
+        const resolvingCardIds = [
+            ...block.slots.map(slot => slot.cardId).filter((id): id is string => Boolean(id)),
+            cardId,
+        ];
+        const effectLogs = resolvingCardIds.flatMap(id => resolveEffects(match, playerIndex, id));
 
         if (!player.completedEvents) player.completedEvents = [];
         if (!player.completedEvents.includes(cardId)) {
