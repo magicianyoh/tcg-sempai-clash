@@ -149,6 +149,9 @@ function isPlayableForProtagonist(card: CardData, protagonist: CardData, protago
     if (card.type === CardType.PROTAGONIST) return card.id === protagonist.id;
     if (card.type === CardType.EVENT_FINAL) return isFinalForProtagonist(card, protagonist);
 
+    const lineTags = (card.tags || []).filter(tag => tag.startsWith('line:'));
+    if (lineTags.length > 0 && !lineTags.includes(`line:${protagonist.id}`)) return false;
+
     const otherProtagonistIds = new Set(protagonists.filter(item => item.id !== protagonist.id).map(item => item.id));
     const referencedProtagonists = getReferencedCardIds(card).filter(cardId =>
         cardId === protagonist.id || otherProtagonistIds.has(cardId)

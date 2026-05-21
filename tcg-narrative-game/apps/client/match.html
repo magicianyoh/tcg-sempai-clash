@@ -518,6 +518,23 @@
             window.location.href = '/auth.html';
         }
 
+        function clearExpiredSession() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            localStorage.removeItem('activeDeckId');
+            localStorage.removeItem('currentMatchId');
+            window.location.href = '/auth.html';
+        }
+
+        async function readJsonResponse(res) {
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 401 || res.status === 403) {
+                clearExpiredSession();
+                throw new Error('Sesion vencida. Volve a iniciar sesion.');
+            }
+            return data;
+        }
+
         async function refreshActiveDeck() {
             if (!token) return null;
 
@@ -525,7 +542,7 @@
                 const meRes = await fetch(`${API_URL}/auth/me`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const me = await meRes.json().catch(() => ({}));
+                const me = await readJsonResponse(meRes);
                 if (meRes.ok && me.activeDeckId) {
                     activeDeckId = me.activeDeckId;
                     localStorage.setItem('activeDeckId', activeDeckId);
@@ -535,7 +552,7 @@
                 const decksRes = await fetch(`${API_URL}/decks`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const decksData = await decksRes.json().catch(() => ({}));
+                const decksData = await readJsonResponse(decksRes);
                 const decks = decksData.decks || [];
                 const localDeck = decks.find(deck => deck.id === activeDeckId);
                 const fallbackDeck = localDeck || decks[0];
@@ -715,7 +732,7 @@
                     })
                 });
 
-                const data = await res.json();
+                const data = await readJsonResponse(res);
                 if (!res.ok) throw new Error(data.error || 'Could not create CPU match');
 
                 localStorage.setItem('currentMatchId', data.matchId);

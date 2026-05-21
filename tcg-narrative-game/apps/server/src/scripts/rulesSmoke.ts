@@ -16,8 +16,8 @@ function createPlayer(username: string): PlayerState {
     return {
         id: username,
         username,
-        deck: ['shonen-char-rival', 'shonen-item-training', 'shonen-loc-dojo'],
-        hand: ['shonen-char-rival', 'shonen-item-training', 'shonen-loc-dojo'],
+        deck: ['otome-char-crown-prince', 'otome-item-sealed-letter', 'otome-loc-academy-hall'],
+        hand: ['otome-char-crown-prince', 'otome-item-sealed-letter', 'otome-loc-academy-hall'],
         discard: [],
         board: {
             blocks: [{
@@ -66,21 +66,21 @@ function assert(condition: unknown, message: string): void {
 }
 
 const match = createMatch('CPU');
-const eventCard = CARDS['shonen-event-call'];
-assert(eventCard?.type === CardType.EVENT, 'Expected shonen-event-call to exist as an event card');
+const eventCard = CARDS['otome-event-doom-villainess-bad-end-memory'];
+assert(eventCard?.type === CardType.EVENT, 'Expected otome-event-doom-villainess-bad-end-memory to exist as an event card');
 
 const logs = resolveEffects(match, 0, eventCard.id);
-assert(logs.some(line => line.includes('Story')), 'Expected event effect to generate Story log');
+assert(logs.some(line => line.includes('no puede jugar cartas')), 'Expected event effect to generate a block log');
 assert(match.players[1].statusEffects?.some(effect => effect.type === 'BLOCK_CARD_TYPE'), 'Expected event to add a card-type block');
 
-const blocked = canPlayCard(match, 1, 'shonen-char-rival', { blockIndex: 0, position: 'top' });
+const blocked = canPlayCard(match, 1, 'otome-item-sealed-letter', { blockIndex: 0, position: 'top' });
 assert(!blocked.ok, 'Expected blocked card type to be rejected');
 assert(blocked.reasons?.[0]?.includes('No puedes jugar cartas'), 'Expected blocked card reason to be player-facing');
 
 const ownMatch = createMatch('Player 1');
 ownMatch.players[0].board.blocks[0].slots[0] = {
     position: 'top',
-    cardId: 'shonen-char-rival',
+    cardId: 'otome-char-crown-prince',
     cardType: CardType.PERSONAJE,
     placedTurn: 1,
 };

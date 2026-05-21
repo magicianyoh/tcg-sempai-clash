@@ -584,6 +584,22 @@
         }
         document.getElementById('username-display').textContent = username;
 
+        function clearExpiredSession() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            localStorage.removeItem('activeDeckId');
+            window.location.href = '/auth.html';
+        }
+
+        async function readJsonResponse(res) {
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 401 || res.status === 403) {
+                clearExpiredSession();
+                throw new Error('Sesion vencida. Volve a iniciar sesion.');
+            }
+            return data;
+        }
+
         // Logout
         document.getElementById('logout-btn').addEventListener('click', () => {
             localStorage.removeItem('token');
@@ -925,8 +941,8 @@
                 const res = await fetch(`${API_URL}/decks`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
+                const data = await readJsonResponse(res);
                 if (res.ok) {
-                    const data = await res.json();
                     savedDecks = data.decks || [];
                     renderDeckDropdown();
                 }
@@ -941,7 +957,7 @@
                 const res = await fetch(`${API_URL}/prebuilt-decks`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const data = await res.json();
+                const data = await readJsonResponse(res);
                 if (!res.ok) {
                     throw new Error(data.error || 'No se pudieron cargar los decks pre-armados');
                 }
@@ -1029,7 +1045,7 @@
                     })
                 });
 
-                const data = await res.json();
+                const data = await readJsonResponse(res);
                 if (!res.ok) throw new Error(data.error || 'Error al guardar');
 
                 messageEl.textContent = '¡Mazo guardado!';

@@ -75,6 +75,13 @@ function supportsLikes(type: CardType | string): boolean {
 
 export function applyPersistedCardOverrides(): void {
     for (const card of store.listCardOverrides()) {
+        const isBaseCard = Boolean(CARDS[card.id]);
+        const isAdminCustomCard = card.tags?.includes('admin-custom') || false;
+        if (!isBaseCard && !isAdminCustomCard) {
+            store.deleteCardOverride(card.id);
+            continue;
+        }
+
         const copy = toMutableCard(card);
         CARDS[copy.id] = copy;
     }
@@ -281,6 +288,7 @@ function mergeCard(existing: MutableCard, updates: Partial<AdminCardRecord>): Mu
 function upsertCsvRow(row: CsvRow): MutableCard {
     const id = row.values.id.trim();
     const existing = CARDS[id] as MutableCard | undefined;
+    const importedTags = row.values.tags ? parseList(row.values.tags) : undefined;
     const card = mergeCard(existing || {
         id,
         name: id,
@@ -301,7 +309,7 @@ function upsertCsvRow(row: CsvRow): MutableCard {
         image: row.values.image,
         sound: row.values.sound,
         maxCopies: row.values.maxCopies ? Number(row.values.maxCopies) : undefined,
-        tags: row.values.tags ? parseList(row.values.tags) : undefined,
+        tags: existing ? importedTags : Array.from(new Set([...(importedTags || []), 'admin-custom'])),
         eventPrerequisites: row.values.prereqs ? parseList(row.values.prereqs) : undefined,
         requirements: row.values.requirements ? parseJsonArray(row.values.requirements) as CardRequirement[] : undefined,
         effects: row.values.effects ? parseJsonArray(row.values.effects) as CardEffect[] : undefined,
