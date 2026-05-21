@@ -3274,6 +3274,125 @@ const ARCHETYPE_EVENT_BLOCK: Record<string, CardType> = {
     [ARCHETYPES.KAIJU]: CardType.LOCATION,
 };
 
+const EVENT_PROTAGONIST_LINKS: Record<string, string[]> = {
+    'shonen-event-meet': ['shonen-protagonist-friend'],
+    'shonen-event-training': ['shonen-protagonist-training'],
+    'shonen-event-rivalry': ['shonen-protagonist-hot'],
+    'shonen-event-defeat': ['shonen-protagonist-training'],
+    'shonen-event-tournament': ['shonen-protagonist-hot', 'shonen-protagonist-training'],
+    'shonen-event-powerup': ['shonen-protagonist-hot'],
+    'shonen-event-speech': ['shonen-protagonist-friend'],
+    'shonen-event-invasion': ['shonen-protagonist-hot', 'shonen-protagonist-friend'],
+
+    'mecha-event-combine': ['mecha-protagonist-hot'],
+    'mecha-event-ambush': ['mecha-protagonist-calm', 'mecha-protagonist-reluctant'],
+    'mecha-event-upgrade': ['mecha-protagonist-hot', 'mecha-protagonist-calm'],
+    'mecha-event-berserk': ['mecha-protagonist-reluctant'],
+    'mecha-event-space-battle': ['mecha-protagonist-hot'],
+    'mecha-event-colony-drop': ['mecha-protagonist-hot'],
+    'mecha-event-singularity': ['mecha-protagonist-reluctant'],
+
+    'otome-event-dance': ['otome-protagonist-plain'],
+    'otome-event-jealousy': ['otome-protagonist-reincarnated'],
+    'otome-event-confession-fail': ['otome-protagonist-reincarnated'],
+    'otome-event-rescue': ['otome-protagonist-plain', 'otome-protagonist-saint'],
+    'otome-event-condemnation': ['otome-protagonist-reincarnated', 'otome-protagonist-saint'],
+
+    'slice-event-exam': ['slice-protagonist-president', 'slice-protagonist-loner'],
+    'slice-event-festival': ['slice-protagonist-president', 'slice-protagonist-band'],
+    'slice-event-concert': ['slice-protagonist-band'],
+    'slice-event-christmas': ['slice-protagonist-loner'],
+    'slice-event-trip': ['slice-protagonist-president', 'slice-protagonist-loner'],
+
+    'shojo-event-transform': ['shojo-protagonist-magical'],
+    'shojo-event-date': ['shojo-protagonist-ordinary'],
+    'shojo-event-capture': ['shojo-protagonist-magical'],
+    'shojo-event-reveal': ['shojo-protagonist-magical', 'shojo-protagonist-princess'],
+    'shojo-event-betrayal': ['shojo-protagonist-ordinary'],
+    'shojo-event-sacrifice': ['shojo-protagonist-ordinary', 'shojo-protagonist-princess'],
+    'shojo-event-powerup': ['shojo-protagonist-magical', 'shojo-protagonist-princess'],
+
+    'harem-event-fall': ['harem-protagonist-average'],
+    'harem-event-transfer': ['harem-protagonist-transfer'],
+    'harem-event-date': ['harem-protagonist-average', 'harem-protagonist-transfer'],
+    'harem-event-valentines': ['harem-protagonist-average'],
+    'harem-event-beach': ['harem-protagonist-average'],
+    'harem-event-study': ['harem-protagonist-manager'],
+    'harem-event-festival': ['harem-protagonist-manager'],
+    'harem-event-jealousy': ['harem-protagonist-transfer', 'harem-protagonist-manager'],
+
+    'isekai-event-summon': ['isekai-protagonist-op', 'isekai-protagonist-villainess'],
+    'isekai-event-cheat': ['isekai-protagonist-op', 'isekai-protagonist-monster'],
+    'isekai-event-quest': ['isekai-protagonist-op', 'isekai-protagonist-monster'],
+    'isekai-event-harem': ['isekai-protagonist-op'],
+    'isekai-event-war': ['isekai-protagonist-op', 'isekai-protagonist-villainess'],
+    'isekai-event-tournament': ['isekai-protagonist-op'],
+    'isekai-event-bath': ['isekai-protagonist-villainess'],
+    'isekai-event-raid': ['isekai-protagonist-monster'],
+    'isekai-event-feast': ['isekai-protagonist-monster', 'isekai-protagonist-villainess'],
+    'isekai-event-reveal': ['isekai-protagonist-monster', 'isekai-protagonist-villainess'],
+
+    'survival-event-alliance': ['survival-protagonist-coward'],
+    'survival-event-ambush': ['survival-protagonist-psycho'],
+    'survival-event-supply': ['survival-protagonist-psycho'],
+    'survival-event-escape': ['survival-protagonist-coward'],
+    'survival-event-duel': ['survival-protagonist-psycho'],
+    'survival-event-trap': ['survival-protagonist-psycho'],
+    'survival-event-broadcast': ['survival-protagonist-coward'],
+    'survival-event-betrayal': ['survival-protagonist-psycho'],
+    'survival-event-sacrifice': ['survival-protagonist-coward'],
+
+    'spokon-event-scrimmage': ['spokon-protagonist-worker', 'spokon-protagonist-spirit'],
+    'spokon-event-injury': ['spokon-protagonist-worker'],
+    'spokon-event-speech': ['spokon-protagonist-spirit'],
+    'spokon-event-rivalry': ['spokon-protagonist-spirit'],
+    'spokon-event-comeback': ['spokon-protagonist-spirit'],
+    'spokon-event-camp': ['spokon-protagonist-worker'],
+    'spokon-event-overtime': ['spokon-protagonist-worker'],
+    'spokon-event-loss': ['spokon-protagonist-worker'],
+    'spokon-event-training': ['spokon-protagonist-worker'],
+
+    'kaiju-event-breach': ['kaiju-protagonist-civilian'],
+    'kaiju-event-first-fight': ['kaiju-protagonist-mecha', 'kaiju-protagonist-force'],
+    'kaiju-event-discovery': ['kaiju-protagonist-force'],
+    'kaiju-event-rampage': ['kaiju-protagonist-mecha'],
+    'kaiju-event-reinforce': ['kaiju-protagonist-force'],
+    'kaiju-event-rebuild': ['kaiju-protagonist-civilian', 'kaiju-protagonist-force'],
+    'kaiju-event-retreat': ['kaiju-protagonist-civilian'],
+    'kaiju-event-weapon': ['kaiju-protagonist-mecha', 'kaiju-protagonist-force'],
+};
+
+const FINAL_EVENT_PREREQUISITE_BY_PROTAGONIST: Record<string, string> = {
+    'shonen-protagonist-hot': 'shonen-event-powerup',
+    'shonen-protagonist-training': 'shonen-event-tournament',
+    'shonen-protagonist-friend': 'shonen-event-speech',
+    'mecha-protagonist-hot': 'mecha-event-space-battle',
+    'mecha-protagonist-calm': 'mecha-event-upgrade',
+    'mecha-protagonist-reluctant': 'mecha-event-singularity',
+    'otome-protagonist-plain': 'otome-event-dance',
+    'otome-protagonist-reincarnated': 'otome-event-condemnation',
+    'otome-protagonist-saint': 'otome-event-rescue',
+    'slice-protagonist-president': 'slice-event-trip',
+    'slice-protagonist-loner': 'slice-event-christmas',
+    'slice-protagonist-band': 'slice-event-concert',
+    'shojo-protagonist-magical': 'shojo-event-powerup',
+    'shojo-protagonist-ordinary': 'shojo-event-sacrifice',
+    'shojo-protagonist-princess': 'shojo-event-reveal',
+    'harem-protagonist-average': 'harem-event-valentines',
+    'harem-protagonist-transfer': 'harem-event-jealousy',
+    'harem-protagonist-manager': 'harem-event-festival',
+    'isekai-protagonist-op': 'isekai-event-war',
+    'isekai-protagonist-monster': 'isekai-event-reveal',
+    'isekai-protagonist-villainess': 'isekai-event-feast',
+    'survival-protagonist-psycho': 'survival-event-duel',
+    'survival-protagonist-coward': 'survival-event-escape',
+    'spokon-protagonist-worker': 'spokon-event-overtime',
+    'spokon-protagonist-spirit': 'spokon-event-comeback',
+    'kaiju-protagonist-mecha': 'kaiju-event-rampage',
+    'kaiju-protagonist-civilian': 'kaiju-event-rebuild',
+    'kaiju-protagonist-force': 'kaiju-event-weapon',
+};
+
 function isEventCard(card: CardData): boolean {
     return card.type === CardType.EVENT || card.type === CardType.EVENT_KEY || card.type === CardType.EVENT_FINAL;
 }
@@ -3326,6 +3445,17 @@ function ensureBoardRequirement(card: CardData, value: number): void {
     });
 }
 
+function replaceBoardRequirementWithCards(card: CardData, cardIds: string[], description: string): void {
+    card.requirements ||= [];
+    card.requirements = card.requirements.filter(requirement => requirement.type !== 'CARD_ON_BOARD');
+    card.requirements.push({
+        type: 'CARD_ON_BOARD',
+        value: 1,
+        cardIds,
+        description,
+    });
+}
+
 function ensureEventCompletedRequirement(card: CardData, eventId?: string): void {
     if (!eventId || eventId === card.id) return;
     card.requirements ||= [];
@@ -3340,6 +3470,18 @@ function ensureEventCompletedRequirement(card: CardData, eventId?: string): void
         });
     }
     card.eventPrerequisites = Array.from(new Set([...(card.eventPrerequisites || []), eventId]));
+}
+
+function replaceEventCompletedRequirement(card: CardData, eventId?: string): void {
+    if (!eventId || eventId === card.id) return;
+    card.requirements ||= [];
+    card.requirements = card.requirements.filter(requirement => requirement.type !== 'EVENT_COMPLETED');
+    card.requirements.push({
+        type: 'EVENT_COMPLETED',
+        cardIds: [eventId],
+        description: `Requiere cerrar ${CARDS[eventId]?.name || eventId}.`,
+    });
+    card.eventPrerequisites = [eventId];
 }
 
 function addTag(card: CardData, tag: string): void {
@@ -3435,6 +3577,25 @@ function enrichRelations(cards: CardData[]): void {
     });
 }
 
+function applyProtagonistEventRequirements(cards: CardData[]): void {
+    const protagonistsById = new Map(cards
+        .filter(card => card.type === CardType.PROTAGONIST)
+        .map(card => [card.id, card]));
+
+    cards
+        .filter(card => card.type === CardType.EVENT || card.type === CardType.EVENT_KEY)
+        .forEach(card => {
+            const protagonistIds = (EVENT_PROTAGONIST_LINKS[card.id] || [])
+                .filter(id => protagonistsById.has(id));
+            if (protagonistIds.length === 0) return;
+
+            const names = protagonistIds.map(id => protagonistsById.get(id)?.name || id).join(' / ');
+            replaceBoardRequirementWithCards(card, protagonistIds, `Requiere en campo a ${names}.`);
+            addTag(card, 'protagonist_event');
+            protagonistIds.forEach(id => addTag(card, id));
+        });
+}
+
 function enrichEventOrder(cards: CardData[]): void {
     const normalEvents = cards
         .filter(card => card.type === CardType.EVENT || card.type === CardType.EVENT_KEY)
@@ -3448,6 +3609,8 @@ function enrichEventOrder(cards: CardData[]): void {
         addTag(card, `order_${String(index + 1).padStart(2, '0')}`);
         card.eventPrerequisites ||= [];
     });
+
+    applyProtagonistEventRequirements(cards);
 
     const lastNormalEvent = normalEvents[normalEvents.length - 1];
     cards.filter(card => card.type === CardType.EVENT_FINAL).forEach(card => {
@@ -3469,7 +3632,8 @@ function createFinalEventForProtagonist(protagonist: CardData, cards: CardData[]
     const normalEvents = cards
         .filter(card => card.type === CardType.EVENT || card.type === CardType.EVENT_KEY)
         .sort((a, b) => storyRequirement(a) - storyRequirement(b) || a.cost - b.cost || a.name.localeCompare(b.name));
-    const previousEvent = normalEvents[normalEvents.length - 1];
+    const previousEvent = CARDS[FINAL_EVENT_PREREQUISITE_BY_PROTAGONIST[protagonist.id]]
+        || normalEvents[normalEvents.length - 1];
 
     CARDS[finalId] = {
         id: finalId,
@@ -3513,6 +3677,10 @@ function enrichCardEffects(): void {
 
     Object.values(CARDS).forEach(card => {
         card.effects ||= [];
+        if (!isCharacterCard(card)) {
+            delete card.likesData;
+            delete card.affinity;
+        }
 
         if (card.effects.length === 0) {
             if (card.type === CardType.PROTAGONIST) {
@@ -3559,6 +3727,11 @@ function enrichCardEffects(): void {
         }
 
         if (isEventCard(card)) {
+            if (card.type === CardType.EVENT_FINAL && card.id.endsWith('-final-event')) {
+                const protagonistId = card.id.replace(/-final-event$/, '');
+                replaceBoardRequirementWithCards(card, [protagonistId], `Requiere en campo a ${CARDS[protagonistId]?.name || protagonistId}.`);
+                replaceEventCompletedRequirement(card, FINAL_EVENT_PREREQUISITE_BY_PROTAGONIST[protagonistId]);
+            }
             ensureBoardRequirement(card, card.type === CardType.EVENT_FINAL ? 2 : 1);
             card.requirements?.forEach(requirement => {
                 if (!requirement.description) {

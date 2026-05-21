@@ -231,6 +231,7 @@ function renderCards() {
 function renderSelectedCard() {
     const card = cards.find(item => item.id === selectedCardId);
     if (!card) return;
+    const supportsLikes = isCharacterLikeType(card.type || '');
 
     ($<HTMLInputElement>('card-id')).value = card.id;
     ($<HTMLInputElement>('card-name')).value = card.name || '';
@@ -242,11 +243,17 @@ function renderSelectedCard() {
     ($<HTMLInputElement>('card-max')).value = card.maxCopies ? String(card.maxCopies) : '';
     ($<HTMLTextAreaElement>('card-description')).value = card.description || card.desc || '';
     ($<HTMLTextAreaElement>('card-extended-lore')).value = card.extendedLore || '';
-    ($<HTMLTextAreaElement>('card-likes')).value = (card.likes || []).join(', ');
-    ($<HTMLTextAreaElement>('card-dislikes')).value = (card.dislikes || []).join(', ');
+    ($<HTMLElement>('card-likes-label')).style.display = supportsLikes ? '' : 'none';
+    ($<HTMLElement>('card-dislikes-label')).style.display = supportsLikes ? '' : 'none';
+    ($<HTMLTextAreaElement>('card-likes')).value = supportsLikes ? (card.likes || []).join(', ') : '';
+    ($<HTMLTextAreaElement>('card-dislikes')).value = supportsLikes ? (card.dislikes || []).join(', ') : '';
     ($<HTMLTextAreaElement>('card-requirements')).value = JSON.stringify(card.requirements || [], null, 2);
     ($<HTMLTextAreaElement>('card-effects')).value = JSON.stringify(card.effects || [], null, 2);
     renderEffectList();
+}
+
+function isCharacterLikeType(type: string): boolean {
+    return ['PROTAGONIST', 'PERSONAJE', 'CHARACTER', 'UNIT'].includes(type);
 }
 
 function parseCsvList(value: string): string[] {
@@ -363,13 +370,15 @@ async function saveCard() {
         const requirements = JSON.parse(($<HTMLTextAreaElement>('card-requirements')).value || '[]');
         const effects = JSON.parse(($<HTMLTextAreaElement>('card-effects')).value || '[]');
         const maxCopiesValue = ($<HTMLInputElement>('card-max')).value;
+        const cardType = ($<HTMLInputElement>('card-type')).value;
+        const supportsLikes = isCharacterLikeType(cardType);
 
         const data = await request<{ card: AdminCard }>(`/admin/cards/${encodeURIComponent(id)}`, {
             method: 'PUT',
             headers: jsonHeaders(),
             body: JSON.stringify({
                 name: ($<HTMLInputElement>('card-name')).value,
-                type: ($<HTMLInputElement>('card-type')).value,
+                type: cardType,
                 archetype: ($<HTMLInputElement>('card-archetype')).value,
                 cost: Number(($<HTMLInputElement>('card-cost')).value || 0),
                 image: ($<HTMLInputElement>('card-image')).value,
@@ -377,8 +386,8 @@ async function saveCard() {
                 maxCopies: maxCopiesValue ? Number(maxCopiesValue) : undefined,
                 description: ($<HTMLTextAreaElement>('card-description')).value,
                 extendedLore: ($<HTMLTextAreaElement>('card-extended-lore')).value,
-                likes: parseCsvList(($<HTMLTextAreaElement>('card-likes')).value),
-                dislikes: parseCsvList(($<HTMLTextAreaElement>('card-dislikes')).value),
+                likes: supportsLikes ? parseCsvList(($<HTMLTextAreaElement>('card-likes')).value) : [],
+                dislikes: supportsLikes ? parseCsvList(($<HTMLTextAreaElement>('card-dislikes')).value) : [],
                 requirements,
                 effects,
             }),

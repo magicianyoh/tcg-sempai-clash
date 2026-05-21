@@ -14,6 +14,13 @@ audit.issues
     .forEach(issue => issues.push(`${issue.cardId} ${issue.field}: ${issue.message}`));
 
 const events = cards.filter(card => card.type === CardType.EVENT || card.type === CardType.EVENT_KEY || card.type === CardType.EVENT_FINAL);
+const characterLikeTypes = new Set<CardType>([CardType.PROTAGONIST, CardType.PERSONAJE, CardType.CHARACTER, CardType.UNIT]);
+for (const card of cards) {
+    if (!characterLikeTypes.has(card.type) && (card.likesData?.likes?.length || card.likesData?.dislikes?.length)) {
+        issues.push(`${card.id} ${card.type} should not expose likes/dislikes`);
+    }
+}
+
 for (const event of events) {
     if (!event.requirements?.length) {
         issues.push(`${event.id} event has no requirements`);
@@ -60,6 +67,14 @@ for (const deck of prebuiltDecks) {
         ) {
             issues.push(`${deck.id} includes unrelated final event ${card.id}`);
         }
+        if (card.type === CardType.EVENT || card.type === CardType.EVENT_KEY) {
+            const referencedProtagonists = (card.requirements || [])
+                .flatMap(requirement => requirement.cardIds || [])
+                .filter(cardId => CARDS[cardId]?.type === CardType.PROTAGONIST);
+            if (referencedProtagonists.length > 0 && !referencedProtagonists.includes(deck.protagonistId)) {
+                issues.push(`${deck.id} includes protagonist-locked event ${card.id} for ${referencedProtagonists.join(',')}`);
+            }
+        }
     }
 
     const protagonistFinal = cards.find(card =>
@@ -74,6 +89,18 @@ for (const deck of prebuiltDecks) {
         issues.push(`${deck.id} has no protagonist final for ${deck.protagonistId}`);
     } else if (!deck.cards.includes(protagonistFinal.id)) {
         issues.push(`${deck.id} does not include protagonist final ${protagonistFinal.id}`);
+    } else {
+        const requiredEvents = [
+            ...(protagonistFinal.eventPrerequisites || []),
+            ...(protagonistFinal.requirements || [])
+                .filter(requirement => requirement.type === 'EVENT_COMPLETED')
+                .flatMap(requirement => requirement.cardIds || []),
+        ];
+        for (const eventId of new Set(requiredEvents)) {
+            if (!deck.cards.includes(eventId)) {
+                issues.push(`${deck.id} does not include final prerequisite ${eventId}`);
+            }
+        }
     }
 
     const uniqueCards = new Set(deck.cards);

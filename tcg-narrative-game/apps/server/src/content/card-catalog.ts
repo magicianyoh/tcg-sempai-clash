@@ -66,6 +66,13 @@ const VALID_ARCHETYPES = new Set<string>(Object.values(ARCHETYPES));
 const VALID_TARGETS = new Set(['SELF', 'OPPONENT']);
 const VALID_REQUIREMENT_TYPES = new Set(['STORY_MIN', 'FILLER_MAX', 'CARD_ON_BOARD', 'EVENT_COMPLETED', 'AFFINITY_ACTIVE']);
 
+function supportsLikes(type: CardType | string): boolean {
+    return type === CardType.PROTAGONIST
+        || type === CardType.PERSONAJE
+        || type === CardType.CHARACTER
+        || type === CardType.UNIT;
+}
+
 export function applyPersistedCardOverrides(): void {
     for (const card of store.listCardOverrides()) {
         const copy = toMutableCard(card);
@@ -74,8 +81,9 @@ export function applyPersistedCardOverrides(): void {
 }
 
 export function serializeCard(card: MutableCard): AdminCardRecord {
-    const likes = card.likesData?.likes || card.likes || [];
-    const dislikes = card.likesData?.dislikes || card.dislikes || [];
+    const canHaveLikes = supportsLikes(card.type);
+    const likes = canHaveLikes ? card.likesData?.likes || card.likes || [] : [];
+    const dislikes = canHaveLikes ? card.likesData?.dislikes || card.dislikes || [] : [];
     return {
         id: card.id,
         name: card.name,
@@ -89,11 +97,11 @@ export function serializeCard(card: MutableCard): AdminCardRecord {
         prereqs: card.eventPrerequisites || [],
         requirements: card.requirements || [],
         effects: card.effects || [],
-        affinity: card.affinity,
-        likesData: {
+        affinity: canHaveLikes ? card.affinity : undefined,
+        likesData: canHaveLikes ? {
             likes,
             dislikes,
-        },
+        } : undefined,
         likes,
         dislikes,
         archetype: card.archetype,
@@ -234,15 +242,17 @@ function countByField(issues: CardAuditIssue[], field: string): number {
 }
 
 function mergeCard(existing: MutableCard, updates: Partial<AdminCardRecord>): MutableCard {
-    const likes = updates.likes ?? existing.likesData?.likes ?? existing.likes ?? [];
-    const dislikes = updates.dislikes ?? existing.likesData?.dislikes ?? existing.dislikes ?? [];
-    return {
+    const type = (updates.type || existing.type) as CardType;
+    const canHaveLikes = supportsLikes(type);
+    const likes = canHaveLikes ? updates.likes ?? existing.likesData?.likes ?? existing.likes ?? [] : [];
+    const dislikes = canHaveLikes ? updates.dislikes ?? existing.likesData?.dislikes ?? existing.dislikes ?? [] : [];
+    const merged: MutableCard = {
         ...existing,
         name: cleanString(updates.name) || existing.name,
         description: cleanString(updates.description ?? updates.desc) || existing.description,
         backstory: updates.backstory ?? existing.backstory,
         extendedLore: updates.extendedLore ?? existing.extendedLore,
-        type: (updates.type || existing.type) as CardType,
+        type,
         cost: updates.cost !== undefined ? Number(updates.cost) : existing.cost,
         archetype: cleanString(updates.archetype) || existing.archetype,
         image: updates.image !== undefined ? updates.image : existing.image,
@@ -251,13 +261,21 @@ function mergeCard(existing: MutableCard, updates: Partial<AdminCardRecord>): Mu
         tags: updates.tags ?? existing.tags,
         requirements: updates.requirements !== undefined ? updates.requirements as CardRequirement[] : existing.requirements,
         effects: updates.effects !== undefined ? updates.effects as CardEffect[] : existing.effects,
-        likesData: {
+        affinity: canHaveLikes ? existing.affinity : undefined,
+        likesData: canHaveLikes ? {
             likes,
             dislikes,
-        },
+        } : undefined,
         likes,
         dislikes,
     };
+    if (!canHaveLikes) {
+        delete merged.likesData;
+        delete merged.affinity;
+        delete merged.likes;
+        delete merged.dislikes;
+    }
+    return merged;
 }
 
 function upsertCsvRow(row: CsvRow): MutableCard {

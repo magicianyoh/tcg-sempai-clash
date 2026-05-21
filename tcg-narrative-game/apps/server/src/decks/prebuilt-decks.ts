@@ -150,7 +150,11 @@ function isPlayableForProtagonist(card: CardData, protagonist: CardData, protago
     if (card.type === CardType.EVENT_FINAL) return isFinalForProtagonist(card, protagonist);
 
     const otherProtagonistIds = new Set(protagonists.filter(item => item.id !== protagonist.id).map(item => item.id));
-    return !getReferencedCardIds(card).some(cardId => otherProtagonistIds.has(cardId));
+    const referencedProtagonists = getReferencedCardIds(card).filter(cardId =>
+        cardId === protagonist.id || otherProtagonistIds.has(cardId)
+    );
+    if (referencedProtagonists.length === 0) return true;
+    return referencedProtagonists.includes(protagonist.id);
 }
 
 function getProtagonistFinal(cards: CardData[], protagonist: CardData): CardData | undefined {
