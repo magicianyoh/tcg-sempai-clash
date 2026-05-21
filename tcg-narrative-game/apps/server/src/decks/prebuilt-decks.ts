@@ -12,6 +12,7 @@ export interface PrebuiltDeckData {
     description: string;
     cards: string[];
     backgroundId: string;
+    customized?: boolean;
 }
 
 const BACKGROUND_BY_ARCHETYPE: Record<string, string> = {
@@ -331,15 +332,20 @@ export function getPrebuiltDecks(settings: PrebuiltDeckSettings): PrebuiltDeckDa
         const protagonists = archetypeCards.filter(card => card.type === CardType.PROTAGONIST);
         const archetypeInfo = ARCHETYPE_INFO[archetypeId as keyof typeof ARCHETYPE_INFO];
 
-        return protagonists.map(protagonist => ({
-            id: `prebuilt-${slug(archetypeId)}-${slug(protagonist.id)}`,
-            name: `${archetypeInfo?.name || archetypeId}: ${protagonist.name}`,
-            archetypeId,
-            protagonistId: protagonist.id,
-            protagonistName: protagonist.name,
-            description: `Mazo pre-armado centrado en ${protagonist.name}: ${strategyLabel(protagonist)}. Incluye su evento final propio y evita protagonistas/finales ajenos.`,
-            cards: buildDeckForProtagonist(archetypeId, protagonist, archetypeCards),
-            backgroundId: BACKGROUND_BY_ARCHETYPE[archetypeId] || 'bg_01',
-        }));
+        return protagonists.map(protagonist => {
+            const id = `prebuilt-${slug(archetypeId)}-${slug(protagonist.id)}`;
+            const override = settings.deckOverrides?.[id];
+            return {
+                id,
+                name: `${archetypeInfo?.name || archetypeId}: ${protagonist.name}`,
+                archetypeId,
+                protagonistId: protagonist.id,
+                protagonistName: protagonist.name,
+                description: `Mazo pre-armado centrado en ${protagonist.name}: ${strategyLabel(protagonist)}. Incluye su evento final propio y evita protagonistas/finales ajenos.`,
+                cards: override?.length ? [...override] : buildDeckForProtagonist(archetypeId, protagonist, archetypeCards),
+                backgroundId: BACKGROUND_BY_ARCHETYPE[archetypeId] || 'bg_01',
+                customized: Boolean(override?.length),
+            };
+        });
     });
 }

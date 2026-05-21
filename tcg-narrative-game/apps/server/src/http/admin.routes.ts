@@ -7,11 +7,17 @@ import {
     AdminCardRecord,
     applyCardUpdate,
     auditCards,
+    exportCardsCsvBlankTemplate,
+    exportCardsCsvTemplate,
     importCsvCards,
     MutableCard,
+    parseArchetypeCsv,
     serializeCard,
+    validateArchetypeCsv,
     validateCsv,
 } from '../content/card-catalog';
+import { ARCHETYPE_INFO, ARCHETYPES, GAME_CONSTANTS } from '@tcg/shared/constants';
+import { CardType } from '@tcg/shared/types';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -40,6 +46,7 @@ interface AdminUserBody {
 
 interface AdminCsvBody {
     csv: string;
+    kind?: 'cards' | 'archetypes';
 }
 
 interface AdminMediaUploadBody {
@@ -61,6 +68,43 @@ interface AdminWikiBody {
 interface AdminPrebuiltDeckSettingsBody {
     enabled?: boolean;
     archetypes?: Record<string, boolean>;
+    deckOverrides?: Record<string, string[]>;
+}
+
+function csvEscape(value: unknown): string {
+    const text = String(value ?? '');
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function toCsv(rows: unknown[][]): string {
+    return rows.map(row => row.map(csvEscape).join(',')).join('\n');
+}
+
+function exportArchetypesCsvTemplate(): string {
+    const settings = store.getPrebuiltDeckSettings();
+    const rows = Object.values(ARCHETYPES).map(id => {
+        const info = ARCHETYPE_INFO[id as keyof typeof ARCHETYPE_INFO];
+        return [id, info?.name || id, info?.description || '', settings.archetypes[id] !== false ? 'true' : 'false'];
+    });
+    return toCsv([['id', 'name', 'description', 'enabled'], ...rows]);
+}
+
+function validatePrebuiltDeckOverride(deckId: string, cards: string[]): string | null {
+    const deck = getPrebuiltDecks({ enabled: true, archetypes: {}, deckOverrides: {} }).find(item => item.id === deckId);
+    if (!deck) return `Deck pre-armado inexistente: ${deckId}`;
+    if (cards.length !== GAME_CONSTANTS.DECK_SIZE) return `El deck debe tener ${GAME_CONSTANTS.DECK_SIZE} cartas.`;
+
+    const counts: Record<string, number> = {};
+    for (const id of cards) {
+        const card = CARDS[id];
+        if (!card) return `Carta inexistente: ${id}`;
+        if (card.archetype !== deck.archetypeId) return `${card.name} no pertenece al arquetipo ${deck.archetypeId}.`;
+        if (card.type === CardType.PROTAGONIST && card.id !== deck.protagonistId) return `El deck solo puede usar el protagonista ${deck.protagonistName}.`;
+        counts[id] = (counts[id] || 0) + 1;
+        const max = card.maxCopies ?? GAME_CONSTANTS.MAX_COPIES_PER_CARD;
+        if (counts[id] > max) return `Demasiadas copias de ${card.name}; maximo ${max}.`;
+    }
+    return null;
 }
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply) {
@@ -109,12 +153,34 @@ export async function adminRoutes(fastify: FastifyInstance) {
         }
     });
 
+    fastify.get<{ Params: { kind: string }; Querystring: { blank?: string } }>('/admin/csv/templates/:kind', async (request, reply) => {
+        const kind = request.params.kind;
+        if (kind === 'cards') {
+            return {
+                filename: 'sempai-cards-template.csv',
+                csv: request.query.blank === 'true' ? exportCardsCsvBlankTemplate() : exportCardsCsvTemplate(),
+            };
+        }
+        if (kind === 'archetypes') {
+            return { filename: 'sempai-archetypes-template.csv', csv: exportArchetypesCsvTemplate() };
+        }
+        return reply.code(404).send({ error: 'Unknown CSV template kind' });
+    });
+
     fastify.post<{ Body: AdminCsvBody }>('/admin/cards/validate-import', async (request) => {
-        return { validation: validateCsv(request.body.csv || '') };
+        const kind = request.body.kind || 'cards';
+        return { validation: kind === 'archetypes' ? validateArchetypeCsv(request.body.csv || '') : validateCsv(request.body.csv || '') };
     });
 
     fastify.post<{ Body: AdminCsvBody }>('/admin/cards/import', async (request, reply) => {
         try {
+            if ((request.body.kind || 'cards') === 'archetypes') {
+                const imported = parseArchetypeCsv(request.body.csv || '');
+                const archetypes = Object.fromEntries(imported.map(item => [item.id, item.enabled]));
+                const settings = store.updatePrebuiltDeckSettings({ archetypes });
+                return reply.code(201).send({ imported, count: imported.length, settings });
+            }
+
             const imported = importCsvCards(request.body.csv || '');
             return reply.code(201).send({ imported, count: imported.length, audit: auditCards() });
         } catch (error: any) {
@@ -196,13 +262,19 @@ export async function adminRoutes(fastify: FastifyInstance) {
     });
 
     fastify.get('/admin/prebuilt-decks/settings', async () => {
+        const settings = store.getPrebuiltDeckSettings();
         return {
-            settings: store.getPrebuiltDeckSettings(),
-            decks: getPrebuiltDecks({ enabled: true, archetypes: {} }),
+            settings,
+            decks: getPrebuiltDecks({ enabled: true, archetypes: {}, deckOverrides: settings.deckOverrides || {} }),
         };
     });
 
-    fastify.put<{ Body: AdminPrebuiltDeckSettingsBody }>('/admin/prebuilt-decks/settings', async (request) => {
+    fastify.put<{ Body: AdminPrebuiltDeckSettingsBody }>('/admin/prebuilt-decks/settings', async (request, reply) => {
+        for (const [deckId, cards] of Object.entries(request.body.deckOverrides || {})) {
+            const error = validatePrebuiltDeckOverride(deckId, cards);
+            if (error) return reply.code(400).send({ error });
+        }
+
         return {
             settings: store.updatePrebuiltDeckSettings(request.body),
         };

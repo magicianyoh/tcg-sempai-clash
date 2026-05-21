@@ -293,6 +293,29 @@
             margin-top: 8px;
         }
 
+        .deck-builder-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(280px, 0.75fr);
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .deck-card-pool,
+        .deck-edit-list {
+            display: grid;
+            gap: 7px;
+            max-height: 420px;
+            overflow: auto;
+            padding-right: 4px;
+        }
+
+        .deck-edit-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
         .modal {
             position: fixed;
             inset: 0;
@@ -323,6 +346,10 @@
             }
 
             .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .deck-builder-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -488,8 +515,23 @@
             </section>
 
             <section class="panel section" id="import-section">
-                <h2>Importar cartas por CSV</h2>
-                <p class="meta" style="margin: 8px 0 12px;">Columnas soportadas: id,name,type,archetype,cost,description,image,sound,likes,dislikes,tags,prereqs,requirements,effects,maxCopies. `requirements` y `effects` aceptan JSON.</p>
+                <h2>Importar CSV</h2>
+                <p class="meta" style="margin: 8px 0 12px;">Cartas: id,name,type,archetype,cost,description,image,sound,likes,dislikes,tags,prereqs,requirements,effects,maxCopies. Arquetipos: id,name,description,enabled.</p>
+                <div class="grid" style="margin-bottom: 10px;">
+                    <label>Tipo de importacion
+                        <select id="csv-kind">
+                            <option value="cards">Cartas</option>
+                            <option value="archetypes">Arquetipos</option>
+                        </select>
+                    </label>
+                    <label>Plantillas
+                        <div class="actions" style="margin-top:0;">
+                            <button id="download-card-template-btn" class="btn" type="button">Plantilla cartas</button>
+                            <button id="download-blank-card-template-btn" class="btn" type="button">Carta vacia</button>
+                            <button id="download-archetype-template-btn" class="btn" type="button">Plantilla arquetipos</button>
+                        </div>
+                    </label>
+                </div>
                 <input id="csv-file" type="file" accept=".csv,text/csv">
                 <div style="height: 10px"></div>
                 <textarea id="csv-text" style="min-height: 260px;" placeholder="id,name,type,archetype,cost,description"></textarea>
@@ -549,6 +591,30 @@
                 <div style="height: 14px"></div>
                 <h3>Plantillas disponibles</h3>
                 <div id="prebuilt-preview" class="card-list"></div>
+                <div style="height: 14px"></div>
+                <h3>Editor manual de deck</h3>
+                <div class="grid" style="margin-top: 8px;">
+                    <label>Plantilla
+                        <select id="prebuilt-editor-select"></select>
+                    </label>
+                    <label>Buscar carta
+                        <input id="prebuilt-card-search" placeholder="Nombre o id">
+                    </label>
+                </div>
+                <div class="deck-builder-grid">
+                    <div>
+                        <h4>Cartas del arquetipo</h4>
+                        <div id="prebuilt-card-pool" class="deck-card-pool"></div>
+                    </div>
+                    <div>
+                        <h4>Deck seleccionado <span id="prebuilt-deck-count" class="meta">0/20</span></h4>
+                        <div id="prebuilt-deck-list" class="deck-edit-list"></div>
+                        <div class="actions">
+                            <button id="save-prebuilt-deck-btn" class="btn primary" type="button">Guardar este deck</button>
+                            <button id="reset-prebuilt-deck-btn" class="btn danger" type="button">Volver al auto-generado</button>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <section class="panel section" id="media-section">

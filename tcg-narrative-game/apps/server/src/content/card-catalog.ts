@@ -55,6 +55,11 @@ export interface CsvValidationReport {
     warnings: CsvValidationIssue[];
 }
 
+export interface ArchetypeCsvRecord {
+    id: string;
+    enabled: boolean;
+}
+
 type CsvRow = {
     line: number;
     values: Record<string, string>;
@@ -209,6 +214,98 @@ export function importCsvCards(csv: string): AdminCardRecord[] {
     });
 }
 
+export function exportCardsCsvTemplate(cards: MutableCard[] = Object.values(CARDS) as MutableCard[]): string {
+    const headers = ['id', 'name', 'type', 'archetype', 'cost', 'description', 'image', 'sound', 'likes', 'dislikes', 'tags', 'prereqs', 'requirements', 'effects', 'maxCopies'];
+    const rows = cards.map(card => {
+        const serialized = serializeCard(card);
+        return [
+            serialized.id,
+            serialized.name,
+            serialized.type,
+            serialized.archetype,
+            String(serialized.cost ?? 0),
+            serialized.description || serialized.desc || '',
+            serialized.image || '',
+            serialized.sound || '',
+            (serialized.likes || []).join('|'),
+            (serialized.dislikes || []).join('|'),
+            (serialized.tags || []).join('|'),
+            (serialized.eventPrerequisites || serialized.prereqs || []).join('|'),
+            JSON.stringify(serialized.requirements || []),
+            JSON.stringify(serialized.effects || []),
+            serialized.maxCopies !== undefined ? String(serialized.maxCopies) : '',
+        ];
+    });
+    return toCsv([headers, ...rows]);
+}
+
+export function exportCardsCsvBlankTemplate(): string {
+    return toCsv([
+        ['id', 'name', 'type', 'archetype', 'cost', 'description', 'image', 'sound', 'likes', 'dislikes', 'tags', 'prereqs', 'requirements', 'effects', 'maxCopies'],
+        [
+            'custom-card-id',
+            'Nombre de carta',
+            CardType.PERSONAJE,
+            ARCHETYPES.SHONEN,
+            '1',
+            'Descripcion visible',
+            'asset-o-url',
+            '',
+            'card-id-like-1|card-id-like-2',
+            'card-id-dislike-1',
+            'admin-custom',
+            '',
+            '[]',
+            JSON.stringify([{ type: EffectType.STORY, value: 1, target: 'SELF', description: 'Gana 1 Story.' }]),
+            '3',
+        ],
+    ]);
+}
+
+export function validateArchetypeCsv(csv: string): CsvValidationReport {
+    const parsed = parseCsv(csv);
+    const issues: CsvValidationIssue[] = [...parsed.errors];
+    const validIds = new Set(Object.values(ARCHETYPES));
+    const seen = new Set<string>();
+
+    if (parsed.rows.length === 0) {
+        issues.push({ severity: 'error', line: 1, field: 'csv', message: 'El CSV no contiene arquetipos importables.' });
+    }
+
+    for (const row of parsed.rows) {
+        const id = row.values.id?.trim();
+        if (!id) {
+            issues.push({ severity: 'error', line: row.line, field: 'id', message: 'Falta el ID del arquetipo.' });
+        } else if (!validIds.has(id as any)) {
+            issues.push({ severity: 'error', line: row.line, field: 'id', message: `Arquetipo inexistente en el juego: ${id}.` });
+        } else if (seen.has(id)) {
+            issues.push({ severity: 'error', line: row.line, field: 'id', message: `Arquetipo duplicado: ${id}.` });
+        }
+        if (id) seen.add(id);
+
+        const enabled = row.values.enabled?.trim().toLowerCase();
+        if (enabled && !['true', 'false', '1', '0', 'yes', 'no', 'si', 'sí'].includes(enabled)) {
+            issues.push({ severity: 'error', line: row.line, field: 'enabled', message: 'Usa true/false, 1/0, yes/no o si/no.' });
+        }
+    }
+
+    const errors = issues.filter(issue => issue.severity === 'error');
+    const warnings = issues.filter(issue => issue.severity === 'warning');
+    return { valid: errors.length === 0, count: parsed.rows.length, errors, warnings };
+}
+
+export function parseArchetypeCsv(csv: string): ArchetypeCsvRecord[] {
+    const validation = validateArchetypeCsv(csv);
+    if (!validation.valid) {
+        throw Object.assign(new Error('CSV validation failed'), { validation });
+    }
+
+    return parseCsv(csv).rows.map(row => ({
+        id: row.values.id.trim(),
+        enabled: parseBoolean(row.values.enabled, true),
+    }));
+}
+
 export function auditCards(): CardAuditReport {
     const cards = Object.values(CARDS) as MutableCard[];
     const ids = new Set(cards.map(card => card.id));
@@ -327,6 +424,21 @@ function upsertCsvRow(row: CsvRow): MutableCard {
 
 function parseList(value?: string): string[] {
     return (value || '').split(/[|,]/).map(item => item.trim()).filter(Boolean);
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+    const normalized = (value || '').trim().toLowerCase();
+    if (!normalized) return fallback;
+    return ['true', '1', 'yes', 'si', 'sí'].includes(normalized);
+}
+
+function toCsv(rows: unknown[][]): string {
+    return rows.map(row => row.map(csvEscape).join(',')).join('\n');
+}
+
+function csvEscape(value: unknown): string {
+    const text = String(value ?? '');
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 function cleanString(value: unknown): string {

@@ -53,6 +53,7 @@ export interface WikiContent {
 export interface PrebuiltDeckSettings {
     enabled: boolean;
     archetypes: Record<string, boolean>;
+    deckOverrides?: Record<string, string[]>;
 }
 
 export type PersistedCardData = CardData & {
@@ -124,6 +125,7 @@ export class MemoryStore {
     private prebuiltDeckSettings: PrebuiltDeckSettings = {
         enabled: true,
         archetypes: {},
+        deckOverrides: {},
     };
 
     private wikiContent: WikiContent = {
@@ -193,6 +195,10 @@ export class MemoryStore {
                     archetypes: {
                         ...this.prebuiltDeckSettings.archetypes,
                         ...(parsed.prebuiltDeckSettings.archetypes || {}),
+                    },
+                    deckOverrides: {
+                        ...this.prebuiltDeckSettings.deckOverrides,
+                        ...(parsed.prebuiltDeckSettings.deckOverrides || {}),
                     },
                 };
             }
@@ -448,6 +454,9 @@ export class MemoryStore {
         return {
             enabled: this.prebuiltDeckSettings.enabled,
             archetypes: { ...this.prebuiltDeckSettings.archetypes },
+            deckOverrides: Object.fromEntries(
+                Object.entries(this.prebuiltDeckSettings.deckOverrides || {}).map(([id, cards]) => [id, [...cards]])
+            ),
         };
     }
 
@@ -459,6 +468,9 @@ export class MemoryStore {
                 ...this.prebuiltDeckSettings.archetypes,
                 ...(updates.archetypes || {}),
             },
+            deckOverrides: updates.deckOverrides !== undefined
+                ? Object.fromEntries(Object.entries(updates.deckOverrides).map(([id, cards]) => [id, [...cards]]))
+                : { ...(this.prebuiltDeckSettings.deckOverrides || {}) },
         };
         this.saveToDisk();
         return this.getPrebuiltDeckSettings();

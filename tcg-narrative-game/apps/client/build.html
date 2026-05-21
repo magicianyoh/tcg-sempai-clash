@@ -260,6 +260,71 @@
             font-size: 0.7rem;
         }
 
+        .modal {
+            position: fixed;
+            inset: 0;
+            z-index: 40;
+            display: none;
+            place-items: center;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.72);
+        }
+
+        .modal.open {
+            display: grid;
+        }
+
+        .card-detail-panel {
+            width: min(860px, 96vw);
+            max-height: 90vh;
+            overflow: auto;
+            display: grid;
+            grid-template-columns: minmax(180px, 0.45fr) minmax(0, 1fr);
+            gap: 16px;
+            border: 1px solid rgba(78, 205, 196, 0.35);
+            border-radius: 12px;
+            background: #101624;
+            padding: 16px;
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+        }
+
+        .card-art {
+            aspect-ratio: 3 / 4;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 8px;
+            background: #080c14;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            color: rgba(255, 255, 255, 0.55);
+            text-align: center;
+            padding: 10px;
+        }
+
+        .card-art img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .detail-section {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .detail-list {
+            display: grid;
+            gap: 6px;
+            margin-top: 6px;
+            color: rgba(255, 255, 255, 0.76);
+            font-size: 0.82rem;
+        }
+
+        .detail-list li {
+            margin-left: 18px;
+        }
+
         /* Deck Panel */
         .deck-header {
             display: flex;
@@ -473,6 +538,10 @@
             .load-btn {
                 width: 100%;
             }
+
+            .card-detail-panel {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -542,6 +611,38 @@
         </div>
     </div>
 
+    <div id="card-detail-modal" class="modal">
+        <div class="card-detail-panel">
+            <div id="detail-card-art" class="card-art"></div>
+            <div>
+                <div style="display:flex; justify-content:space-between; gap:12px; align-items:start;">
+                    <div>
+                        <h2 id="detail-card-name"></h2>
+                        <p id="detail-card-meta" style="color:rgba(255,255,255,.58); font-size:.82rem; margin-top:4px;"></p>
+                    </div>
+                    <button id="close-card-detail" class="logout-btn" type="button">Cerrar</button>
+                </div>
+                <div class="detail-section">
+                    <strong>Descripcion</strong>
+                    <p id="detail-card-description" style="margin-top:6px; color:rgba(255,255,255,.8); line-height:1.45;"></p>
+                </div>
+                <div id="detail-affinity-section" class="detail-section"></div>
+                <div id="detail-requirement-section" class="detail-section"></div>
+                <div id="detail-effect-section" class="detail-section"></div>
+                <div class="detail-section">
+                    <strong>Agregar al deck</strong>
+                    <p id="detail-copy-state" style="margin-top:6px; color:rgba(255,255,255,.62);"></p>
+                    <div class="btn-row">
+                        <button class="save-btn" data-add-copies="1" type="button">+1</button>
+                        <button class="save-btn" data-add-copies="2" type="button">+2</button>
+                        <button class="save-btn" data-add-copies="3" type="button">+3</button>
+                        <button class="save-btn" data-add-copies="max" type="button">Max</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_URL = window.location.origin;
         const DECK_SIZE = 20;
@@ -568,6 +669,7 @@
         let prebuiltDecks = [];
         let currentEditingDeckId = null;
         let selectedBackground = 'bg_01'; // Default
+        let detailCardId = '';
 
         const FIELD_THEMES = [
             { id: 'bg_01', name: 'Neon Clash', sub: 'Cian / Rojo', a: '#020609', b: '#4ecdc4' },
@@ -786,6 +888,28 @@
             });
         });
 
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;',
+            }[char] || char));
+        }
+
+        function allCards() {
+            return Object.values(CARDS).flat();
+        }
+
+        function getCardById(cardId) {
+            return allCards().find(card => card.id === cardId);
+        }
+
+        function cardName(cardId) {
+            return getCardById(cardId)?.name || cardId;
+        }
+
         // Render cards
         function renderCards() {
             const grid = document.getElementById('cards-grid');
@@ -828,23 +952,89 @@
             }).join('');
 
             grid.querySelectorAll('.card').forEach(cardEl => {
-                cardEl.addEventListener('click', () => addToDeck(cardEl.dataset.id));
+                cardEl.addEventListener('click', () => openCardDetail(cardEl.dataset.id));
             });
         }
 
-        function addToDeck(cardId) {
+        function addToDeck(cardId, amount = 1) {
             if (!selectedArchetype) return;
             const card = CARDS[selectedArchetype].find(c => c.id === cardId);
             if (!card) return;
 
-            const countInDeck = deckCards.filter(id => id === cardId).length;
             const maxCopies = card.maxCopies || MAX_COPIES;
-
-            if (countInDeck >= maxCopies || deckCards.length >= DECK_SIZE) return;
-
-            deckCards.push(cardId);
+            let added = 0;
+            while (added < amount && deckCards.length < DECK_SIZE && deckCards.filter(id => id === cardId).length < maxCopies) {
+                deckCards.push(cardId);
+                added++;
+            }
             renderCards();
             renderDeck();
+            if (detailCardId === cardId) renderCardDetail(card);
+        }
+
+        function openCardDetail(cardId) {
+            const card = CARDS[selectedArchetype]?.find(c => c.id === cardId);
+            if (!card) return;
+            detailCardId = cardId;
+            document.getElementById('card-detail-modal').classList.add('open');
+            renderCardDetail(card);
+        }
+
+        function renderCardDetail(card) {
+            const countInDeck = deckCards.filter(id => id === card.id).length;
+            const maxCopies = card.maxCopies || MAX_COPIES;
+            const art = document.getElementById('detail-card-art');
+            const image = card.image || '';
+            art.innerHTML = /^(https?:|data:image)/.test(image)
+                ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(card.name)}">`
+                : `<div><strong>${escapeHtml(card.name)}</strong><br><span>${escapeHtml(image || 'Sin imagen asignada')}</span></div>`;
+
+            document.getElementById('detail-card-name').textContent = card.name;
+            document.getElementById('detail-card-meta').textContent = `${card.type} / ${card.archetype} / costo ${card.cost} / ${countInDeck}/${maxCopies}`;
+            document.getElementById('detail-card-description').textContent = card.description || card.desc || '';
+            document.getElementById('detail-copy-state').textContent = `En deck: ${countInDeck}. Maximo permitido: ${maxCopies}. Espacios libres: ${DECK_SIZE - deckCards.length}.`;
+
+            const likes = card.likes || card.likesData?.likes || [];
+            const dislikes = card.dislikes || card.likesData?.dislikes || [];
+            const affinity = card.affinity?.compatibleWith || [];
+            document.getElementById('detail-affinity-section').innerHTML = (likes.length || dislikes.length || affinity.length)
+                ? `<strong>Afinidades</strong><ul class="detail-list">
+                    ${affinity.length ? `<li>Compatible: ${affinity.map(cardName).map(escapeHtml).join(', ')}</li>` : ''}
+                    ${likes.length ? `<li>Le gusta: ${likes.map(cardName).map(escapeHtml).join(', ')}</li>` : ''}
+                    ${dislikes.length ? `<li>No le gusta: ${dislikes.map(cardName).map(escapeHtml).join(', ')}</li>` : ''}
+                </ul>`
+                : '';
+
+            const requirements = card.requirements || [];
+            document.getElementById('detail-requirement-section').innerHTML = requirements.length
+                ? `<strong>Requisitos</strong><ul class="detail-list">${requirements.map(req => `<li>${escapeHtml(describeRequirement(req))}</li>`).join('')}</ul>`
+                : '';
+
+            const effects = card.effects || [];
+            document.getElementById('detail-effect-section').innerHTML = effects.length
+                ? `<strong>Efectos</strong><ul class="detail-list">${effects.map(effect => `<li>${escapeHtml(describeEffect(effect))}</li>`).join('')}</ul>`
+                : '';
+        }
+
+        function describeRequirement(req) {
+            if (req.description) return req.description;
+            if (req.type === 'STORY_MIN') return `Requiere ${req.value || 0} Story.`;
+            if (req.type === 'FILLER_MAX') return `Filler maximo ${req.value || 0}.`;
+            if (req.type === 'EVENT_COMPLETED') return `Completar evento: ${(req.cardIds || []).map(cardName).join(', ')}.`;
+            if (req.type === 'CARD_ON_BOARD') return `En campo: ${(req.cardIds || []).map(cardName).join(', ') || req.cardType || req.tag || 'carta compatible'}.`;
+            return `${req.type}`;
+        }
+
+        function describeEffect(effect) {
+            if (effect.description) return effect.description;
+            const target = effect.target === 'OPPONENT' ? 'rival' : 'propio';
+            if (effect.type === 'STORY') return `Suma ${effect.value || 0} Story al jugador ${target}.`;
+            if (effect.type === 'FILLER') return `${effect.value >= 0 ? 'Suma' : 'Limpia'} ${Math.abs(effect.value || 0)} Filler al jugador ${target}.`;
+            if (effect.type === 'DRAW') return `Roba ${effect.value || 1} carta(s).`;
+            if (effect.type === 'DISCARD') return `Descarta ${effect.value || 1} carta(s) del ${target}.`;
+            if (effect.type === 'BLOCK_CARD_TYPE') return `Bloquea ${effect.cardType || 'un tipo'} por ${effect.turns || effect.value || 1} turno(s).`;
+            if (effect.type === 'VICTORY') return 'Puede cerrar la partida.';
+            return `${effect.type}`;
         }
 
         function removeFromDeck(index) {
@@ -1017,6 +1207,24 @@
 
         document.getElementById('load-btn').addEventListener('click', loadSelectedDeckFromDropdown);
         document.getElementById('deck-dropdown').addEventListener('change', loadSelectedDeckFromDropdown);
+        document.getElementById('close-card-detail').addEventListener('click', () => {
+            document.getElementById('card-detail-modal').classList.remove('open');
+        });
+        document.getElementById('card-detail-modal').addEventListener('click', event => {
+            if (event.target.id === 'card-detail-modal') {
+                document.getElementById('card-detail-modal').classList.remove('open');
+            }
+        });
+        document.querySelectorAll('[data-add-copies]').forEach(button => {
+            button.addEventListener('click', () => {
+                const card = getCardById(detailCardId);
+                if (!card) return;
+                const current = deckCards.filter(id => id === card.id).length;
+                const max = card.maxCopies || MAX_COPIES;
+                const amount = button.dataset.addCopies === 'max' ? max - current : Number(button.dataset.addCopies || 1);
+                addToDeck(card.id, amount);
+            });
+        });
 
         // Save deck
         document.getElementById('save-btn').addEventListener('click', async () => {

@@ -45,13 +45,16 @@ type PrebuiltDeck = {
     id: string;
     name: string;
     archetypeId: string;
+    protagonistId: string;
     protagonistName: string;
     description: string;
     cards: string[];
+    customized?: boolean;
 };
 type PrebuiltDeckSettings = {
     enabled: boolean;
     archetypes: Record<string, boolean>;
+    deckOverrides?: Record<string, string[]>;
 };
 type CardAuditIssue = {
     severity: 'error' | 'warning';
@@ -93,6 +96,8 @@ let mediaAssets: MediaAsset[] = [];
 let prebuiltDecks: PrebuiltDeck[] = [];
 let prebuiltSettings: PrebuiltDeckSettings = { enabled: true, archetypes: {} };
 let selectedCardId = '';
+let selectedPrebuiltDeckId = '';
+let prebuiltDeckDraft: string[] = [];
 let pendingMediaTarget = '';
 let pendingMediaType: 'image' | 'audio' | 'other' = 'image';
 
@@ -141,6 +146,28 @@ function setMessage(id: string, message: string, error = false) {
     const el = $(id);
     el.textContent = message;
     el.classList.toggle('error', error);
+}
+
+function escapeHtml(value: unknown): string {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+    }[char] || char));
+}
+
+function downloadText(filename: string, text: string, mimeType = 'text/csv;charset=utf-8') {
+    const blob = new Blob([text], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
 }
 
 function showApp() {
@@ -419,10 +446,11 @@ function renderCsvValidation(validation: CsvValidationReport) {
 async function validateCsvImport(): Promise<CsvValidationReport | null> {
     try {
         const csv = ($<HTMLTextAreaElement>('csv-text')).value;
+        const kind = ($<HTMLSelectElement>('csv-kind')).value;
         const data = await request<{ validation: CsvValidationReport }>('/admin/cards/validate-import', {
             method: 'POST',
             headers: jsonHeaders(),
-            body: JSON.stringify({ csv }),
+            body: JSON.stringify({ csv, kind }),
         });
         renderCsvValidation(data.validation);
         setMessage('import-message', data.validation.valid ? 'Validacion correcta.' : 'Validacion con errores.', !data.validation.valid);
@@ -441,13 +469,24 @@ async function importCsv() {
         const data = await request<{ count: number; audit?: CardAuditReport }>('/admin/cards/import', {
             method: 'POST',
             headers: jsonHeaders(),
-            body: JSON.stringify({ csv }),
+            body: JSON.stringify({ csv, kind: ($<HTMLSelectElement>('csv-kind')).value }),
         });
-        setMessage('import-message', `${data.count} cartas importadas.`);
-        await loadCards();
+        setMessage('import-message', `${data.count} fila(s) importadas.`);
+        await Promise.all([loadCards(), loadPrebuiltDeckSettings()]);
         if (data.audit) renderAudit(data.audit);
     } catch (error: any) {
         if (error.validation) renderCsvValidation(error.validation);
+        setMessage('import-message', error.message, true);
+    }
+}
+
+async function downloadCsvTemplate(kind: 'cards' | 'archetypes', blank = false) {
+    try {
+        const suffix = blank ? '?blank=true' : '';
+        const data = await request<{ filename: string; csv: string }>(`/admin/csv/templates/${kind}${suffix}`, { headers: authHeaders() });
+        downloadText(data.filename, data.csv);
+        setMessage('import-message', 'Plantilla exportada.');
+    } catch (error: any) {
         setMessage('import-message', error.message, true);
     }
 }
@@ -575,8 +614,12 @@ async function resetPassword(username: string) {
 
 async function loadPrebuiltDeckSettings() {
     const data = await request<{ settings: PrebuiltDeckSettings; decks: PrebuiltDeck[] }>('/admin/prebuilt-decks/settings', { headers: authHeaders() });
-    prebuiltSettings = data.settings || { enabled: true, archetypes: {} };
+    prebuiltSettings = data.settings || { enabled: true, archetypes: {}, deckOverrides: {} };
     prebuiltDecks = data.decks || [];
+    selectedPrebuiltDeckId ||= prebuiltDecks[0]?.id || '';
+    const selected = prebuiltDecks.find(deck => deck.id === selectedPrebuiltDeckId) || prebuiltDecks[0];
+    selectedPrebuiltDeckId = selected?.id || '';
+    prebuiltDeckDraft = selected ? [...selected.cards] : [];
     renderPrebuiltDeckSettings();
 }
 
@@ -599,12 +642,21 @@ function renderPrebuiltDeckSettings() {
     }).join('');
 
     $('prebuilt-preview').innerHTML = prebuiltDecks.map(deck => `
-        <div class="row">
-            <strong>${deck.name}</strong>
+        <button class="row ${deck.id === selectedPrebuiltDeckId ? 'active' : ''}" data-edit-prebuilt="${deck.id}" type="button">
+            <strong>${deck.name}${deck.customized ? ' (editado)' : ''}</strong>
             <span class="meta">${deck.archetypeId} / ${deck.cards.length} cartas / protagonista: ${deck.protagonistName}</span>
             <span class="meta">${deck.description}</span>
-        </div>
+        </button>
     `).join('');
+
+    $('prebuilt-editor-select').innerHTML = prebuiltDecks.map(deck => `
+        <option value="${deck.id}" ${deck.id === selectedPrebuiltDeckId ? 'selected' : ''}>${deck.name}${deck.customized ? ' (editado)' : ''}</option>
+    `).join('');
+
+    document.querySelectorAll<HTMLButtonElement>('[data-edit-prebuilt]').forEach(button => {
+        button.addEventListener('click', () => selectPrebuiltDeck(button.dataset.editPrebuilt || ''));
+    });
+    renderPrebuiltDeckEditor();
 }
 
 async function savePrebuiltDeckSettings() {
@@ -621,11 +673,137 @@ async function savePrebuiltDeckSettings() {
             body: JSON.stringify({
                 enabled: ($<HTMLInputElement>('prebuilt-enabled')).checked,
                 archetypes,
+                deckOverrides: prebuiltSettings.deckOverrides || {},
             }),
         });
         prebuiltSettings = data.settings;
         setMessage('prebuilt-message', 'Decks pre-armados guardados.');
         renderPrebuiltDeckSettings();
+    } catch (error: any) {
+        setMessage('prebuilt-message', error.message, true);
+    }
+}
+
+function selectPrebuiltDeck(deckId: string) {
+    const deck = prebuiltDecks.find(item => item.id === deckId);
+    if (!deck) return;
+    selectedPrebuiltDeckId = deck.id;
+    prebuiltDeckDraft = [...deck.cards];
+    renderPrebuiltDeckSettings();
+}
+
+function selectedPrebuiltDeck(): PrebuiltDeck | undefined {
+    return prebuiltDecks.find(deck => deck.id === selectedPrebuiltDeckId);
+}
+
+function cardById(id: string): AdminCard | undefined {
+    return cards.find(card => card.id === id);
+}
+
+function addCardToPrebuiltDraft(cardId: string) {
+    const card = cardById(cardId);
+    const deck = selectedPrebuiltDeck();
+    if (!card || !deck || card.archetype !== deck.archetypeId) return;
+    const count = prebuiltDeckDraft.filter(id => id === cardId).length;
+    const max = card.maxCopies ?? 3;
+    if (prebuiltDeckDraft.length >= 20 || count >= max) return;
+    prebuiltDeckDraft.push(cardId);
+    renderPrebuiltDeckEditor();
+}
+
+function removeCardFromPrebuiltDraft(index: number) {
+    prebuiltDeckDraft.splice(index, 1);
+    renderPrebuiltDeckEditor();
+}
+
+function renderPrebuiltDeckEditor() {
+    const deck = selectedPrebuiltDeck();
+    if (!deck) {
+        $('prebuilt-card-pool').innerHTML = '<div class="row">No hay plantillas.</div>';
+        $('prebuilt-deck-list').innerHTML = '';
+        $('prebuilt-deck-count').textContent = '0/20';
+        return;
+    }
+
+    const search = ($<HTMLInputElement>('prebuilt-card-search')).value.toLowerCase();
+    const pool = cards
+        .filter(card => card.archetype === deck.archetypeId)
+        .filter(card => !search || card.name.toLowerCase().includes(search) || card.id.toLowerCase().includes(search))
+        .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
+
+    $('prebuilt-card-pool').innerHTML = pool.map(card => {
+        const count = prebuiltDeckDraft.filter(id => id === card.id).length;
+        const max = card.maxCopies ?? 3;
+        return `
+            <button class="row" data-add-prebuilt-card="${card.id}" type="button">
+                <strong>${escapeHtml(card.name)}</strong>
+                <span class="meta">${card.type} / ${card.id} / ${count}/${max}</span>
+                <span>${escapeHtml(card.description || card.desc || '')}</span>
+            </button>
+        `;
+    }).join('');
+
+    const grouped = new Map<string, number[]>();
+    prebuiltDeckDraft.forEach((id, index) => {
+        if (!grouped.has(id)) grouped.set(id, []);
+        grouped.get(id)?.push(index);
+    });
+    $('prebuilt-deck-count').textContent = `${prebuiltDeckDraft.length}/20`;
+    $('prebuilt-deck-list').innerHTML = Array.from(grouped.entries()).map(([id, indices]) => {
+        const card = cardById(id);
+        const lastIndex = indices[indices.length - 1];
+        return `
+            <div class="row deck-edit-card">
+                <div>
+                    <strong>${indices.length}x ${escapeHtml(card?.name || id)}</strong>
+                    <span class="meta">${card?.type || ''} / ${id}</span>
+                </div>
+                <button class="btn danger" data-remove-prebuilt-index="${lastIndex}" type="button">Quitar</button>
+            </div>
+        `;
+    }).join('');
+
+    document.querySelectorAll<HTMLButtonElement>('[data-add-prebuilt-card]').forEach(button => {
+        button.addEventListener('click', () => addCardToPrebuiltDraft(button.dataset.addPrebuiltCard || ''));
+    });
+    document.querySelectorAll<HTMLButtonElement>('[data-remove-prebuilt-index]').forEach(button => {
+        button.addEventListener('click', () => removeCardFromPrebuiltDraft(Number(button.dataset.removePrebuiltIndex)));
+    });
+}
+
+async function saveSelectedPrebuiltDeck() {
+    if (!selectedPrebuiltDeckId) return;
+    try {
+        const nextOverrides = {
+            ...(prebuiltSettings.deckOverrides || {}),
+            [selectedPrebuiltDeckId]: [...prebuiltDeckDraft],
+        };
+        const data = await request<{ settings: PrebuiltDeckSettings }>('/admin/prebuilt-decks/settings', {
+            method: 'PUT',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ ...prebuiltSettings, deckOverrides: nextOverrides }),
+        });
+        prebuiltSettings = data.settings;
+        setMessage('prebuilt-message', 'Deck pre-armado actualizado.');
+        await loadPrebuiltDeckSettings();
+    } catch (error: any) {
+        setMessage('prebuilt-message', error.message, true);
+    }
+}
+
+async function resetSelectedPrebuiltDeck() {
+    if (!selectedPrebuiltDeckId) return;
+    try {
+        const nextOverrides = { ...(prebuiltSettings.deckOverrides || {}) };
+        delete nextOverrides[selectedPrebuiltDeckId];
+        const data = await request<{ settings: PrebuiltDeckSettings }>('/admin/prebuilt-decks/settings', {
+            method: 'PUT',
+            headers: jsonHeaders(),
+            body: JSON.stringify({ ...prebuiltSettings, deckOverrides: nextOverrides }),
+        });
+        prebuiltSettings = data.settings;
+        setMessage('prebuilt-message', 'Deck restaurado al auto-generado.');
+        await loadPrebuiltDeckSettings();
     } catch (error: any) {
         setMessage('prebuilt-message', error.message, true);
     }
@@ -803,9 +981,16 @@ function bindEvents() {
     setupCardReferenceAutocomplete('card-dislikes');
     $('import-btn').addEventListener('click', importCsv);
     $('validate-import-btn').addEventListener('click', validateCsvImport);
+    $('download-card-template-btn').addEventListener('click', () => downloadCsvTemplate('cards'));
+    $('download-blank-card-template-btn').addEventListener('click', () => downloadCsvTemplate('cards', true));
+    $('download-archetype-template-btn').addEventListener('click', () => downloadCsvTemplate('archetypes'));
     $('run-audit-btn').addEventListener('click', () => runCardAudit(true));
     $('create-user-btn').addEventListener('click', createUser);
     $('save-prebuilt-btn').addEventListener('click', savePrebuiltDeckSettings);
+    $('save-prebuilt-deck-btn').addEventListener('click', saveSelectedPrebuiltDeck);
+    $('reset-prebuilt-deck-btn').addEventListener('click', resetSelectedPrebuiltDeck);
+    $('prebuilt-editor-select').addEventListener('change', () => selectPrebuiltDeck(($<HTMLSelectElement>('prebuilt-editor-select')).value));
+    $('prebuilt-card-search').addEventListener('input', renderPrebuiltDeckEditor);
     $('save-ui-btn').addEventListener('click', saveSettings);
     $('upload-media-btn').addEventListener('click', uploadMedia);
     $('close-media-modal').addEventListener('click', () => $('media-modal').classList.remove('open'));
