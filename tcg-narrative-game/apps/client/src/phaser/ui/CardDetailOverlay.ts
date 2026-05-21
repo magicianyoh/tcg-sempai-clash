@@ -36,6 +36,8 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
     private idText!: Phaser.GameObjects.Text;
     private navLeft!: Phaser.GameObjects.Container;
     private navRight!: Phaser.GameObjects.Container;
+    private panel!: Phaser.GameObjects.Rectangle;
+    private cardVisualBg!: Phaser.GameObjects.Rectangle;
 
     constructor(scene: Phaser.Scene, config: CardDetailOverlayConfig) {
         super(scene, 0, 0);
@@ -56,9 +58,9 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
 
         const panelWidth = Math.min(width * 0.92, 760);
         const panelHeight = Math.min(height * 0.88, 520);
-        const panel = scene.add.rectangle(width / 2, height / 2, panelWidth, panelHeight, 0x07090f, 0.98)
+        this.panel = scene.add.rectangle(width / 2, height / 2, panelWidth, panelHeight, 0x07090f, 0.98)
             .setStrokeStyle(3, 0xffffff);
-        this.add(panel);
+        this.add(this.panel);
 
         const compact = width < 700;
         const artWidth = compact ? Math.min(panelWidth - 70, 240) : 230;
@@ -66,9 +68,9 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         const artX = compact ? width / 2 : width / 2 - panelWidth / 2 + artWidth / 2 + 40;
         const artY = compact ? height / 2 - panelHeight / 2 + 130 : height / 2;
 
-        const cardVisualBg = scene.add.rectangle(artX, artY, artWidth, artHeight, 0x111827, 1)
+        this.cardVisualBg = scene.add.rectangle(artX, artY, artWidth, artHeight, 0x111827, 1)
             .setStrokeStyle(3, 0xffffff);
-        this.add(cardVisualBg);
+        this.add(this.cardVisualBg);
 
         this.imageText = scene.add.text(artX, artY, '', {
             fontSize: compact ? '18px' : '24px',
@@ -150,6 +152,7 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
 
         scene.add.existing(this);
         this.setDepth(3000);
+        this.playOpenAnimation();
     }
 
     private createNavButtons(width: number, height: number, panelWidth: number): void {
@@ -231,5 +234,42 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
 
         this.navLeft.setAlpha(this.currentIndex > 0 ? 1 : 0.25);
         this.navRight.setAlpha(this.currentIndex < this.cards.length - 1 ? 1 : 0.25);
+        this.playCardFlipZoom();
+    }
+
+    private playOpenAnimation(): void {
+        this.setAlpha(0);
+        this.panel.setScale(0.96);
+        this.scene.tweens.add({
+            targets: this,
+            alpha: 1,
+            duration: 120,
+            ease: 'Sine.Out',
+        });
+        this.scene.tweens.add({
+            targets: this.panel,
+            scale: 1,
+            duration: 180,
+            ease: 'Back.Out',
+        });
+    }
+
+    private playCardFlipZoom(): void {
+        this.scene.tweens.killTweensOf(this.cardVisualBg);
+        this.cardVisualBg.setScale(0, 1.06);
+        this.scene.tweens.add({
+            targets: this.cardVisualBg,
+            scaleX: 1.06,
+            duration: 110,
+            ease: 'Sine.Out',
+            onComplete: () => {
+                this.scene.tweens.add({
+                    targets: this.cardVisualBg,
+                    scale: 1,
+                    duration: 150,
+                    ease: 'Back.Out',
+                });
+            },
+        });
     }
 }

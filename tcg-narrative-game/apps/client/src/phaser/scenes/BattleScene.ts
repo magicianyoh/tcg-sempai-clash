@@ -154,6 +154,7 @@ export class BattleScene extends Phaser.Scene {
     private lastLogIndex = 0;
     private lastActivePlayerId = '';
     private previousFillerByPlayer: Record<string, number> = {};
+    private previousHandCountByPlayer: Record<string, number> = {};
     private bannerQueue: Array<{ title: string; subtitle?: string; tone: BannerTone }> = [];
     private bannerActive = false;
     private narrativeEntries: string[] = [];
@@ -191,6 +192,7 @@ export class BattleScene extends Phaser.Scene {
         this.myUsername = (window as any).username || 'Player';
 
         this.background = this.add.rectangle(0, 0, width, height, 0x000000).setOrigin(0).setDepth(-30);
+        this.ensureEffectTexture();
         this.createLayout();
         this.createHUD();
         this.createNarrativeLog();
@@ -210,6 +212,15 @@ export class BattleScene extends Phaser.Scene {
         this.boardContainer = this.add.container(this.getBoardX(), this.getBoardY());
         this.handContainer = this.add.container(0, height - 108);
         this.bannerLayer = this.add.container(0, 0).setDepth(2500);
+    }
+
+    private ensureEffectTexture(): void {
+        if (this.textures.exists('sc-effect-particle')) return;
+        const graphics = this.add.graphics();
+        graphics.fillStyle(0xffffff, 1);
+        graphics.fillCircle(8, 8, 8);
+        graphics.generateTexture('sc-effect-particle', 16, 16);
+        graphics.destroy();
     }
 
     private createHUD(): void {
@@ -445,6 +456,7 @@ export class BattleScene extends Phaser.Scene {
             return;
         }
 
+        this.playCardFromHandEffect(card, dropZone);
         if (dropData.isEventOrb) {
             this.sendActivateEvent(cardId);
         } else {
@@ -555,7 +567,8 @@ export class BattleScene extends Phaser.Scene {
             || (pointer as any)?.wasTouch === true;
 
         if (wantsDetail || this.currentView === 'opponent' || position === 'event') {
-            this.showCardDetail(cardId);
+            this.playFieldCardDetailEffect(blockIndex, position);
+            this.time.delayedCall(120, () => this.showCardDetail(cardId));
             return;
         }
 
@@ -564,7 +577,8 @@ export class BattleScene extends Phaser.Scene {
             return;
         }
 
-        this.showCardDetail(cardId);
+        this.playFieldCardDetailEffect(blockIndex, position);
+        this.time.delayedCall(120, () => this.showCardDetail(cardId));
     }
 
     private showFeedback(x: number, y: number, message: string): void {
@@ -582,6 +596,93 @@ export class BattleScene extends Phaser.Scene {
             alpha: 0,
             duration: 1500,
             onComplete: () => text.destroy(),
+        });
+    }
+
+    private playCardFromHandEffect(card: CardSprite, dropZone: Phaser.GameObjects.GameObject): void {
+        const targetMatrix = (dropZone as any).getWorldTransformMatrix();
+        const handMatrix = card.getWorldTransformMatrix();
+        const cardData = this.getCardDisplayData(card.getCardId());
+        const ghost = this.add.container(handMatrix.tx, handMatrix.ty).setDepth(2300);
+        const width = Math.max(52, card.width * card.scaleX);
+        const height = Math.max(74, card.height * card.scaleY);
+        const bg = this.add.rectangle(0, 0, width, height, this.getBannerColor(this.isEventType(cardData.type) ? 'event' : 'neutral'), 0.92)
+            .setStrokeStyle(3, 0xffffff);
+        const label = this.add.text(0, 0, cardData.name, {
+            fontSize: '11px',
+            color: '#ffffff',
+            fontStyle: 'bold',
+            align: 'center',
+            wordWrap: { width: width - 10 },
+        }).setOrigin(0.5);
+        ghost.add([bg, label]);
+        this.tweens.add({
+            targets: ghost,
+            x: targetMatrix.tx,
+            y: targetMatrix.ty,
+            scale: { from: 1, to: 0.78 },
+            angle: { from: 0, to: this.isEventType(cardData.type) ? 360 : 0 },
+            duration: 360,
+            ease: 'Cubic.Out',
+            onComplete: () => {
+                this.emitParticleBurst(targetMatrix.tx, targetMatrix.ty, this.getBannerColor(this.isEventType(cardData.type) ? 'event' : 'neutral'), 16);
+                ghost.destroy();
+            },
+        });
+    }
+
+    private playDrawCardEffect(playerName: string, count: number): void {
+        const isSelf = playerName === this.myUsername;
+        const { width, height } = this.scale;
+        const startX = isSelf ? width - 64 : width - 180;
+        const startY = isSelf ? height - 230 : 150;
+        const endX = isSelf ? width / 2 : width - 180;
+        const endY = isSelf ? height - 82 : 205;
+        for (let index = 0; index < Math.min(count, 3); index++) {
+            const card = this.add.container(startX, startY).setDepth(2350);
+            const bg = this.add.rectangle(0, 0, 54, 76, 0x111827, 1).setStrokeStyle(2, 0x4ecdc4);
+            const text = this.add.text(0, 0, '+1', { fontSize: '18px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+            card.add([bg, text]);
+            this.tweens.add({
+                targets: card,
+                x: endX + index * 12,
+                y: endY,
+                scale: { from: 0.76, to: 1 },
+                alpha: { from: 0.25, to: 1 },
+                delay: index * 70,
+                duration: 440,
+                ease: 'Back.Out',
+                onComplete: () => {
+                    this.tweens.add({
+                        targets: card,
+                        alpha: 0,
+                        y: card.y + 18,
+                        duration: 220,
+                        onComplete: () => card.destroy(),
+                    });
+                },
+            });
+        }
+    }
+
+    private playFieldCardDetailEffect(blockIndex?: number, position?: SlotPosition | 'event'): void {
+        if (blockIndex === undefined || !position) return;
+        const block = this.currentBlocks.find(item => item.getData('blockIndex') === blockIndex) || this.currentBlocks[0];
+        const target = position === 'event' ? block?.getEventOrbWorldPosition() : block?.getSlotWorldPosition(position);
+        if (!target) return;
+
+        const focus = this.add.rectangle(target.x, target.y, 88, 126, 0xffffff, 0.12)
+            .setStrokeStyle(3, 0xffffff, 0.95)
+            .setDepth(2380);
+        focus.setScale(0, 1);
+        this.tweens.add({
+            targets: focus,
+            scaleX: 1.18,
+            scaleY: 1.18,
+            alpha: { from: 0.95, to: 0 },
+            duration: 260,
+            ease: 'Back.Out',
+            onComplete: () => focus.destroy(),
         });
     }
 
@@ -1120,7 +1221,24 @@ export class BattleScene extends Phaser.Scene {
 
         if (blockData) {
             this.syncBlockWithState(block, blockData);
+            this.updateRequirementGlow(block, player, blockData);
         }
+    }
+
+    private updateRequirementGlow(block: TimelineBlock, player: PlayerState, blockData: TimelineBlockData): void {
+        if (blockData.eventCompleted) return;
+        const eventIds = [
+            ...player.hand,
+            ...(blockData.eventSlot ? [blockData.eventSlot] : []),
+        ];
+        const readyEvent = eventIds
+            .map(id => this.getCardDisplayData(id))
+            .find(card => this.isEventType(card.type) && this.canActivateEventCard(card.id));
+        if (!readyEvent) {
+            block.setRequirementGlow([], false);
+            return;
+        }
+        block.setRequirementGlow(this.getRequiredSlotPositions(blockData, readyEvent), true);
     }
 
     private renderHand(hand: string[], interactive: boolean): void {
@@ -1145,6 +1263,7 @@ export class BattleScene extends Phaser.Scene {
             const y = 20;
             const cardData = this.getCardDisplayData(cardId);
             const activatable = interactive && this.isEventType(cardData.type) && this.canActivateEventCard(cardId);
+            const silenced = interactive && this.isHandCardSilenced(cardId, cardData.type);
             const card = new CardSprite(this, {
                 cardId,
                 name: cardData.name,
@@ -1158,11 +1277,13 @@ export class BattleScene extends Phaser.Scene {
                 height: cardHeight,
                 interactive,
                 activatable,
+                silenced,
             });
 
             card.on('card-tapped', (id: string, wantsDetail: boolean) => {
                 if (wantsDetail || !interactive) {
-                    this.showCardDetail(id);
+                    card.playDetailFocus();
+                    this.time.delayedCall(120, () => this.showCardDetail(id));
                 }
             });
 
@@ -1188,6 +1309,18 @@ export class BattleScene extends Phaser.Scene {
             const cardData = this.getCardDisplayData(data.eventSlot);
             block.placeEvent(data.eventSlot, cardData.name);
         }
+    }
+
+    private isHandCardSilenced(cardId: string, cardType: string): boolean {
+        if (!this.matchState) return false;
+        const me = this.matchState.players[this.myPlayerIndex];
+        return (me.statusEffects || []).some(effect =>
+            effect.turnsRemaining > 0
+            && (
+                (effect.type === 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN' && effect.cardId === cardId)
+                || (effect.type === 'BLOCK_CARD_TYPE' && effect.cardType === cardType)
+            )
+        );
     }
 
     private getViewedPlayer(): PlayerState {
@@ -1246,6 +1379,7 @@ export class BattleScene extends Phaser.Scene {
             this.lastActivePlayerId = next.activePlayerId;
             next.players.forEach(player => {
                 this.previousFillerByPlayer[player.username] = player.fillerPoints;
+                this.previousHandCountByPlayer[player.username] = player.hand.length;
             });
             this.renderActiveEffects();
             this.enqueueBanner('CAMBIO DE TURNO', `Turno de ${next.activePlayerId}`, 'turn');
@@ -1266,6 +1400,13 @@ export class BattleScene extends Phaser.Scene {
                     this.enqueueBanner('ARCO DE RELLENO', `${player.username} llego a ${GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD} FP`, 'danger');
                 }
                 this.previousFillerByPlayer[player.username] = player.fillerPoints;
+                const prevHandCount = this.previousHandCountByPlayer[player.username]
+                    ?? previous.players.find(p => p.username === player.username)?.hand.length
+                    ?? player.hand.length;
+                if (player.hand.length > prevHandCount) {
+                    this.time.delayedCall(90, () => this.playDrawCardEffect(player.username, player.hand.length - prevHandCount));
+                }
+                this.previousHandCountByPlayer[player.username] = player.hand.length;
             });
         }
 
@@ -1303,6 +1444,7 @@ export class BattleScene extends Phaser.Scene {
             case 'event_complete': {
                 const card = this.findCardFromLog(entry.details);
                 this.playConfiguredSound(this.uiSettings.phaseAdvanceSound);
+                this.playLocationChangeEffect(card?.type === 'EVENT_FINAL' ? 'final' : 'event');
                 this.playConfiguredEffect(this.uiSettings.eventResolveEffect || this.uiSettings.phaseAdvanceEffect, card?.type === 'EVENT_FINAL' ? 'final' : 'event');
                 this.animateEventResolution(entry, card);
                 this.time.delayedCall(760, () => {
@@ -1636,6 +1778,9 @@ export class BattleScene extends Phaser.Scene {
         }
 
         const color = this.getBannerColor(tone);
+        if (effect === 'spark' || effect === 'gold-pulse') {
+            this.emitParticleBurst(this.scale.width / 2, this.scale.height / 2, color, effect === 'gold-pulse' ? 34 : 22);
+        }
         const ring = this.add.circle(this.scale.width / 2, this.scale.height / 2, 36, color, 0)
             .setStrokeStyle(5, color, 0.92)
             .setDepth(2540);
@@ -1647,6 +1792,50 @@ export class BattleScene extends Phaser.Scene {
             ease: 'Sine.Out',
             onComplete: () => ring.destroy(),
         });
+    }
+
+    private playLocationChangeEffect(tone: BannerTone): void {
+        const { width, height } = this.scale;
+        const color = this.getBannerColor(tone);
+        const panel = this.add.rectangle(-width * 0.55, height / 2, width * 1.1, height, color, 0.16)
+            .setDepth(2320)
+            .setAngle(-8);
+        const scanline = this.add.rectangle(width / 2, height / 2, width, 4, 0xffffff, 0.88)
+            .setDepth(2321);
+        this.cameras.main.flash(180, (color >> 16) & 255, (color >> 8) & 255, color & 255, false);
+        this.cameras.main.shake(180, tone === 'final' ? 0.006 : 0.0035);
+        this.tweens.add({
+            targets: panel,
+            x: width * 1.45,
+            alpha: { from: 0.24, to: 0 },
+            duration: 620,
+            ease: 'Cubic.InOut',
+            onComplete: () => panel.destroy(),
+        });
+        this.tweens.add({
+            targets: scanline,
+            y: { from: 0, to: height },
+            alpha: { from: 0.95, to: 0 },
+            duration: 520,
+            ease: 'Sine.Out',
+            onComplete: () => scanline.destroy(),
+        });
+    }
+
+    private emitParticleBurst(x: number, y: number, color: number, quantity = 18): void {
+        if (!this.textures.exists('sc-effect-particle')) this.ensureEffectTexture();
+        const emitter = this.add.particles(x, y, 'sc-effect-particle', {
+            lifespan: 420,
+            speed: { min: 80, max: 240 },
+            angle: { min: 0, max: 360 },
+            scale: { start: 0.55, end: 0 },
+            alpha: { start: 0.95, end: 0 },
+            tint: color,
+            quantity,
+            emitting: false,
+        }).setDepth(2520);
+        emitter.explode(quantity);
+        this.time.delayedCall(560, () => emitter.destroy());
     }
 
     private enqueueBanner(title: string, subtitle: string | undefined, tone: BannerTone): void {

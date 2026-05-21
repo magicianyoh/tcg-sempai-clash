@@ -17,6 +17,7 @@ export interface CardSpriteConfig {
     height?: number;
     interactive?: boolean;
     activatable?: boolean;
+    silenced?: boolean;
 }
 
 export class CardSprite extends Phaser.GameObjects.Container {
@@ -38,6 +39,8 @@ export class CardSprite extends Phaser.GameObjects.Container {
     private isDragging: boolean = false;
     private originalPosition: { x: number; y: number } = { x: 0, y: 0 };
     private activatable = false;
+    private silenced = false;
+    private silenceOverlay: Phaser.GameObjects.Container | null = null;
 
     static readonly DEFAULT_WIDTH = 100;
     static readonly DEFAULT_HEIGHT = 140;
@@ -55,10 +58,12 @@ export class CardSprite extends Phaser.GameObjects.Container {
         this.cardDescription = config.description;
         this.cardBackstory = config.backstory || 'No backstory available.';
         this.activatable = config.activatable === true;
+        this.silenced = config.silenced === true;
         this.originalPosition = { x: config.x, y: config.y };
 
         this.createCard(width, height);
         this.setActivatable(this.activatable);
+        this.setSilenced(this.silenced);
 
         if (config.interactive !== false) {
             this.enableInteraction();
@@ -185,7 +190,13 @@ export class CardSprite extends Phaser.GameObjects.Container {
         // Hover effects
         this.on('pointerover', () => {
             if (!this.isDragging) {
-                this.setScale(1.05);
+                this.scene.tweens.add({
+                    targets: this,
+                    scale: 1.05,
+                    y: this.y - 8,
+                    duration: 130,
+                    ease: 'Sine.Out',
+                });
                 this.background.setStrokeStyle(3, 0x4ecdc4);
                 this.setDepth(10); // Bring to front slightly
             }
@@ -193,7 +204,13 @@ export class CardSprite extends Phaser.GameObjects.Container {
 
         this.on('pointerout', () => {
             if (!this.isDragging) {
-                this.setScale(1);
+                this.scene.tweens.add({
+                    targets: this,
+                    scale: 1,
+                    y: this.originalPosition.y,
+                    duration: 130,
+                    ease: 'Sine.Out',
+                });
                 this.background.setStrokeStyle(2, 0xffffff);
                 this.setDepth(0);
             }
@@ -205,6 +222,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
         this.on('dragstart', () => {
             this.isDragging = true;
             this.originalPosition = { x: this.x, y: this.y };
+            this.scene.tweens.killTweensOf(this);
             this.setScale(1.1);
             this.setDepth(100);
             this.background.setStrokeStyle(3, 0xe94560);
@@ -259,19 +277,37 @@ export class CardSprite extends Phaser.GameObjects.Container {
         this.showingFront = !this.showingFront;
 
         if (this.showingFront) {
-            this.nameText.setVisible(true);
-            this.descText.setVisible(true);
-            this.costBadge.setVisible(true);
-            this.typeBadge.setVisible(true);
-            this.backstoryText.setVisible(false);
-            this.background.setFillStyle(this.getTypeColor());
+            this.scene.tweens.add({
+                targets: this,
+                scaleX: 0,
+                duration: 100,
+                ease: 'Sine.In',
+                onComplete: () => {
+                    this.nameText.setVisible(true);
+                    this.descText.setVisible(true);
+                    this.costBadge.setVisible(true);
+                    this.typeBadge.setVisible(true);
+                    this.backstoryText.setVisible(false);
+                    this.background.setFillStyle(this.getTypeColor());
+                    this.scene.tweens.add({ targets: this, scaleX: 1, duration: 120, ease: 'Back.Out' });
+                },
+            });
         } else {
-            this.nameText.setVisible(true);
-            this.descText.setVisible(false);
-            this.costBadge.setVisible(false);
-            this.typeBadge.setVisible(false);
-            this.backstoryText.setVisible(true);
-            this.background.setFillStyle(0x2c3e50);
+            this.scene.tweens.add({
+                targets: this,
+                scaleX: 0,
+                duration: 100,
+                ease: 'Sine.In',
+                onComplete: () => {
+                    this.nameText.setVisible(true);
+                    this.descText.setVisible(false);
+                    this.costBadge.setVisible(false);
+                    this.typeBadge.setVisible(false);
+                    this.backstoryText.setVisible(true);
+                    this.background.setFillStyle(0x2c3e50);
+                    this.scene.tweens.add({ targets: this, scaleX: 1, duration: 120, ease: 'Back.Out' });
+                },
+            });
         }
     }
 
@@ -303,6 +339,62 @@ export class CardSprite extends Phaser.GameObjects.Container {
             this.background.setAlpha(1);
             this.background.setStrokeStyle(2, 0xffffff);
         }
+    }
+
+    setSilenced(silenced: boolean): void {
+        this.silenced = silenced;
+        if (this.silenceOverlay) {
+            this.scene.tweens.killTweensOf(this.silenceOverlay);
+            this.silenceOverlay.destroy();
+            this.silenceOverlay = null;
+        }
+        if (!silenced) {
+            this.setAlpha(1);
+            return;
+        }
+
+        const overlay = this.scene.add.container(0, 0);
+        const shade = this.scene.add.rectangle(0, 0, this.width, this.height, 0x05070c, 0.58);
+        const slash = this.scene.add.rectangle(0, 0, this.width * 1.2, 5, 0xe94560, 0.95)
+            .setAngle(-24);
+        const label = this.scene.add.text(0, 0, 'SILENCIADA', {
+            fontSize: '11px',
+            color: '#ffffff',
+            fontStyle: 'bold',
+            backgroundColor: '#e94560',
+            padding: { x: 5, y: 3 },
+        }).setOrigin(0.5);
+        overlay.add([shade, slash, label]);
+        overlay.setAlpha(0.86);
+        this.add(overlay);
+        this.silenceOverlay = overlay;
+        this.scene.tweens.add({
+            targets: overlay,
+            alpha: { from: 0.66, to: 0.95 },
+            duration: 520,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.InOut',
+        });
+    }
+
+    playDetailFocus(): void {
+        this.scene.tweens.add({
+            targets: this,
+            scaleX: 0,
+            duration: 90,
+            ease: 'Sine.In',
+            onComplete: () => {
+                this.scene.tweens.add({
+                    targets: this,
+                    scaleX: 1.15,
+                    scaleY: 1.15,
+                    duration: 140,
+                    yoyo: true,
+                    ease: 'Back.Out',
+                });
+            },
+        });
     }
 
     // ============================================

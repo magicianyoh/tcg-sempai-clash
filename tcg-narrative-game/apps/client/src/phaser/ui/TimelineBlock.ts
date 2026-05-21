@@ -131,6 +131,7 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
             }
         });
 
+        const cardFace = this.scene.add.container(0, 0);
         const cardBg = this.scene.add.rectangle(
             0,
             0,
@@ -162,12 +163,23 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
                 fontStyle: 'bold',
             }).setOrigin(0.5) : null;
 
-        cardBg.setInteractive({ useHandCursor: true });
-        cardBg.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        cardFace.setSize(TimelineBlock.SLOT_WIDTH - 8, TimelineBlock.SLOT_HEIGHT - 8);
+        cardFace.setInteractive({ useHandCursor: true });
+        cardFace.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
             this.scene.events.emit('card-clicked', cardId, pointer, this.blockIndex, position);
         });
 
-        slot.add(faceDownMark ? [cardBg, typeText, cardLabel, faceDownMark] : [cardBg, typeText, cardLabel]);
+        cardFace.add(faceDownMark ? [cardBg, typeText, cardLabel, faceDownMark] : [cardBg, typeText, cardLabel]);
+        slot.add(cardFace);
+        if (revealed) {
+            cardFace.setScale(0, 1);
+            this.scene.tweens.add({
+                targets: cardFace,
+                scaleX: 1,
+                duration: 180,
+                ease: 'Back.Out',
+            });
+        }
         return true;
     }
 
@@ -306,6 +318,13 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
 
     pulseSlots(positions: SlotPosition[]): void {
         positions.forEach(position => this.slots.get(position)?.pulse());
+    }
+
+    setRequirementGlow(positions: SlotPosition[], active: boolean): void {
+        const wanted = new Set(positions);
+        this.slots.forEach((slot, position) => {
+            slot.setRequirementCompleteGlow(active && wanted.has(position));
+        });
     }
 
     getSlotsData(): SlotData[] {

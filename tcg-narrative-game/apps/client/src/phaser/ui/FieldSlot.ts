@@ -20,6 +20,7 @@ export class FieldSlot extends Phaser.GameObjects.Container {
     private slotId: string;
     private isOccupied = false;
     private currentCardId: string | null = null;
+    private requirementTween: Phaser.Tweens.Tween | null = null;
 
     constructor(scene: Phaser.Scene, config: FieldSlotConfig) {
         super(scene, config.x, config.y);
@@ -102,7 +103,37 @@ export class FieldSlot extends Phaser.GameObjects.Container {
         } else {
             this.background.setStrokeStyle(3, 0xffffff);
         }
+        this.glow.setAlpha(1);
         this.glow.clear();
+    }
+
+    setRequirementCompleteGlow(active: boolean, color = 0xffd166): void {
+        if (this.requirementTween) {
+            this.requirementTween.stop();
+            this.requirementTween = null;
+        }
+        this.glow.clear();
+        if (!active || !this.isOccupied) {
+            this.resetHighlight();
+            return;
+        }
+
+        this.background.setStrokeStyle(4, color);
+        this.glow.fillStyle(color, 0.32);
+        this.glow.fillRect(
+            -this.width / 2 - 8,
+            -this.height / 2 - 8,
+            this.width + 16,
+            this.height + 16
+        );
+        this.requirementTween = this.scene.tweens.add({
+            targets: this.glow,
+            alpha: { from: 0.35, to: 1 },
+            duration: 650,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.InOut',
+        });
     }
 
     pulse(color = 0xffd166): void {
