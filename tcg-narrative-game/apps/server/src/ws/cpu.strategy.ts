@@ -1,7 +1,7 @@
 import { CardData, CardEffect, CardType, MatchState, PlayerState, TimelineSlot } from '@tcg/shared/types';
 import { GAME_CONSTANTS } from '@tcg/shared/constants';
 import { CARDS } from '@tcg/game-engine/content/cards';
-import { canPlayCard } from '@tcg/game-engine/rules/validation';
+import { canPlayCard, evaluateEventPrerequisites, evaluateRequirements, getEffectiveRequirements } from '@tcg/game-engine/rules/validation';
 import { getFieldCards } from '@tcg/game-engine/rules/affinity';
 import type { CpuDifficulty } from './match.service';
 
@@ -130,15 +130,25 @@ export function chooseCpuPlay(match: MatchState, cpuIndex: number): CpuPlayPlan 
     if (plans.length === 0) return null;
 
     plans.sort((a, b) => b.score - a.score);
-    if (context.difficulty === 'easy' && plans.length > 1) {
-        return plans[Math.floor(Math.random() * Math.min(3, plans.length))];
+    const viable = plans.filter(plan => {
+        if (context.difficulty === 'hard') return true;
+        if (context.difficulty === 'normal') return plan.score >= 18;
+        return plan.score >= 12;
+    });
+    if (viable.length === 0) return null;
+
+    viable.sort((a, b) => b.score - a.score);
+
+    if (context.difficulty === 'easy' && viable.length > 1) {
+        if (Math.random() < 0.3) return null;
+        return viable[Math.floor(Math.random() * Math.min(3, viable.length))];
     }
 
-    if (context.difficulty === 'normal' && plans.length > 1 && Math.random() < 0.15) {
-        return plans[1];
+    if (context.difficulty === 'normal' && viable.length > 1 && Math.random() < 0.12) {
+        return viable[1];
     }
 
-    return plans[0];
+    return viable[0];
 }
 
 function buildEventPlans(context: CpuContext): CpuPlayPlan[] {
@@ -151,6 +161,15 @@ function buildEventPlans(context: CpuContext): CpuPlayPlan[] {
             isEventOrb: true,
         });
         if (!validation.ok) return [];
+
+        const prereqValidation = evaluateEventPrerequisites(context.cpu, card);
+        if (!prereqValidation.ok) return [];
+        const requirementValidation = evaluateRequirements(
+            context.match,
+            context.cpuIndex,
+            getEffectiveRequirements(context.match, context.cpuIndex, card.requirements || [])
+        );
+        if (!requirementValidation.ok) return [];
 
         const score = scoreEventCard(card, context);
         return [{
@@ -225,6 +244,9 @@ function scoreBoardCard(card: CardData, context: CpuContext, position: TimelineS
         score += 35;
     }
 
+    score += scoreCurrentEventNeeds(card, context);
+    score += scoreHandEventNeeds(card, context);
+
     score += scoreAffinity(card, context);
     score += scoreLikes(card, context);
     score += scoreSlot(position, context);
@@ -235,6 +257,32 @@ function scoreBoardCard(card: CardData, context: CpuContext, position: TimelineS
     }
 
     return applyDifficultyNoise(score, context.difficulty);
+}
+
+function scoreCurrentEventNeeds(card: CardData, context: CpuContext): number {
+    const block = context.cpu.board.blocks[context.blockIndex];
+    const event = block?.eventSlot ? CARDS[block.eventSlot] : undefined;
+    if (!event) return 0;
+    return scoreCardAgainstRequirements(card, event.requirements || []) + 20;
+}
+
+function scoreHandEventNeeds(card: CardData, context: CpuContext): number {
+    const nextEvents = context.cpu.hand
+        .map(id => CARDS[id])
+        .filter((event): event is CardData => Boolean(event) && isEventCard(event));
+    return Math.max(0, ...nextEvents.map(event => scoreCardAgainstRequirements(card, event.requirements || [])));
+}
+
+function scoreCardAgainstRequirements(card: CardData, requirements: NonNullable<CardData['requirements']>): number {
+    let score = 0;
+    for (const requirement of requirements) {
+        if (requirement.type !== 'CARD_ON_BOARD') continue;
+        if (requirement.cardIds?.includes(card.id)) score += 36;
+        if (requirement.cardType && requirement.cardType === card.type) score += 30;
+        if (requirement.tag && card.tags?.includes(requirement.tag)) score += 24;
+        if (requirement.archetype && card.archetype === requirement.archetype) score += 12;
+    }
+    return score;
 }
 
 function scoreByArchetype(card: CardData, context: CpuContext): number {

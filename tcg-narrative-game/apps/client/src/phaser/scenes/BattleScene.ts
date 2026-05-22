@@ -591,6 +591,36 @@ export class BattleScene extends Phaser.Scene {
         return valid.ok;
     }
 
+    private isEventReadyInHand(cardId: string): boolean {
+        if (!this.matchState) return false;
+        const me = this.matchState.players[this.myPlayerIndex];
+        const card = this.getCardDisplayData(cardId);
+        if ((card.prereqs || []).some(requiredId => !me.completedEvents.includes(requiredId))) return false;
+
+        for (const requirement of card.requirements || []) {
+            switch (requirement.type) {
+                case 'STORY_MIN': {
+                    const story = me.storyPoints ?? me.historyPoints ?? 0;
+                    if (story < (requirement.value || 0)) return false;
+                    break;
+                }
+                case 'FILLER_MAX':
+                    if (me.fillerPoints > (requirement.value || 99)) return false;
+                    break;
+                case 'EVENT_COMPLETED': {
+                    const required = requirement.cardIds || [];
+                    if (required.some(requiredId => !me.completedEvents.includes(requiredId))) return false;
+                    break;
+                }
+                case 'CARD_ON_BOARD':
+                    if (this.countMatchingBoardCards(me, requirement) < (requirement.value || 1)) return false;
+                    break;
+            }
+        }
+
+        return true;
+    }
+
     private handleFieldCardClick(
         cardId: string,
         pointer?: Phaser.Input.Pointer,
@@ -1329,7 +1359,7 @@ export class BattleScene extends Phaser.Scene {
             const x = startX + index * (cardWidth + spacing) + cardWidth / 2;
             const y = 20;
             const cardData = this.getCardDisplayData(cardId);
-            const activatable = interactive && this.isEventType(cardData.type) && this.canActivateEventCard(cardId);
+            const activatable = interactive && this.isEventType(cardData.type) && this.isEventReadyInHand(cardId);
             const silenced = interactive && this.isHandCardSilenced(cardId, cardData.type);
             const card = new CardSprite(this, {
                 cardId,

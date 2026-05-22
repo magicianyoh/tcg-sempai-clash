@@ -62,6 +62,9 @@ export function evaluateRequirements(
                         if (matches) foundCount++;
                     }
                 });
+                if (foundCount < (req.value || 1) && req.cardIds?.length) {
+                    foundCount += req.cardIds.filter(id => isImplicitCompletedProtagonistRequirement(player, id)).length;
+                }
 
                 if (foundCount < (req.value || 1)) {
                     const criteria = [];
@@ -79,6 +82,17 @@ export function evaluateRequirements(
         ok: reasons.length === 0,
         reasons
     };
+}
+
+function isImplicitCompletedProtagonistRequirement(player: PlayerState, cardId: string): boolean {
+    const card = CARDS[cardId];
+    if (card?.type !== CardType.PROTAGONIST) return false;
+    return Object.values(CARDS).some(event =>
+        event.type === CardType.EVENT &&
+        event.tags?.includes(`line:${cardId}`) &&
+        event.tags?.includes('order:01') &&
+        player.completedEvents.includes(event.id)
+    );
 }
 
 export function evaluateEventPrerequisites(player: PlayerState, card: CardData): ValidationResult {
@@ -169,14 +183,8 @@ export function canPlayCard(
             return { ok: false, reasons: [`Bloqueado por exceso de FP (Filler Points) (${GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD}+)`] };
         }
 
-        // Requirements
         const prereqResult = evaluateEventPrerequisites(player, card);
         if (!prereqResult.ok) return prereqResult;
-
-        if (card.requirements) {
-            const reqResult = evaluateRequirements(state, playerIndex, getEffectiveRequirements(state, playerIndex, card.requirements));
-            if (!reqResult.ok) return reqResult;
-        }
 
         // Check if slot available (if specific block targeting is used)
         if (target.blockIndex !== undefined) {

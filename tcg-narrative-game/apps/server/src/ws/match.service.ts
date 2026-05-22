@@ -436,9 +436,9 @@ export class MatchService {
         if (cpuIndex === -1) return;
 
         const cpu = match.players[cpuIndex];
-        const maxPlays = match.cpuOpponent.difficulty === 'hard' ? 3 : match.cpuOpponent.difficulty === 'normal' ? 2 : 1;
+        const safetyLimit = 16;
 
-        for (let i = 0; i < maxPlays; i++) {
+        for (let i = 0; i < safetyLimit; i++) {
             if (match.winner) break;
 
             const plan = chooseCpuPlay(match, cpuIndex);
