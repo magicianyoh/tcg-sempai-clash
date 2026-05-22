@@ -214,17 +214,15 @@ function requirements(protagonistId: string, supportId: string, itemId: string, 
         return [{ type: 'CARD_ON_BOARD', cardIds: [protagonistId], value: 1, description: 'Requiere al protagonista en campo.' }];
     }
 
-    const materialTypes = [CardType.LOCATION, CardType.PERSONAJE, CardType.ITEM, CardType.TOKEN];
     const reqs: CardRequirement[] = [
         { type: 'STORY_MIN', value: story, description: `Requiere ${story} SP (Story Points).` },
-        { type: 'CARD_ON_BOARD', cardType: final ? CardType.LOCATION : materialTypes[(step - 1) % materialTypes.length], value: 1, description: final ? 'Requiere una locacion en campo.' : 'Requiere una carta nueva de la escena actual.' },
+        { type: 'CARD_ON_BOARD', value: final ? 2 : 1, description: final ? 'Requiere 2 cartas en campo en este arco.' : 'Requiere 1 carta en campo en este arco.' },
     ];
     void previousEventId;
     void supportId;
     void itemId;
     void locationId;
-    if (step >= 3 && !final) reqs.push({ type: 'CARD_ON_BOARD', cardType: materialTypes[step % materialTypes.length], value: 1, description: 'Requiere una segunda carta nueva de la escena actual.' });
-    if (final) reqs.push({ type: 'CARD_ON_BOARD', cardType: CardType.PERSONAJE, value: 1, description: 'Requiere un personaje de soporte en campo.' });
+    if (step >= 3 && !final) reqs[1] = { type: 'CARD_ON_BOARD', value: 2, description: 'Requiere 2 cartas en campo en este arco.' };
     return reqs;
 }
 
