@@ -3,7 +3,7 @@ import { ARCHETYPES, GAME_CONSTANTS, SLOT_POSITIONS } from '@tcg/shared/constant
 import { MatchActionType } from '@tcg/shared/protocol';
 import { store } from '../store/memory.store';
 import { CARDS } from '@tcg/game-engine/content/cards';
-import { canPlayCard, canReturnToHand, evaluateRequirements, getEffectiveRequirements } from '@tcg/game-engine/rules/validation';
+import { canPlayCard, canReturnToHand, evaluateEventPrerequisites, evaluateRequirements, getEffectiveRequirements } from '@tcg/game-engine/rules/validation';
 import { resolveEffects } from '@tcg/game-engine/rules/effect';
 import { chooseCpuPlay } from './cpu.strategy';
 
@@ -609,6 +609,12 @@ export class MatchService {
         const card = CARDS[cardId];
         if (!card) return;
 
+        const prereqValidation = evaluateEventPrerequisites(player, card);
+        if (!prereqValidation.ok) {
+            this.addLog(match, player.username, 'event_waiting', `${card.name}: ${prereqValidation.reasons?.[0] || 'missing prerequisites'}`);
+            return;
+        }
+
         const validation = card.requirements?.length
             ? evaluateRequirements(match, playerIndex, getEffectiveRequirements(match, playerIndex, card.requirements))
             : { ok: true, reasons: [] };
@@ -631,6 +637,13 @@ export class MatchService {
 
         block.eventCompleted = true;
         block.eventSubmitted = false;
+        block.slots.forEach(slot => {
+            slot.cardId = undefined;
+            slot.cardType = undefined;
+            slot.placedTurn = undefined;
+        });
+        block.eventSlot = undefined;
+        player.discard.push(...resolvingCardIds);
         const completedBlockIndex = block.blockIndex;
 
         const storyGain = GAME_CONSTANTS.STORY_POINTS_EVENT_COMPLETE;
@@ -639,6 +652,7 @@ export class MatchService {
         opponent.fillerPoints += GAME_CONSTANTS.FILLER_POINTS_EVENT_COMPLETE;
 
         this.addLog(match, player.username, 'event_complete', `${card.name}`);
+        this.addLog(match, player.username, 'cards_to_cemetery', `${resolvingCardIds.length} carta(s) van al Cementerio.`);
         effectLogs.forEach(details => this.addLog(match, player.username, 'effect_resolved', details));
         this.consumeReducedRequirement(player);
         this.resolveActCheckpoint(match, completedBlockIndex);

@@ -133,10 +133,7 @@ function isEvent(card: CardData): boolean {
 function isFinalForProtagonist(card: CardData, protagonist: CardData): boolean {
     return card.type === CardType.EVENT_FINAL
         && card.archetype === protagonist.archetype
-        && card.requirements?.some(requirement =>
-            requirement.type === 'CARD_ON_BOARD'
-            && requirement.cardIds?.includes(protagonist.id)
-        ) === true;
+        && card.tags?.includes(`line:${protagonist.id}`) === true;
 }
 
 function getReferencedCardIds(card: CardData): string[] {

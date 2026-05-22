@@ -112,14 +112,14 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         });
         this.add(this.idText);
 
-        const descLabel = scene.add.text(infoX, infoY + (compact ? 52 : 64), 'Descripcion', {
+        const descLabel = scene.add.text(infoX, infoY + (compact ? 62 : 78), 'Descripcion', {
             fontSize: '12px',
             color: '#7dd3fc',
             fontStyle: 'bold',
         });
         this.add(descLabel);
 
-        this.descText = scene.add.text(infoX, infoY + (compact ? 70 : 84), '', {
+        this.descText = scene.add.text(infoX, infoY + (compact ? 80 : 98), '', {
             fontSize: '14px',
             color: '#d7dee9',
             fontFamily: 'Arial, Helvetica, sans-serif',
@@ -261,7 +261,7 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         if (!card) return;
 
         this.nameText.setText(card.name.toUpperCase());
-        this.typeText.setText('');
+        this.typeText.setText(`${card.typeLabel || card.type} | Costo ${card.cost}`);
         this.idText.setText('');
         this.descText.setText(card.description || 'Sin descripcion.');
         this.loreLabel.setVisible(Boolean(card.backstory));

@@ -4,8 +4,7 @@ import {
     CardData,
     CardType,
     CardRequirement,
-    ValidationResult,
-    TimelineBlock
+    ValidationResult
 } from '@tcg/shared/types';
 import { CARDS } from '../content/cards';
 import { GAME_CONSTANTS } from '@tcg/shared/constants';
@@ -48,25 +47,21 @@ export function evaluateRequirements(
             // Checks if board has specific cards/types
             case 'CARD_ON_BOARD':
                 let foundCount = 0;
-                player.board.blocks.forEach(block => {
-                    block.slots.forEach(slot => {
-                        if (slot.cardId) {
-                            const card = CARDS[slot.cardId];
-                            if (!card) return;
+                const currentBlock = player.board.blocks[player.board.currentBlockIndex];
+                currentBlock?.slots.forEach(slot => {
+                    if (slot.cardId) {
+                        const card = CARDS[slot.cardId];
+                        if (!card) return;
 
-                            let matches = true;
-                            if (req.cardIds && !req.cardIds.includes(card.id)) matches = false;
-                            if (req.cardType && card.type !== req.cardType) matches = false;
-                            if (req.tag && !card.tags?.includes(req.tag)) matches = false;
-                            if (req.archetype && card.archetype !== req.archetype) matches = false;
+                        let matches = true;
+                        if (req.cardIds && !req.cardIds.includes(card.id)) matches = false;
+                        if (req.cardType && card.type !== req.cardType) matches = false;
+                        if (req.tag && !card.tags?.includes(req.tag)) matches = false;
+                        if (req.archetype && card.archetype !== req.archetype) matches = false;
 
-                            if (matches) foundCount++;
-                        }
-                    });
+                        if (matches) foundCount++;
+                    }
                 });
-                if (foundCount < (req.value || 1) && req.cardIds?.length) {
-                    foundCount += req.cardIds.filter(id => wasCardUsedInCompletedArc(player, id)).length;
-                }
 
                 if (foundCount < (req.value || 1)) {
                     const criteria = [];
@@ -86,11 +81,14 @@ export function evaluateRequirements(
     };
 }
 
-function wasCardUsedInCompletedArc(player: PlayerState, cardId: string): boolean {
-    return player.board.blocks.some(block =>
-        block.eventCompleted &&
-        block.slots.some(slot => slot.cardId === cardId)
-    );
+export function evaluateEventPrerequisites(player: PlayerState, card: CardData): ValidationResult {
+    const missing = (card.eventPrerequisites || []).filter(id => !player.completedEvents.includes(id));
+    if (missing.length === 0) {
+        return { ok: true, reasons: [] };
+    }
+
+    const names = missing.map(id => CARDS[id]?.name || id).join(', ');
+    return { ok: false, reasons: [`Requiere completar evento(s): ${names}.`] };
 }
 
 export function getEffectiveRequirements(
@@ -172,6 +170,9 @@ export function canPlayCard(
         }
 
         // Requirements
+        const prereqResult = evaluateEventPrerequisites(player, card);
+        if (!prereqResult.ok) return prereqResult;
+
         if (card.requirements) {
             const reqResult = evaluateRequirements(state, playerIndex, getEffectiveRequirements(state, playerIndex, card.requirements));
             if (!reqResult.ok) return reqResult;

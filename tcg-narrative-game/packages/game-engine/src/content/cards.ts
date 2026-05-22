@@ -210,20 +210,21 @@ function eventEffects(strategy: Strategy, step: number, final = false): CardEffe
 
 function requirements(protagonistId: string, supportId: string, itemId: string, locationId: string, previousEventId: string | undefined, floor: number, step: number, final = false): CardRequirement[] {
     const story = final ? Math.max(36, floor) : floor;
-    const secondaryMaterial = step % 2 === 0 ? itemId : locationId;
     if (step === 0 && !final) {
         return [{ type: 'CARD_ON_BOARD', cardIds: [protagonistId], value: 1, description: 'Requiere al protagonista en campo.' }];
     }
 
+    const materialTypes = [CardType.LOCATION, CardType.PERSONAJE, CardType.ITEM, CardType.TOKEN];
     const reqs: CardRequirement[] = [
         { type: 'STORY_MIN', value: story, description: `Requiere ${story} SP (Story Points).` },
-        { type: 'CARD_ON_BOARD', cardIds: [secondaryMaterial], value: 1, description: 'Requiere una pieza material de la ruta en campo.' },
+        { type: 'CARD_ON_BOARD', cardType: final ? CardType.LOCATION : materialTypes[(step - 1) % materialTypes.length], value: 1, description: final ? 'Requiere una locacion en campo.' : 'Requiere una carta nueva de la escena actual.' },
     ];
-    if (step === 1 || final) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [protagonistId], value: 1, description: 'Requiere al protagonista en campo o usado en un arco previo.' });
     void previousEventId;
-    if (step >= 2) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [supportId], value: 1, description: 'Requiere el soporte narrativo de esta ruta.' });
-    if (step >= 3) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [itemId], value: 1, description: 'Requiere el item clave de esta ruta.' });
-    if (final) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [locationId, supportId, itemId], value: 1, description: 'Requiere al menos una pieza clave de la ruta en campo.' });
+    void supportId;
+    void itemId;
+    void locationId;
+    if (step >= 3 && !final) reqs.push({ type: 'CARD_ON_BOARD', cardType: materialTypes[step % materialTypes.length], value: 1, description: 'Requiere una segunda carta nueva de la escena actual.' });
+    if (final) reqs.push({ type: 'CARD_ON_BOARD', cardType: CardType.PERSONAJE, value: 1, description: 'Requiere un personaje de soporte en campo.' });
     return reqs;
 }
 

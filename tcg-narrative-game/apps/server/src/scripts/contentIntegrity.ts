@@ -28,6 +28,13 @@ for (const event of events) {
     if (!event.effects?.length) {
         issues.push(`${event.id} event has no effects`);
     }
+    const isOpeningEvent = event.tags?.includes('order:01') === true;
+    const protagonistRequirements = (event.requirements || [])
+        .flatMap(requirement => requirement.cardIds || [])
+        .filter(cardId => CARDS[cardId]?.type === CardType.PROTAGONIST);
+    if (!isOpeningEvent && protagonistRequirements.length > 0) {
+        issues.push(`${event.id} requires protagonist outside the opening event`);
+    }
 }
 
 for (const archetype of Object.values(ARCHETYPES)) {
@@ -41,7 +48,7 @@ for (const protagonist of cards.filter(card => card.type === CardType.PROTAGONIS
     const finalEvent = cards.find(card =>
         card.type === CardType.EVENT_FINAL
         && card.archetype === protagonist.archetype
-        && card.requirements?.some(requirement => requirement.type === 'CARD_ON_BOARD' && requirement.cardIds?.includes(protagonist.id))
+        && card.tags?.includes(`line:${protagonist.id}`)
     );
     if (!finalEvent) {
         issues.push(`${protagonist.id} has no protagonist-specific final event`);
@@ -67,10 +74,7 @@ for (const deck of prebuiltDecks) {
         }
         if (
             card.type === CardType.EVENT_FINAL
-            && !card.requirements?.some(requirement =>
-                requirement.type === 'CARD_ON_BOARD'
-                && requirement.cardIds?.includes(deck.protagonistId)
-            )
+            && !card.tags?.includes(`line:${deck.protagonistId}`)
         ) {
             issues.push(`${deck.id} includes unrelated final event ${card.id}`);
         }
@@ -87,10 +91,7 @@ for (const deck of prebuiltDecks) {
     const protagonistFinal = cards.find(card =>
         card.type === CardType.EVENT_FINAL
         && card.archetype === deck.archetypeId
-        && card.requirements?.some(requirement =>
-            requirement.type === 'CARD_ON_BOARD'
-            && requirement.cardIds?.includes(deck.protagonistId)
-        )
+        && card.tags?.includes(`line:${deck.protagonistId}`)
     );
     if (!protagonistFinal) {
         issues.push(`${deck.id} has no protagonist final for ${deck.protagonistId}`);

@@ -252,7 +252,7 @@ export class BattleScene extends Phaser.Scene {
             color: '#aab2c2',
         }).setOrigin(0.5);
 
-        const statBg = this.add.rectangle(12, 12, 218, 94, 0x020609, 0.88)
+        const statBg = this.add.rectangle(12, 12, 238, 126, 0x020609, 0.88)
             .setOrigin(0)
             .setStrokeStyle(2, 0x4ecdc4, 0.75);
         this.statText = this.add.text(26, 22, 'Puntos: 0\nSP: 0  FP: 0', {
@@ -262,7 +262,7 @@ export class BattleScene extends Phaser.Scene {
             fontStyle: 'bold',
             lineSpacing: 7,
         });
-        this.timerText = this.add.text(26, 78, '', {
+        this.timerText = this.add.text(26, 108, '', {
             fontSize: '16px',
             color: '#ffd166',
             fontFamily: 'Arial, Helvetica, sans-serif',
@@ -276,7 +276,7 @@ export class BattleScene extends Phaser.Scene {
             lineSpacing: 4,
         }).setOrigin(1, 0);
 
-        this.objectivePanel = this.add.container(18, 82);
+        this.objectivePanel = this.add.container(18, 142);
         this.objectivePanelBg = this.add.rectangle(0, 0, 292, 116, 0x000000, 0.72)
             .setOrigin(0)
             .setStrokeStyle(1, 0x4ecdc4, 0.42);
@@ -906,9 +906,9 @@ export class BattleScene extends Phaser.Scene {
         const summaryLabel = this.currentView === 'self' ? 'Rival' : 'Yo';
         const viewedStory = viewed.storyPoints ?? viewed.historyPoints ?? 0;
         const summaryStory = summaryPlayer.storyPoints ?? summaryPlayer.historyPoints ?? 0;
-        this.statText.setText(`Puntos: ${this.getPlayerScore(viewed)}\nSP: ${viewedStory}  FP: ${viewed.fillerPoints}`);
+        this.statText.setText(`Puntos: ${this.getPlayerScore(viewed)}\nSP: ${viewedStory}  FP: ${viewed.fillerPoints}\nCementerio: ${viewed.discard?.length || 0}`);
         this.updateTimerText();
-        this.opponentStatText.setText(`${summaryLabel}\nPuntos: ${this.getPlayerScore(summaryPlayer)}\nSP: ${summaryStory}\nFP: ${summaryPlayer.fillerPoints}`);
+        this.opponentStatText.setText(`${summaryLabel}\nPuntos: ${this.getPlayerScore(summaryPlayer)}\nSP: ${summaryStory}\nFP: ${summaryPlayer.fillerPoints}\nCem: ${summaryPlayer.discard?.length || 0}`);
         this.updateObjectivePanel(me, viewed, isMyTurn);
 
         this.viewToggleBtn.setVisible(isMyTurn);
@@ -980,7 +980,7 @@ export class BattleScene extends Phaser.Scene {
             .setPosition(compact ? 20 : 26, compact ? 18 : 22)
             .setFontSize(compact ? 16 : 22);
         this.timerText
-            .setPosition(compact ? 20 : 26, compact ? 72 : 78)
+            .setPosition(compact ? 20 : 26, compact ? 98 : 108)
             .setFontSize(compact ? 13 : 16);
         this.opponentStatText
             .setPosition(width - (compact ? 12 : 18), compact ? 14 : 18)
@@ -996,7 +996,7 @@ export class BattleScene extends Phaser.Scene {
     private updateObjectivePanel(me: PlayerState, viewed: PlayerState, isMyTurn: boolean): void {
         const { width } = this.scale;
         const panelWidth = width < 720 ? Math.max(220, width - 36) : 292;
-        this.objectivePanel.setPosition(18, width < 560 ? 232 : width < 720 ? 118 : 82);
+        this.objectivePanel.setPosition(18, width < 560 ? 252 : width < 720 ? 148 : 142);
         this.objectivePanelBg.setSize(panelWidth, 116);
         this.objectiveText.setWordWrapWidth(panelWidth - 24);
         this.objectiveText.setFontSize(width < 720 ? 11 : 12);
@@ -1080,21 +1080,24 @@ export class BattleScene extends Phaser.Scene {
                 }
             }
         }
+        const pendingPrereqs = (card.prereqs || []).filter(cardId => !player.completedEvents.includes(cardId));
+        if (pendingPrereqs.length) {
+            missing.push(`eventos: ${pendingPrereqs.map(id => this.getCardDisplayData(id).name).join(', ')}`);
+        }
         return missing;
     }
 
     private countMatchingBoardCards(player: PlayerState, requirement: NonNullable<CardDisplayData['requirements']>[number]): number {
         let found = 0;
-        player.board.blocks.forEach(block => {
-            block.slots.forEach(slot => {
-                if (!slot.cardId) return;
-                const card = this.getCardDisplayData(slot.cardId);
-                if (requirement.cardIds && !requirement.cardIds.includes(slot.cardId)) return;
-                if (requirement.cardType && card.type !== requirement.cardType) return;
-                if (requirement.tag && !card.tags?.includes(requirement.tag)) return;
-                if (requirement.archetype && card.archetype !== requirement.archetype) return;
-                found++;
-            });
+        const currentBlock = player.board.blocks[player.board.currentBlockIndex];
+        currentBlock?.slots.forEach(slot => {
+            if (!slot.cardId) return;
+            const card = this.getCardDisplayData(slot.cardId);
+            if (requirement.cardIds && !requirement.cardIds.includes(slot.cardId)) return;
+            if (requirement.cardType && card.type !== requirement.cardType) return;
+            if (requirement.tag && !card.tags?.includes(requirement.tag)) return;
+            if (requirement.archetype && card.archetype !== requirement.archetype) return;
+            found++;
         });
         return found;
     }
@@ -1121,7 +1124,10 @@ export class BattleScene extends Phaser.Scene {
             archetypeLabel: displayEnum(card.archetype),
             likes: (card.likes || []).map(id => this.getCardDisplayData(id).name),
             dislikes: (card.dislikes || []).map(id => this.getCardDisplayData(id).name),
-            requirementsText: (card.requirements || []).map(requirement => this.describeRequirement(requirement)),
+            requirementsText: [
+                ...(card.prereqs || []).map(id => `Completar evento previo: ${this.getCardDisplayData(id).name}`),
+                ...(card.requirements || []).map(requirement => this.describeRequirement(requirement)),
+            ],
             effectsText: (card.effects || []).map(effect => this.describeEffect(effect)),
         };
     }
@@ -1182,6 +1188,7 @@ export class BattleScene extends Phaser.Scene {
         if (!block?.eventSlot || block.eventCompleted) return false;
 
         const card = this.getCardDisplayData(block.eventSlot);
+        if ((card.prereqs || []).some(cardId => !player.completedEvents.includes(cardId))) return false;
         const requirements = card.requirements || [];
         if (requirements.length === 0) return true;
 
@@ -1201,18 +1208,7 @@ export class BattleScene extends Phaser.Scene {
                     break;
                 }
                 case 'CARD_ON_BOARD': {
-                    let foundCount = 0;
-                    player.board.blocks.forEach(boardBlock => {
-                        boardBlock.slots.forEach(slot => {
-                            if (!slot.cardId) return;
-                            const slotCard = this.getCardDisplayData(slot.cardId);
-                            if (requirement.cardIds && !requirement.cardIds.includes(slot.cardId)) return;
-                            if (requirement.cardType && slotCard.type !== requirement.cardType) return;
-                            if (requirement.tag && !slotCard.tags?.includes(requirement.tag)) return;
-                            if (requirement.archetype && slotCard.archetype !== requirement.archetype) return;
-                            foundCount++;
-                        });
-                    });
+                    const foundCount = this.countMatchingBoardCards(player, requirement);
                     if (foundCount < (requirement.value || 1)) return false;
                     break;
                 }
@@ -1605,6 +1601,12 @@ export class BattleScene extends Phaser.Scene {
                     `${this.escapeHtml(entry.details ?? 'Un efecto altera el campo')}`,
                     `La escena cambia por efecto: ${this.escapeHtml(entry.details ?? '')}`,
                     `${player} siente el impacto: ${this.escapeHtml(entry.details ?? '')}`,
+                ]);
+            case 'cards_to_cemetery':
+                return this.pickNarrative(entry, [
+                    `${player} envia sus materiales al Cementerio: ${this.escapeHtml(entry.details ?? '')}`,
+                    `El arco se cierra y el Cementerio recibe la escena: ${this.escapeHtml(entry.details ?? '')}`,
+                    `Las cartas usadas abandonan el campo de ${player}: ${this.escapeHtml(entry.details ?? '')}`,
                 ]);
             case 'return_to_hand':
                 return this.pickNarrative(entry, [
