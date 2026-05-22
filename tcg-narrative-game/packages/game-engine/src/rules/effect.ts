@@ -1,5 +1,6 @@
-import { MatchState, EffectType, CardType, TimelineSlot } from '@tcg/shared/types';
+import { MatchState, EffectType, CardType, TimelineSlot, EffectCondition } from '@tcg/shared/types';
 import { CARDS } from '../content/cards';
+import { evaluateRequirements } from './validation';
 
 export function resolveEffects(
     state: MatchState,
@@ -16,9 +17,19 @@ export function resolveEffects(
     player.statusEffects ||= [];
     opponent.statusEffects ||= [];
 
+    if (card.type === CardType.TOKEN && card.requirements?.length) {
+        const tokenRequirements = evaluateRequirements(state, playerIndex, card.requirements);
+        if (!tokenRequirements.ok) {
+            logs.push(card.name + ' queda como material, pero no activa sus efectos: ' + (tokenRequirements.reasons?.join(' ') || 'no cumple sus requisitos.'));
+            return logs;
+        }
+    }
+
     for (const effect of card.effects) {
-        // Skip conditional checks for now (MVP), apply direct effects
-        // TODO: Implement condition evaluation if effect.condition exists
+        if (effect.condition && !isEffectConditionMet(state, playerIndex, effect.condition)) {
+            logs.push(card.name + ' no activa ' + (effect.description || effect.type) + ': condicion incompleta.');
+            continue;
+        }
 
         const target = effect.target === 'OPPONENT' ? opponent : player;
         target.statusEffects ||= [];
@@ -161,6 +172,44 @@ export function resolveEffects(
 
     logs.push(...resolveLikesAndDislikes(state, playerIndex, cardId));
     return logs;
+}
+
+function isEffectConditionMet(state: MatchState, playerIndex: number, cond: EffectCondition): boolean {
+    const player = state.players[playerIndex];
+    const story = player.storyPoints ?? player.historyPoints ?? 0;
+
+    if (cond.type === 'STORY_MIN') {
+        return story >= (cond.value || 0);
+    }
+
+    if (cond.type === 'FILLER_MAX') {
+        return player.fillerPoints <= (cond.value || 99);
+    }
+
+    if (cond.type === 'EVENT_COMPLETED') {
+        return (cond.cardIds || []).every(cardId => player.completedEvents?.includes(cardId));
+    }
+
+    if (cond.type === 'BOARD_HAS') {
+        const fieldCards = player.board.blocks.flatMap(block => block.slots.map(slot => slot.cardId).filter((id): id is string => Boolean(id)));
+        return (cond.cardIds || []).every(cardId => fieldCards.includes(cardId));
+    }
+
+    if (cond.type === 'LOCATION_IS') {
+        if (!cond.locationId) return false;
+        const block = player.board.blocks[player.board.currentBlockIndex];
+        return block?.slots.some(slot => slot.cardId === cond.locationId) === true;
+    }
+
+    if (cond.type === 'AFFINITY_ACTIVE') {
+        const fieldCards = player.board.blocks.flatMap(block => block.slots.map(slot => slot.cardId).filter((id): id is string => Boolean(id)));
+        return fieldCards.some(cardId => {
+            const card = CARDS[cardId];
+            return card?.affinity?.compatibleWith?.some(compatibleId => fieldCards.includes(compatibleId)) === true;
+        });
+    }
+
+    return true;
 }
 
 function removeBoardCard(slots?: TimelineSlot[]): string | null {

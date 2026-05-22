@@ -1,6 +1,6 @@
 import { CARDS } from '@tcg/game-engine/content/cards';
 import { getPrebuiltDecks } from '../decks/prebuilt-decks';
-import { GAME_CONSTANTS } from '@tcg/shared/constants';
+import { ARCHETYPES, GAME_CONSTANTS } from '@tcg/shared/constants';
 import { applyPersistedCardOverrides, auditCards } from '../content/card-catalog';
 import { CardType } from '@tcg/shared/types';
 
@@ -27,6 +27,13 @@ for (const event of events) {
     }
     if (!event.effects?.length) {
         issues.push(`${event.id} event has no effects`);
+    }
+}
+
+for (const archetype of Object.values(ARCHETYPES)) {
+    const tokenCount = cards.filter(card => card.archetype === archetype && card.type === CardType.TOKEN).length;
+    if (tokenCount !== 10) {
+        issues.push(String(archetype) + ' has ' + tokenCount + ' Token cards, expected 10');
     }
 }
 

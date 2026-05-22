@@ -302,7 +302,7 @@ const commonTokenCards: Array<{
         description: 'La historia protege al protagonista, aunque el rival proteste.',
         cost: 4,
         effects: [fx(EffectType.FILLER, -2, 'SELF', 'Reduce en 2 tus FP.'), fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Silencia 1 carta aleatoria rival.', { turns: 1 }), fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP.')],
-        requirements: [{ type: 'STORY_MIN', value: 20, description: 'Requiere 20 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.PROTAGONIST, value: 1, description: 'Requiere protagonista en campo.' }, { type: 'CARD_ON_BOARD', cardType: CardType.ITEM, value: 1, description: 'Requiere item en campo.' }],
+        requirements: [{ type: 'STORY_MIN', value: 20, description: 'Requiere 20 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.ITEM, value: 1, description: 'Requiere item en campo.' }],
     },
     {
         slug: 'season-finale-teaser',
@@ -310,7 +310,7 @@ const commonTokenCards: Array<{
         description: 'Muestra el cierre de temporada y acelera el camino al final.',
         cost: 5,
         effects: [fx(EffectType.STORY, 4, 'SELF', 'Otorga +4 SP.'), fx(EffectType.DRAW, 2, 'SELF', 'Roba +2 cartas.'), fx(EffectType.FILLER, 2, 'OPPONENT', 'Otorga +2 FP al rival.')],
-        requirements: [{ type: 'STORY_MIN', value: 26, description: 'Requiere 26 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.PROTAGONIST, value: 1, description: 'Requiere protagonista en campo.' }, { type: 'CARD_ON_BOARD', cardType: CardType.LOCATION, value: 1, description: 'Requiere locacion en campo.' }],
+        requirements: [{ type: 'STORY_MIN', value: 26, description: 'Requiere 26 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.LOCATION, value: 1, description: 'Requiere locacion en campo.' }, { type: 'CARD_ON_BOARD', cardType: CardType.ITEM, value: 1, description: 'Requiere item en campo.' }],
     },
 ];
 
