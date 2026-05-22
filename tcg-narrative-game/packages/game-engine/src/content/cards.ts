@@ -211,11 +211,15 @@ function eventEffects(strategy: Strategy, step: number, final = false): CardEffe
 function requirements(protagonistId: string, supportId: string, itemId: string, locationId: string, previousEventId: string | undefined, floor: number, step: number, final = false): CardRequirement[] {
     const story = final ? Math.max(36, floor) : floor;
     const secondaryMaterial = step % 2 === 0 ? itemId : locationId;
+    if (step === 0 && !final) {
+        return [{ type: 'CARD_ON_BOARD', cardIds: [protagonistId], value: 1, description: 'Requiere al protagonista en campo.' }];
+    }
+
     const reqs: CardRequirement[] = [
-        { type: 'STORY_MIN', value: story, description: `Requiere ${story} Story.` },
+        { type: 'STORY_MIN', value: story, description: `Requiere ${story} SP (Story Points).` },
         { type: 'CARD_ON_BOARD', cardIds: [secondaryMaterial], value: 1, description: 'Requiere una pieza material de la ruta en campo.' },
     ];
-    if (step <= 1 || final) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [protagonistId], value: 1, description: 'Requiere al protagonista en campo o usado en un arco previo.' });
+    if (step === 1 || final) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [protagonistId], value: 1, description: 'Requiere al protagonista en campo o usado en un arco previo.' });
     void previousEventId;
     if (step >= 2) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [supportId], value: 1, description: 'Requiere el soporte narrativo de esta ruta.' });
     if (step >= 3) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [itemId], value: 1, description: 'Requiere el item clave de esta ruta.' });

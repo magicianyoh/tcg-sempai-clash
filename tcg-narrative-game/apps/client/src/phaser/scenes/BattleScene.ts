@@ -1100,8 +1100,8 @@ export class BattleScene extends Phaser.Scene {
     }
 
     private describeBoardRequirement(requirement: NonNullable<CardDisplayData['requirements']>[number]): string {
-        if (requirement.description) return requirement.description;
         if (requirement.cardIds?.length) return requirement.cardIds.map(id => this.getCardDisplayData(id).name).join(', ');
+        if (requirement.description) return requirement.description;
         if (requirement.cardType) return `cartas ${requirement.cardType}`;
         if (requirement.tag) return `tag ${requirement.tag}`;
         if (requirement.archetype) return `cartas ${requirement.archetype}`;
@@ -1109,23 +1109,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     private getCardHandDescription(card: CardDisplayData): string {
-        if (!this.isEventType(card.type)) return card.description;
-
-        const reqs = (card.requirements || [])
-            .slice(0, 3)
-            .map(requirement => this.describeRequirement(requirement))
-            .filter(Boolean);
-        const effects = (card.effects || [])
-            .slice(0, 3)
-            .map(effect => this.describeEffect(effect))
-            .filter(Boolean);
-
-        const lines = [
-            card.description,
-            reqs.length ? `Req: ${reqs.join(' / ')}` : 'Req: sin requisitos',
-            effects.length ? `FX: ${effects.join(' / ')}` : 'FX: sin efecto',
-        ];
-        return lines.join('\n');
+        return card.description;
     }
 
     private getCardDetailData(cardId: string): CardInfo {

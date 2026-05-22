@@ -31,7 +31,10 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
     private nameText!: Phaser.GameObjects.Text;
     private typeText!: Phaser.GameObjects.Text;
     private descText!: Phaser.GameObjects.Text;
+    private loreLabel!: Phaser.GameObjects.Text;
     private loreText!: Phaser.GameObjects.Text;
+    private effectText!: Phaser.GameObjects.Text;
+    private requirementText!: Phaser.GameObjects.Text;
     private imageText!: Phaser.GameObjects.Text;
     private idText!: Phaser.GameObjects.Text;
     private navLeft!: Phaser.GameObjects.Container;
@@ -109,14 +112,14 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         });
         this.add(this.idText);
 
-        const descLabel = scene.add.text(infoX, infoY + (compact ? 96 : 122), 'EFECTO', {
+        const descLabel = scene.add.text(infoX, infoY + (compact ? 52 : 64), 'Descripcion', {
             fontSize: '12px',
-            color: '#ffffff',
+            color: '#7dd3fc',
             fontStyle: 'bold',
         });
         this.add(descLabel);
 
-        this.descText = scene.add.text(infoX, infoY + (compact ? 116 : 146), '', {
+        this.descText = scene.add.text(infoX, infoY + (compact ? 70 : 84), '', {
             fontSize: '14px',
             color: '#d7dee9',
             fontFamily: 'Arial, Helvetica, sans-serif',
@@ -125,14 +128,14 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         });
         this.add(this.descText);
 
-        const loreLabel = scene.add.text(infoX, infoY + (compact ? 200 : 250), 'LORE', {
+        this.loreLabel = scene.add.text(infoX, infoY + (compact ? 138 : 156), 'Lore', {
             fontSize: '12px',
-            color: '#ffffff',
+            color: '#7dd3fc',
             fontStyle: 'bold',
         });
-        this.add(loreLabel);
+        this.add(this.loreLabel);
 
-        this.loreText = scene.add.text(infoX, infoY + (compact ? 220 : 274), '', {
+        this.loreText = scene.add.text(infoX, infoY + (compact ? 156 : 176), '', {
             fontSize: '13px',
             color: '#aeb8c8',
             fontFamily: 'Arial, Helvetica, sans-serif',
@@ -141,6 +144,38 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
             lineSpacing: 3,
         });
         this.add(this.loreText);
+
+        const effectLabel = scene.add.text(infoX, infoY + (compact ? 214 : 254), 'Efecto', {
+            fontSize: '12px',
+            color: '#7dd3fc',
+            fontStyle: 'bold',
+        });
+        this.add(effectLabel);
+
+        this.effectText = scene.add.text(infoX, infoY + (compact ? 232 : 274), '', {
+            fontSize: '13px',
+            color: '#d7dee9',
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            wordWrap: { width: infoWidth },
+            lineSpacing: 3,
+        });
+        this.add(this.effectText);
+
+        const requirementLabel = scene.add.text(infoX, infoY + (compact ? 318 : 372), 'Requisitos', {
+            fontSize: '12px',
+            color: '#7dd3fc',
+            fontStyle: 'bold',
+        });
+        this.add(requirementLabel);
+
+        this.requirementText = scene.add.text(infoX, infoY + (compact ? 336 : 392), '', {
+            fontSize: '13px',
+            color: '#d7dee9',
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            wordWrap: { width: infoWidth },
+            lineSpacing: 3,
+        });
+        this.add(this.requirementText);
 
         const closeBtn = scene.add.text(width / 2 + panelWidth / 2 - 34, height / 2 - panelHeight / 2 + 20, 'X', {
             fontSize: '26px',
@@ -226,15 +261,15 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         if (!card) return;
 
         this.nameText.setText(card.name.toUpperCase());
-        this.typeText.setText(`${card.typeLabel || card.type}${card.archetypeLabel ? ` | ${card.archetypeLabel}` : ''} | COSTO ${card.cost}`);
-        this.idText.setText(`ID: ${card.id}`);
-        const likes = card.likes?.length ? `\nLe gusta: ${card.likes.join(', ')}` : '';
-        const dislikes = card.dislikes?.length ? `\nNo le gusta: ${card.dislikes.join(', ')}` : '';
-        const requirements = card.requirementsText?.length ? `\n\nRequisitos:\n${card.requirementsText.join('\n')}` : '';
-        const effects = card.effectsText?.length ? `\n\nEfectos:\n${card.effectsText.join('\n')}` : '';
-        this.descText.setText(`${card.description || 'Sin descripcion.'}${likes}${dislikes}${requirements}${effects}`);
-        this.loreText.setText(card.backstory || 'Sin lore cargado.');
-        this.imageText.setText(card.image ? `IMAGEN\n${card.image}` : 'SIN IMAGEN');
+        this.typeText.setText('');
+        this.idText.setText('');
+        this.descText.setText(card.description || 'Sin descripcion.');
+        this.loreLabel.setVisible(Boolean(card.backstory));
+        this.loreText.setVisible(Boolean(card.backstory));
+        this.loreText.setText(card.backstory || '');
+        this.effectText.setText(card.effectsText?.length ? card.effectsText.join('\n') : 'Sin efecto.');
+        this.requirementText.setText(card.requirementsText?.length ? card.requirementsText.join('\n') : 'Sin requisitos.');
+        this.imageText.setText('');
 
         this.navLeft.setAlpha(this.currentIndex > 0 ? 1 : 0.25);
         this.navRight.setAlpha(this.currentIndex < this.cards.length - 1 ? 1 : 0.25);
