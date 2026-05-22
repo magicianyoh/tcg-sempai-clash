@@ -213,9 +213,9 @@ function requirements(protagonistId: string, supportId: string, itemId: string, 
     const secondaryMaterial = step % 2 === 0 ? itemId : locationId;
     const reqs: CardRequirement[] = [
         { type: 'STORY_MIN', value: story, description: `Requiere ${story} Story.` },
-        { type: 'CARD_ON_BOARD', cardIds: [protagonistId], value: 1, description: 'Requiere al protagonista en campo.' },
         { type: 'CARD_ON_BOARD', cardIds: [secondaryMaterial], value: 1, description: 'Requiere una pieza material de la ruta en campo.' },
     ];
+    if (step <= 1 || final) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [protagonistId], value: 1, description: 'Requiere al protagonista en campo o usado en un arco previo.' });
     void previousEventId;
     if (step >= 2) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [supportId], value: 1, description: 'Requiere el soporte narrativo de esta ruta.' });
     if (step >= 3) reqs.push({ type: 'CARD_ON_BOARD', cardIds: [itemId], value: 1, description: 'Requiere el item clave de esta ruta.' });

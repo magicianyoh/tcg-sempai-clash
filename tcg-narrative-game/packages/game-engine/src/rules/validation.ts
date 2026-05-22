@@ -64,6 +64,9 @@ export function evaluateRequirements(
                         }
                     });
                 });
+                if (foundCount < (req.value || 1) && req.cardIds?.length) {
+                    foundCount += req.cardIds.filter(id => wasCardUsedInCompletedArc(player, id)).length;
+                }
 
                 if (foundCount < (req.value || 1)) {
                     const criteria = [];
@@ -81,6 +84,13 @@ export function evaluateRequirements(
         ok: reasons.length === 0,
         reasons
     };
+}
+
+function wasCardUsedInCompletedArc(player: PlayerState, cardId: string): boolean {
+    return player.board.blocks.some(block =>
+        block.eventCompleted &&
+        block.slots.some(slot => slot.cardId === cardId)
+    );
 }
 
 export function getEffectiveRequirements(

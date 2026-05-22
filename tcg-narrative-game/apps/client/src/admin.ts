@@ -263,7 +263,7 @@ function renderSelectedCard() {
 
     ($<HTMLInputElement>('card-id')).value = card.id;
     ($<HTMLInputElement>('card-name')).value = card.name || '';
-    ($<HTMLInputElement>('card-type')).value = card.type || '';
+    ($<HTMLSelectElement>('card-type')).value = card.type || '';
     ($<HTMLInputElement>('card-archetype')).value = card.archetype || '';
     ($<HTMLInputElement>('card-cost')).value = String(card.cost ?? 0);
     ($<HTMLInputElement>('card-image')).value = card.image || '';
@@ -433,7 +433,7 @@ async function saveCard() {
         const requirements = parseRequirementsText(($<HTMLTextAreaElement>('card-requirements')).value);
         const effects = JSON.parse(($<HTMLTextAreaElement>('card-effects')).value || '[]');
         const maxCopiesValue = ($<HTMLInputElement>('card-max')).value;
-        const cardType = ($<HTMLInputElement>('card-type')).value;
+        const cardType = ($<HTMLSelectElement>('card-type')).value;
         const supportsLikes = isCharacterLikeType(cardType);
 
         const data = await request<{ card: AdminCard }>(`/admin/cards/${encodeURIComponent(id)}`, {
