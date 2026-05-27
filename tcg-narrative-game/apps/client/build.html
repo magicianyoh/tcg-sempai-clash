@@ -761,7 +761,7 @@
     </div>
 
     <script>
-        const DEPLOY_API_URL = '%VITE_API_URL%';
+        const DEPLOY_API_URL = String.raw`%VITE_API_URL%`.trim();
         const API_URL = DEPLOY_API_URL && !DEPLOY_API_URL.startsWith('%')
             ? DEPLOY_API_URL.replace(/\/$/, '')
             : window.location.origin;

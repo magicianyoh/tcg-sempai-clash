@@ -600,12 +600,12 @@
     </div>
 
     <script>
-        const DEPLOY_API_URL = '%VITE_API_URL%';
+        const DEPLOY_API_URL = String.raw`%VITE_API_URL%`.trim();
         const API_URL = DEPLOY_API_URL && !DEPLOY_API_URL.startsWith('%')
             ? DEPLOY_API_URL.replace(/\/$/, '')
             : window.location.origin;
         const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const DEPLOY_WS_URL = '%VITE_WS_URL%';
+        const DEPLOY_WS_URL = String.raw`%VITE_WS_URL%`.trim();
         const WS_URL = DEPLOY_WS_URL && !DEPLOY_WS_URL.startsWith('%')
             ? DEPLOY_WS_URL.replace(/\/$/, '')
             : `${WS_PROTOCOL}//${window.location.host}/ws`;
