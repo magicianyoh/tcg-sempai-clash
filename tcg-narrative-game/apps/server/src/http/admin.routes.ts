@@ -16,8 +16,9 @@ import {
     validateArchetypeCsv,
     validateCsv,
 } from '../content/card-catalog';
-import { ARCHETYPE_INFO, ARCHETYPES, GAME_CONSTANTS } from '@tcg/shared/constants';
+import { ARCHETYPE_INFO, GAME_CONSTANTS, V2_ARCHETYPES } from '@tcg/shared/constants';
 import { CardType } from '@tcg/shared/types';
+import { simulationRoutes } from './simulation.routes';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -82,7 +83,7 @@ function toCsv(rows: unknown[][]): string {
 
 function exportArchetypesCsvTemplate(): string {
     const settings = store.getPrebuiltDeckSettings();
-    const rows = Object.values(ARCHETYPES).map(id => {
+    const rows = V2_ARCHETYPES.map(id => {
         const info = ARCHETYPE_INFO[id as keyof typeof ARCHETYPE_INFO];
         return [id, info?.name || id, info?.description || '', settings.archetypes[id] !== false ? 'true' : 'false'];
     });
@@ -99,7 +100,12 @@ function validatePrebuiltDeckOverride(deckId: string, cards: string[]): string |
         const card = CARDS[id];
         if (!card) return `Carta inexistente: ${id}`;
         if (card.archetype !== deck.archetypeId) return `${card.name} no pertenece al arquetipo ${deck.archetypeId}.`;
-        if (card.type === CardType.PROTAGONIST && card.id !== deck.protagonistId) return `El deck solo puede usar el protagonista ${deck.protagonistName}.`;
+        if (card.type === CardType.PROTAGONIST || card.type === CardType.PLOT_TWIST_EVENT) {
+            return `${card.name} pertenece al avatar o a la respuesta Plot-Twist y no ocupa el deck.`;
+        }
+        if (card.protagonistId && card.protagonistId !== deck.protagonistId) {
+            return `${card.name} no pertenece a la linea de ${deck.protagonistName}.`;
+        }
         counts[id] = (counts[id] || 0) + 1;
         const max = card.maxCopies ?? GAME_CONSTANTS.MAX_COPIES_PER_CARD;
         if (counts[id] > max) return `Demasiadas copias de ${card.name}; maximo ${max}.`;
@@ -279,4 +285,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
             settings: store.updatePrebuiltDeckSettings(request.body),
         };
     });
+
+    await simulationRoutes(fastify);
 }

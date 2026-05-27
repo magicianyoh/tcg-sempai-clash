@@ -10,9 +10,12 @@ export enum CardType {
     PERSONAJE = 'PERSONAJE',     // Supporting characters
     ITEM = 'ITEM',               // Objects/Items
     LOCATION = 'LOCATION',       // Locations
-    TOKEN = 'TOKEN',             // Temporary shared story token card type
+    TOKEN = 'TOKEN',             // Legacy compatibility for persisted cards
+    QUICK_EVENT = 'QUICK_EVENT', // Immediate action card resolved on play
     EVENT = 'EVENT',             // Key events (with prerequisites)
     EVENT_FINAL = 'EVENT_FINAL', // Final event (win condition)
+    CLIMAX_EVENT = 'CLIMAX_EVENT', // V2 narrative resolution played from the deck
+    PLOT_TWIST_EVENT = 'PLOT_TWIST_EVENT', // V2 comeback response outside the deck
 
     // Legacy compatibility (Phase 1)
     CHARACTER = 'CHARACTER',
@@ -39,6 +42,14 @@ export enum EffectType {
     NEXT_EVENT_REDUCE_REQUIREMENT = 'NEXT_EVENT_REDUCE_REQUIREMENT',
     INVOKE_CARD_TO_OPPONENT_HAND = 'INVOKE_CARD_TO_OPPONENT_HAND',
     HAND_SP_DECAY_PERCENT = 'HAND_SP_DECAY_PERCENT',
+    HAND_RANDOM_FILLER_THEN_DISCARD = 'HAND_RANDOM_FILLER_THEN_DISCARD',
+    RECOVER_FROM_CEMETERY = 'RECOVER_FROM_CEMETERY',
+    RECOVER_FROM_COMPLETED_ARC = 'RECOVER_FROM_COMPLETED_ARC',
+    SEARCH_CLIMAX = 'SEARCH_CLIMAX',
+    SEARCH_CARD_TYPE = 'SEARCH_CARD_TYPE',
+    MODIFY_CLIMAX_LEVEL = 'MODIFY_CLIMAX_LEVEL',
+    PROTECT_PROTAGONIST = 'PROTECT_PROTAGONIST',
+    SILENCE_PROTAGONIST_NEXT_EVENT = 'SILENCE_PROTAGONIST_NEXT_EVENT',
 
     // Victory
     VICTORY = 'VICTORY',           // Win condition (Final Event)
@@ -102,7 +113,7 @@ export interface CardEffect {
 // Card Requirements
 // ============================================
 
-export type RequirementType = 'STORY_MIN' | 'FILLER_MAX' | 'CARD_ON_BOARD' | 'EVENT_COMPLETED' | 'AFFINITY_ACTIVE';
+export type RequirementType = 'STORY_MIN' | 'FILLER_MIN' | 'FILLER_MAX' | 'CARD_ON_BOARD' | 'CARD_IN_COMPLETED_ARC' | 'EVENT_COMPLETED' | 'EVENT_COUNT_MIN' | 'AFFINITY_ACTIVE' | 'DISCARD_FROM_HAND';
 
 export interface CardRequirement {
     type: RequirementType | string;
@@ -116,6 +127,11 @@ export interface CardRequirement {
     archetype?: string;
 }
 
+export interface ClimaxTier {
+    multiplier: 2 | 4 | 10;
+    requirements: CardRequirement[];
+}
+
 // ============================================
 // Card Data
 // ============================================
@@ -125,6 +141,7 @@ export interface CardData {
     name: string;
     type: CardType;
     cost: number;
+    costResource?: 'SP' | 'FP';
     description: string;
 
     // Lore
@@ -138,6 +155,8 @@ export interface CardData {
 
     // Effects
     effects: CardEffect[];
+    entryEffects?: CardEffect[]; // Effects resolved when a protagonist form enters play
+    climaxTiers?: ClimaxTier[];
 
     // Affinity & Likes (PROTAGONIST and PERSONAJE only)
     affinity?: AffinityData;
@@ -148,6 +167,9 @@ export interface CardData {
     image: string;
     maxCopies?: number;           // Max copies in deck (default 3, Protagonist = 1)
     tags?: string[];              // Searchable tags
+    protagonistId?: string;       // Hidden V2 narrative line owner
+    formIndex?: number;           // V2 protagonist form ordering
+    totalForms?: number;
 }
 
 // ============================================
@@ -169,6 +191,7 @@ export interface TimelineBlock {
     eventSlot?: string;           // Central event card ID
     eventCompleted: boolean;
     eventSubmitted?: boolean;
+    protagonistCardId?: string;    // V2 avatar form active for this arc
 }
 
 export interface BoardState {
@@ -194,6 +217,12 @@ export interface PlayerState {
     deck: string[];               // Remaining deck (card IDs)
     hand: string[];               // Hand (card IDs)
     discard: string[];            // Discard pile
+    protagonistId?: string;       // Selected V2 avatar, outside of the deck
+    protagonistFormId?: string;
+    protagonistFormIndex?: number;
+    protagonistTotalEvents?: number;
+    openingSetupDraws?: number;   // Assisted turn draws attempted before completing Event 1
+    handEffectTurns?: Record<string, number>; // Per-card hand effects already resolved this stay in hand
 
     // Board
     board: BoardState;
@@ -233,7 +262,15 @@ export interface TimelineNode {
 // Match State
 // ============================================
 
-export type MatchPhase = 'setup' | 'main' | 'ended';
+export type MatchPhase = 'setup' | 'main' | 'climax_response' | 'ended';
+
+export interface PendingClimax {
+    attackerIndex: 0 | 1;
+    responderIndex: 0 | 1;
+    cardId: string;
+    multiplier: 2 | 4 | 10;
+    responseOpen: boolean;
+}
 
 export interface MatchState {
     matchId: string;
@@ -256,14 +293,17 @@ export interface MatchState {
 
     // Result
     winner?: string;
-    winReason?: 'final_event' | 'opponent_filler' | 'surrender' | 'timeout';
+    winReason?: 'climax' | 'draw' | 'final_event' | 'opponent_filler' | 'surrender' | 'timeout';
     actCheckpointsResolved?: string[];
+    pendingClimax?: PendingClimax;
 
     // CPU opponent metadata
     cpuOpponent?: {
         username: string;
         archetypeId: ArchetypeId | string;
         difficulty: 'easy' | 'normal' | 'hard';
+        deckId?: string;
+        protagonistId?: string;
     };
 
     // Log
@@ -298,7 +338,8 @@ export interface DeckData {
     id: string;
     name: string;
     archetypeId: ArchetypeId | string;
-    cards: string[];              // Card IDs (20 cards)
+    cards: string[];              // Card IDs at the configured deck size
+    protagonistId?: string;       // V2 avatar card outside the configured deck size
     backgroundId?: string;        // Background SVG ID
     createdAt: number;
     updatedAt: number;

@@ -77,13 +77,14 @@ async function main(): Promise<void> {
         password: 'pass1234',
     });
 
-    const prebuilt = await request<{ decks: Array<{ id: string; archetypeId: string; cards: string[] }> }>('GET', '/prebuilt-decks', undefined, auth.token);
+    const prebuilt = await request<{ decks: Array<{ id: string; archetypeId: string; protagonistId: string; cards: string[] }> }>('GET', '/prebuilt-decks', undefined, auth.token);
     const template = prebuilt.decks[0];
     if (!template) throw new Error('No prebuilt decks returned');
 
     const deck = await request<{ deck: { id: string; cards: string[] } }>('POST', '/decks', {
         name: 'Smoke Deck',
         archetypeId: template.archetypeId,
+        protagonistId: template.protagonistId,
         cardIds: template.cards,
         backgroundId: 'bg_01',
     }, auth.token);
@@ -95,6 +96,7 @@ async function main(): Promise<void> {
     const cpuMatch = await request<{ matchId: string; matchState: JsonValue }>('POST', '/cpu-match', {
         deckId: deck.deck.id,
         cpuArchetypeId: template.archetypeId,
+        cpuDeckId: template.id,
         difficulty: 'normal',
     }, auth.token);
 

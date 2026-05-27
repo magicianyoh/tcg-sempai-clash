@@ -4,6 +4,7 @@ type AdminCard = {
     type: string;
     archetype: string;
     cost: number;
+    costResource?: 'SP' | 'FP';
     description: string;
     desc?: string;
     extendedLore?: string;
@@ -25,6 +26,7 @@ type AdminEffect = {
     turns?: number;
     description?: string;
 };
+const DECK_SIZE = 20;
 
 type AdminUser = {
     id: string;
@@ -88,7 +90,7 @@ type CsvValidationReport = {
     warnings: CsvValidationIssue[];
 };
 
-const API_URL = window.location.origin;
+const API_URL = String((import.meta as any).env?.VITE_API_URL || window.location.origin).replace(/\/$/, '');
 
 let token = localStorage.getItem('adminToken') || '';
 let cards: AdminCard[] = [];
@@ -224,7 +226,7 @@ async function loadCards() {
 function populateFilters() {
     const types = Array.from(new Set(cards.map(card => card.type))).sort();
     const archetypes = Array.from(new Set(cards.map(card => card.archetype))).sort();
-    $('type-filter').innerHTML = '<option value="">Todas</option>' + types.map(type => `<option>${type}</option>`).join('');
+    $('type-filter').innerHTML = '<option value="">Todas</option>' + types.map(type => `<option value="${type}">${displayCardType(type)}</option>`).join('');
     $('archetype-filter').innerHTML = '<option value="">Todos</option>' + archetypes.map(archetype => `<option>${archetype}</option>`).join('');
 }
 
@@ -243,7 +245,7 @@ function renderCards() {
     $('card-list').innerHTML = filtered.map(card => `
         <button class="row ${card.id === selectedCardId ? 'active' : ''}" data-id="${card.id}" type="button">
             <strong>${card.name}</strong>
-            <span class="meta">${card.type} / ${card.archetype} / ${card.id}</span>
+            <span class="meta">${displayCardType(card.type)} / ${card.archetype} / ${card.id}</span>
         </button>
     `).join('');
 
@@ -256,6 +258,10 @@ function renderCards() {
     });
 }
 
+function displayCardType(type: string): string {
+    return type === 'QUICK_EVENT' || type === 'TOKEN' ? 'Quick Event' : type.replace(/_/g, ' ');
+}
+
 function renderSelectedCard() {
     const card = cards.find(item => item.id === selectedCardId);
     if (!card) return;
@@ -266,6 +272,7 @@ function renderSelectedCard() {
     ($<HTMLSelectElement>('card-type')).value = card.type || '';
     ($<HTMLInputElement>('card-archetype')).value = card.archetype || '';
     ($<HTMLInputElement>('card-cost')).value = String(card.cost ?? 0);
+    ($<HTMLSelectElement>('card-cost-resource')).value = card.costResource || 'SP';
     ($<HTMLInputElement>('card-image')).value = card.image || '';
     ($<HTMLInputElement>('card-sound')).value = card.sound || '';
     ($<HTMLInputElement>('card-max')).value = card.maxCopies ? String(card.maxCopies) : '';
@@ -317,6 +324,24 @@ function parseRequirementsText(value: string): unknown[] {
             if (story) return { type: 'STORY_MIN', value: Number(story[1]), description: `Requiere ${story[1]} SP.` };
             const filler = item.match(/^FP\s*<=\s*(\d+)$/i);
             if (filler) return { type: 'FILLER_MAX', value: Number(filler[1]), description: `FP maximo ${filler[1]}.` };
+            const fillerMinimum = item.match(/^FP\s*>=\s*(\d+)$/i);
+            if (fillerMinimum) return { type: 'FILLER_MIN', value: Number(fillerMinimum[1]), description: `Requiere ${fillerMinimum[1]} FP.` };
+            const eventCount = item.match(/^EVENTOS\s*>=\s*(\d+)$/i);
+            if (eventCount) return { type: 'EVENT_COUNT_MIN', value: Number(eventCount[1]), description: `Requiere haber completado ${eventCount[1]} Evento(s).` };
+            const historicalCardType = item.match(/^ARCO_PREVIO\s+(PERSONAJE|ITEM|LOCATION|QUICK_EVENT)$/i);
+            if (historicalCardType) return { type: 'CARD_IN_COMPLETED_ARC', cardType: historicalCardType[1].toUpperCase(), value: 1, description: `Requiere ${historicalCardType[1]} en un arco previo.` };
+            const discard = item.match(/^DESCARTAR\s+(\d+)$/i);
+            if (discard) return { type: 'DISCARD_FROM_HAND', value: Number(discard[1]), description: `Descarta ${discard[1]} carta(s) de la mano.` };
+            const boardCards = item.match(/^CAMPO\s+(\d+)\s*:\s*(.+)$/i);
+            if (boardCards) {
+                const cardIds = boardCards[2].split(/\s*\|\s*/).filter(Boolean);
+                return {
+                    type: 'CARD_ON_BOARD',
+                    cardIds,
+                    value: Number(boardCards[1]),
+                    description: `Requiere ${boardCards[1]} material(es) valido(s) de la ruta en el arco actual.`,
+                };
+            }
             return { type: 'CARD_ON_BOARD', cardIds: [item], value: 1, description: `Requiere ${cardName(item)} en campo.` };
         });
 }
@@ -325,7 +350,11 @@ function formatRequirementsText(requirements: unknown[] = []): string {
     return requirements.map((requirement: any) => {
         if (requirement?.type === 'STORY_MIN') return `SP>=${requirement.value || 0}`;
         if (requirement?.type === 'FILLER_MAX') return `FP<=${requirement.value || 0}`;
-        if (requirement?.type === 'CARD_ON_BOARD' && Array.isArray(requirement.cardIds)) return requirement.cardIds.join(', ');
+        if (requirement?.type === 'FILLER_MIN') return `FP>=${requirement.value || 0}`;
+        if (requirement?.type === 'EVENT_COUNT_MIN') return `EVENTOS>=${requirement.value || 1}`;
+        if (requirement?.type === 'CARD_IN_COMPLETED_ARC' && requirement.cardType) return `ARCO_PREVIO ${requirement.cardType}`;
+        if (requirement?.type === 'DISCARD_FROM_HAND') return `DESCARTAR ${requirement.value || 1}`;
+        if (requirement?.type === 'CARD_ON_BOARD' && Array.isArray(requirement.cardIds)) return `CAMPO ${requirement.value || 1}: ${requirement.cardIds.join(' | ')}`;
         return JSON.stringify(requirement);
     }).join('\n');
 }
@@ -339,8 +368,8 @@ function renderEffectList() {
     const effects = parseEffectsFromEditor();
     $('effect-list').innerHTML = effects.map((effect, index) => `
         <div class="row">
-            <strong>${effect.type}</strong>
-            <span class="meta">${effect.target || 'SELF'}${effect.value !== undefined ? ` / valor ${effect.value}` : ''}${effect.cardType ? ` / bloquea ${effect.cardType}` : ''}${effect.cardId ? ` / carta ${effect.cardId}` : ''}${effect.turns ? ` / ${effect.turns} turno(s)` : ''}</span>
+            <strong>${displayCardType(effect.type)}</strong>
+            <span class="meta">${effect.target || 'SELF'}${effect.value !== undefined ? ` / valor ${effect.value}` : ''}${effect.cardType ? ` / tipo ${displayCardType(effect.cardType)}` : ''}${effect.cardId ? ` / carta ${effect.cardId}` : ''}${effect.turns ? ` / ${effect.turns} turno(s)` : ''}</span>
             <span class="meta">${effect.description || ''}</span>
             <button class="btn danger" data-remove-effect="${index}" type="button">Quitar</button>
         </div>
@@ -381,7 +410,7 @@ function selectedCard(): AdminCard | undefined {
 }
 
 function setupCardReferenceAutocomplete(textareaId: string) {
-    const textarea = $<HTMLTextAreaElement>(textareaId);
+    const textarea = $<HTMLTextAreaElement | HTMLInputElement>(textareaId);
     const menu = $('card-suggestions');
 
     textarea.addEventListener('input', () => {
@@ -444,6 +473,7 @@ async function saveCard() {
                 type: cardType,
                 archetype: ($<HTMLInputElement>('card-archetype')).value,
                 cost: Number(($<HTMLInputElement>('card-cost')).value || 0),
+                costResource: ($<HTMLSelectElement>('card-cost-resource')).value as 'SP' | 'FP',
                 image: ($<HTMLInputElement>('card-image')).value,
                 sound: ($<HTMLInputElement>('card-sound')).value,
                 maxCopies: maxCopiesValue ? Number(maxCopiesValue) : undefined,
@@ -742,7 +772,7 @@ function addCardToPrebuiltDraft(cardId: string) {
     if (!card || !deck || card.archetype !== deck.archetypeId) return;
     const count = prebuiltDeckDraft.filter(id => id === cardId).length;
     const max = card.maxCopies ?? 3;
-    if (prebuiltDeckDraft.length >= 20 || count >= max) return;
+    if (prebuiltDeckDraft.length >= DECK_SIZE || count >= max) return;
     prebuiltDeckDraft.push(cardId);
     renderPrebuiltDeckEditor();
 }
@@ -753,7 +783,7 @@ function setPrebuiltDraftCount(cardId: string, count: number) {
     const max = card.maxCopies ?? 3;
     const safeCount = Math.max(0, Math.min(max, count));
     const withoutCard = prebuiltDeckDraft.filter(id => id !== cardId);
-    prebuiltDeckDraft = [...withoutCard, ...Array.from({ length: safeCount }, () => cardId)].slice(0, 20);
+    prebuiltDeckDraft = [...withoutCard, ...Array.from({ length: safeCount }, () => cardId)].slice(0, DECK_SIZE);
     renderPrebuiltDeckEditor();
 }
 
@@ -766,7 +796,7 @@ function renderPrebuiltDeckEditor() {
     const deck = selectedPrebuiltDeck();
     if (!deck) {
         $('prebuilt-deck-list').innerHTML = '';
-        $('prebuilt-deck-count').textContent = '0/20';
+        $('prebuilt-deck-count').textContent = `0/${DECK_SIZE}`;
         return;
     }
 
@@ -775,7 +805,7 @@ function renderPrebuiltDeckEditor() {
         if (!grouped.has(id)) grouped.set(id, []);
         grouped.get(id)?.push(index);
     });
-    $('prebuilt-deck-count').textContent = `${prebuiltDeckDraft.length}/20`;
+    $('prebuilt-deck-count').textContent = `${prebuiltDeckDraft.length}/${DECK_SIZE}`;
     $('prebuilt-deck-list').innerHTML = Array.from(grouped.entries()).map(([id, indices]) => {
         const card = cardById(id);
         const lastIndex = indices[indices.length - 1];
@@ -783,7 +813,7 @@ function renderPrebuiltDeckEditor() {
             <div class="row deck-edit-card">
                 <div>
                     <strong>${indices.length}x ${escapeHtml(card?.name || id)}</strong>
-                    <span class="meta">${card?.type || ''} / ${id}</span>
+                    <span class="meta">${displayCardType(card?.type || '')} / ${id}</span>
                 </div>
                 <div class="actions" style="margin-top:0;">
                     <button class="btn" data-prebuilt-minus="${id}" type="button">-</button>
@@ -1024,6 +1054,7 @@ function bindEvents() {
     setupCardReferenceAutocomplete('card-likes');
     setupCardReferenceAutocomplete('card-dislikes');
     setupCardReferenceAutocomplete('card-requirements');
+    setupCardReferenceAutocomplete('effect-card-id');
     $('import-btn').addEventListener('click', importCsv);
     $('validate-import-btn').addEventListener('click', validateCsvImport);
     $('download-card-template-btn').addEventListener('click', () => downloadCsvTemplate('cards'));

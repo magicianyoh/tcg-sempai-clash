@@ -1,41 +1,41 @@
-import Phaser from 'phaser';
-import { phaserConfig } from './phaser/phaser.config';
-import { NetworkSystem } from './phaser/systems/NetworkSystem';
+const token = localStorage.getItem('token');
+const username = localStorage.getItem('username');
+const loggedIn = Boolean(token && username);
 
-// Global Game Instance
-let game: Phaser.Game;
+const matchAction = document.getElementById('match-action') as HTMLAnchorElement | null;
+const matchActionTitle = document.getElementById('match-action-title');
+const matchActionCopy = document.getElementById('match-action-copy');
+const lobbyAction = document.getElementById('lobby-action') as HTMLAnchorElement | null;
+const roomLink = document.getElementById('room-link') as HTMLAnchorElement | null;
+const loginNav = document.getElementById('login-nav');
+const sessionName = document.getElementById('session-name');
+const serverPill = document.getElementById('server-pill');
+const API_URL = String((import.meta as any).env?.VITE_API_URL || window.location.origin).replace(/\/$/, '');
 
-// Simple UI Logic for MVP
-const loginBtn = document.getElementById('login-btn');
-const usernameInput = document.getElementById('username') as HTMLInputElement;
-const loginContainer = document.getElementById('login-container');
-const lobbyContainer = document.getElementById('lobby-container');
-const findMatchBtn = document.getElementById('find-match-btn');
-
-const network = new NetworkSystem();
-
-function getWebSocketUrl(): string {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.host}/ws`;
+if (loggedIn) {
+    if (matchAction) matchAction.href = '/match.html';
+    if (lobbyAction) lobbyAction.href = '/match.html';
+    if (roomLink) roomLink.href = '/match.html';
+    if (matchActionTitle) matchActionTitle.textContent = 'Buscar partida';
+    if (matchActionCopy) matchActionCopy.textContent = 'Quick Match, lobby privado o batalla contra CPU.';
+    if (loginNav) loginNav.textContent = 'Partidas';
+    if (loginNav instanceof HTMLAnchorElement) loginNav.href = '/match.html';
+    if (sessionName) sessionName.textContent = username || 'Jugador';
 }
 
-loginBtn?.addEventListener('click', async () => {
-    const username = usernameInput.value;
-    // Mock Auth for NOW
-    console.log('Logging in as', username);
-    loginContainer!.style.display = 'none';
-    lobbyContainer!.style.display = 'block';
-
-    // Connect WS
-    network.connect(getWebSocketUrl());
-});
-
-findMatchBtn?.addEventListener('click', () => {
-    network.findMatch();
-    // Start Phaser Game on Match Found (handled in Network callback usually, but ensuring game start here for demo)
-    if (!game) {
-        game = new Phaser.Game(phaserConfig);
+async function updateServerStatus(): Promise<void> {
+    if (!serverPill) return;
+    try {
+        const response = await fetch(`${API_URL}/health`);
+        if (!response.ok) throw new Error('offline');
+        serverPill.classList.remove('checking', 'offline');
+        serverPill.classList.add('online');
+        serverPill.textContent = 'Servidor online';
+    } catch {
+        serverPill.classList.remove('checking', 'online');
+        serverPill.classList.add('offline');
+        serverPill.textContent = 'Servidor sin conexion';
     }
-});
+}
 
-export { network, game };
+void updateServerStatus();

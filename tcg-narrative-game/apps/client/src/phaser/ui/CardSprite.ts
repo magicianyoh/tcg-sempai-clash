@@ -74,6 +74,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
     }
 
     private createCard(width: number, height: number): void {
+        const compact = width < 70;
         // Background
         this.background = this.scene.add.rectangle(
             0, 0, width, height,
@@ -83,30 +84,31 @@ export class CardSprite extends Phaser.GameObjects.Container {
         this.add(this.background);
 
         // Cost badge (top left)
-        this.costBadge = this.createCostBadge();
+        this.costBadge = this.createCostBadge(width, height, compact);
         this.add(this.costBadge);
 
         // Type badge (top right)
-        this.typeBadge = this.createTypeBadge(width);
+        this.typeBadge = this.createTypeBadge(width, height, compact);
         this.add(this.typeBadge);
 
         // Card name
-        this.nameText = this.scene.add.text(0, -height / 2 + 35, this.cardName, {
-            fontSize: '11px',
+        this.nameText = this.scene.add.text(0, -height / 2 + (compact ? 20 : 35), this.cardName, {
+            fontSize: compact ? '8px' : '11px',
             color: '#ffffff',
             fontStyle: 'bold',
-            wordWrap: { width: width - 10 },
+            wordWrap: { width: width - (compact ? 6 : 10) },
             align: 'center',
         }).setOrigin(0.5, 0);
         this.add(this.nameText);
 
         // Description (front)
         this.descText = this.scene.add.text(0, 15, this.cardDescription, {
-            fontSize: '9px',
+            fontSize: compact ? '7px' : '9px',
             color: '#cccccc',
             wordWrap: { width: width - 10 },
             align: 'center',
         }).setOrigin(0.5, 0);
+        this.descText.setVisible(!compact);
         this.add(this.descText);
 
         // Backstory (hidden initially)
@@ -122,12 +124,13 @@ export class CardSprite extends Phaser.GameObjects.Container {
         this.setSize(width, height);
     }
 
-    private createCostBadge(): Phaser.GameObjects.Container {
-        const container = this.scene.add.container(-35, -55);
+    private createCostBadge(width: number, height: number, compact: boolean): Phaser.GameObjects.Container {
+        const radius = compact ? 9 : 14;
+        const container = this.scene.add.container(-width / 2 + radius + 2, -height / 2 + radius + 2);
 
-        const bg = this.scene.add.circle(0, 0, 14, 0xe94560);
+        const bg = this.scene.add.circle(0, 0, radius, 0xe94560);
         const text = this.scene.add.text(0, 0, String(this.cardCost), {
-            fontSize: '12px',
+            fontSize: compact ? '9px' : '12px',
             color: '#ffffff',
             fontStyle: 'bold',
         }).setOrigin(0.5);
@@ -136,14 +139,16 @@ export class CardSprite extends Phaser.GameObjects.Container {
         return container;
     }
 
-    private createTypeBadge(cardWidth: number): Phaser.GameObjects.Container {
-        const container = this.scene.add.container(25, -55);
+    private createTypeBadge(cardWidth: number, cardHeight: number, compact: boolean): Phaser.GameObjects.Container {
+        const badgeWidth = compact ? 27 : 40;
+        const badgeHeight = compact ? 12 : 16;
+        const container = this.scene.add.container(cardWidth / 2 - badgeWidth / 2 - 2, -cardHeight / 2 + badgeHeight / 2 + 2);
 
         const typeLabel = this.getShortTypeName();
-        const bg = this.scene.add.rectangle(0, 0, 40, 16, this.getTypeColor(), 1)
+        const bg = this.scene.add.rectangle(0, 0, badgeWidth, badgeHeight, this.getTypeColor(), 1)
             .setStrokeStyle(1, 0xffffff);
         const text = this.scene.add.text(0, 0, typeLabel, {
-            fontSize: '8px',
+            fontSize: compact ? '6px' : '8px',
             color: '#ffffff',
         }).setOrigin(0.5);
 
@@ -158,9 +163,12 @@ export class CardSprite extends Phaser.GameObjects.Container {
             case 'CHARACTER': return 0x3498db;
             case 'ITEM': return 0xf39c12;
             case 'LOCATION': return 0x9b59b6;
-            case 'TOKEN': return 0x22c55e;
+            case 'TOKEN':
+            case 'QUICK_EVENT': return 0x22c55e;
             case 'EVENT':
             case 'EVENT_KEY': return 0x2ecc71;
+            case 'CLIMAX_EVENT': return 0xffd166;
+            case 'PLOT_TWIST_EVENT': return 0x4ecdc4;
             case 'EVENT_FINAL': return 0xffd700;
             case 'FILLER': return 0x7f8c8d;
             default: return 0x555555;
@@ -174,9 +182,12 @@ export class CardSprite extends Phaser.GameObjects.Container {
             case 'CHARACTER': return 'PERS';
             case 'ITEM': return 'ITEM';
             case 'LOCATION': return 'LOC';
-            case 'TOKEN': return 'TOK';
+            case 'TOKEN':
+            case 'QUICK_EVENT': return 'QEV';
             case 'EVENT':
             case 'EVENT_KEY': return 'EVT';
+            case 'CLIMAX_EVENT': return 'CLX';
+            case 'PLOT_TWIST_EVENT': return 'PLOT';
             case 'EVENT_FINAL': return 'FINAL';
             case 'FILLER': return 'FILL';
             default: return 'CARD';
@@ -261,12 +272,15 @@ export class CardSprite extends Phaser.GameObjects.Container {
             const dist = Phaser.Math.Distance.Between(startX, startY, pointer.x, pointer.y);
 
             // If dragging logic didn't takeover (or just finished), checking dist helps
-            if (!this.isDragging && dist < 10) {
+            if (dist < 10) {
                 if (pointer.rightButtonReleased()) {
                     this.flip();
                 } else {
                     const sourceEvent = pointer.event as (MouseEvent & PointerEvent & { ctrlKey?: boolean; metaKey?: boolean; pointerType?: string });
-                    const isDetailTap = sourceEvent.ctrlKey === true || sourceEvent.metaKey === true;
+                    const isDetailTap = sourceEvent.ctrlKey === true
+                        || sourceEvent.metaKey === true
+                        || sourceEvent.pointerType === 'touch'
+                        || this.scene.scale.width < 760;
                     this.emit('card-tapped', this.cardId, isDetailTap);
                 }
             }
@@ -425,19 +439,28 @@ export class CardSprite extends Phaser.GameObjects.Container {
     }
 
     playDetailFocus(): void {
+        this.scene.tweens.killTweensOf(this);
         this.scene.tweens.add({
             targets: this,
-            scaleX: 0,
-            duration: 90,
+            scaleX: 0.08,
+            duration: 75,
             ease: 'Sine.In',
             onComplete: () => {
                 this.scene.tweens.add({
                     targets: this,
-                    scaleX: 1.15,
-                    scaleY: 1.15,
-                    duration: 140,
-                    yoyo: true,
+                    scaleX: 1.08,
+                    scaleY: 1.08,
+                    duration: 120,
                     ease: 'Back.Out',
+                    onComplete: () => {
+                        this.scene.tweens.add({
+                            targets: this,
+                            scaleX: 1,
+                            scaleY: 1,
+                            duration: 90,
+                            ease: 'Sine.Out',
+                        });
+                    },
                 });
             },
         });

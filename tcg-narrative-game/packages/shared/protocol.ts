@@ -13,9 +13,13 @@ export enum ClientMessageType {
     LOBBY_JOIN = 'LOBBY_JOIN',
     LOBBY_READY = 'LOBBY_READY',
     LOBBY_LEAVE = 'LOBBY_LEAVE',
+    LOBBY_CHALLENGE = 'LOBBY_CHALLENGE',
+    LOBBY_CHALLENGE_RESPONSE = 'LOBBY_CHALLENGE_RESPONSE',
 
     // Match Actions
     MATCH_ACTION = 'MATCH_ACTION',
+    MATCH_SPECTATE = 'MATCH_SPECTATE',
+    MATCH_CHAT = 'MATCH_CHAT',
 }
 
 // --- Server -> Client Message Types ---
@@ -28,6 +32,8 @@ export enum ServerMessageType {
 
     // Lobby
     LOBBY_STATE = 'LOBBY_STATE',
+    LOBBY_INVITE = 'LOBBY_INVITE',
+    LOBBY_INVITE_RESULT = 'LOBBY_INVITE_RESULT',
 
     // Match
     MATCH_FOUND = 'MATCH_FOUND',
@@ -67,6 +73,29 @@ export interface LobbyReadyPayload {
     lobbyId: string;
     deckId: string;
     timerEnabled?: boolean;
+}
+
+export interface LobbyChallengePayload {
+    lobbyId: string;
+    targetUsername: string;
+    deckId: string;
+    timerEnabled?: boolean;
+    privateMatch?: boolean;
+}
+
+export interface LobbyChallengeResponsePayload {
+    challengeId: string;
+    accepted: boolean;
+    deckId?: string;
+}
+
+export interface MatchSpectatePayload {
+    matchId: string;
+}
+
+export interface MatchChatPayload {
+    matchId: string;
+    message: string;
 }
 
 export interface PlayCardAction {
@@ -111,6 +140,10 @@ export type ClientPayload =
     | LobbyCreatePayload
     | LobbyJoinPayload
     | LobbyReadyPayload
+    | LobbyChallengePayload
+    | LobbyChallengeResponsePayload
+    | MatchSpectatePayload
+    | MatchChatPayload
     | MatchActionPayload;
 
 // Client Message wrapper
@@ -137,6 +170,16 @@ export interface LobbyPlayer {
     deckId?: string;
     ready: boolean;
     timerEnabled?: boolean;
+    activeMatchId?: string;
+}
+
+export interface LobbyMatchSummary {
+    matchId: string;
+    players: [string, string];
+    timerEnabled: boolean;
+    privateMatch: boolean;
+    status: 'active' | 'ended';
+    winner?: string;
 }
 
 export interface LobbyState {
@@ -145,6 +188,7 @@ export interface LobbyState {
     formatId: string;
     players: LobbyPlayer[];
     status: 'waiting' | 'ready' | 'started';
+    activeMatches?: LobbyMatchSummary[];
 }
 
 export interface LobbyStatePayload {
@@ -153,6 +197,19 @@ export interface LobbyStatePayload {
 
 export interface MatchFoundPayload {
     matchId: string;
+    spectator?: boolean;
+}
+
+export interface LobbyInvitePayload {
+    challengeId: string;
+    lobbyId: string;
+    fromUsername: string;
+    timerEnabled: boolean;
+    privateMatch: boolean;
+}
+
+export interface LobbyInviteResultPayload {
+    message: string;
 }
 
 // Re-export MatchState from types for convenience
@@ -171,6 +228,8 @@ export type ServerPayload =
     | AuthOkPayload
     | ErrorPayload
     | LobbyStatePayload
+    | LobbyInvitePayload
+    | LobbyInviteResultPayload
     | MatchFoundPayload
     | MatchStatePayload
     | MatchEndedPayload;

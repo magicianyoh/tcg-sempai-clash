@@ -27,7 +27,8 @@ export interface EventActivationResult {
 
 export function canActivateEvent(eventCard: CardData, player: PlayerState): EventActivationResult {
     // Check if player can play events at all (filler threshold)
-    if (player.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD) {
+    const paysEventsWithFiller = Boolean(player.protagonistId && CARDS[player.protagonistId]?.costResource === 'FP');
+    if (!paysEventsWithFiller && player.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD) {
         return {
             canActivate: false,
             reason: `Filler points too high (${player.fillerPoints}/${GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD}). Cannot play events.`,

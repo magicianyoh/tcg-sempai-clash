@@ -1,5 +1,5 @@
 import { CARDS } from '@tcg/game-engine/content/cards';
-import { ARCHETYPES } from '@tcg/shared/constants';
+import { ARCHETYPES, V2_ARCHETYPES } from '@tcg/shared/constants';
 import { CardData, CardEffect, CardRequirement, CardType, EffectType } from '@tcg/shared/types';
 import { PersistedCardData, store } from '../store/memory.store';
 
@@ -65,11 +65,21 @@ type CsvRow = {
     values: Record<string, string>;
 };
 
-const VALID_CARD_TYPES = new Set<string>(Object.values(CardType));
+const VALID_CARD_TYPES = new Set<string>([
+    CardType.PROTAGONIST,
+    CardType.PERSONAJE,
+    CardType.ITEM,
+    CardType.LOCATION,
+    CardType.TOKEN,
+    CardType.QUICK_EVENT,
+    CardType.EVENT,
+    CardType.CLIMAX_EVENT,
+    CardType.PLOT_TWIST_EVENT,
+]);
 const VALID_EFFECT_TYPES = new Set<string>(Object.values(EffectType));
-const VALID_ARCHETYPES = new Set<string>(Object.values(ARCHETYPES));
+const VALID_ARCHETYPES = new Set<string>(V2_ARCHETYPES);
 const VALID_TARGETS = new Set(['SELF', 'OPPONENT']);
-const VALID_REQUIREMENT_TYPES = new Set(['STORY_MIN', 'FILLER_MAX', 'CARD_ON_BOARD', 'EVENT_COMPLETED', 'AFFINITY_ACTIVE']);
+const VALID_REQUIREMENT_TYPES = new Set(['STORY_MIN', 'FILLER_MIN', 'FILLER_MAX', 'CARD_ON_BOARD', 'CARD_IN_COMPLETED_ARC', 'EVENT_COMPLETED', 'EVENT_COUNT_MIN', 'AFFINITY_ACTIVE', 'DISCARD_FROM_HAND']);
 
 function supportsLikes(type: CardType | string): boolean {
     return type === CardType.PROTAGONIST
@@ -101,6 +111,7 @@ export function serializeCard(card: MutableCard): AdminCardRecord {
         name: card.name,
         type: card.type,
         cost: card.cost,
+        costResource: card.costResource || 'SP',
         description: card.description,
         desc: card.description,
         backstory: card.backstory,
@@ -109,6 +120,8 @@ export function serializeCard(card: MutableCard): AdminCardRecord {
         prereqs: card.eventPrerequisites || [],
         requirements: card.requirements || [],
         effects: card.effects || [],
+        entryEffects: card.entryEffects || [],
+        climaxTiers: card.climaxTiers,
         affinity: canHaveLikes ? card.affinity : undefined,
         likesData: canHaveLikes ? {
             likes,
@@ -121,6 +134,9 @@ export function serializeCard(card: MutableCard): AdminCardRecord {
         sound: card.sound || '',
         maxCopies: card.maxCopies,
         tags: card.tags || [],
+        protagonistId: card.protagonistId,
+        formIndex: card.formIndex,
+        totalForms: card.totalForms,
     };
 }
 
@@ -131,12 +147,15 @@ export function toPersistedCard(card: MutableCard): PersistedCardData {
         name: serialized.name,
         type: serialized.type,
         cost: serialized.cost,
+        costResource: serialized.costResource,
         description: serialized.description,
         backstory: serialized.backstory,
         extendedLore: serialized.extendedLore,
         eventPrerequisites: serialized.eventPrerequisites,
         requirements: serialized.requirements,
         effects: serialized.effects,
+        entryEffects: serialized.entryEffects,
+        climaxTiers: serialized.climaxTiers,
         affinity: serialized.affinity,
         likesData: serialized.likesData,
         likes: serialized.likes,
@@ -146,6 +165,9 @@ export function toPersistedCard(card: MutableCard): PersistedCardData {
         sound: serialized.sound,
         maxCopies: serialized.maxCopies,
         tags: serialized.tags,
+        protagonistId: serialized.protagonistId,
+        formIndex: serialized.formIndex,
+        totalForms: serialized.totalForms,
     };
 }
 
@@ -215,7 +237,7 @@ export function importCsvCards(csv: string): AdminCardRecord[] {
 }
 
 export function exportCardsCsvTemplate(cards: MutableCard[] = Object.values(CARDS) as MutableCard[]): string {
-    const headers = ['id', 'name', 'type', 'archetype', 'cost', 'description', 'image', 'sound', 'likes', 'dislikes', 'tags', 'prereqs', 'requirements', 'effects', 'maxCopies'];
+    const headers = ['id', 'name', 'type', 'archetype', 'protagonistId', 'cost', 'costResource', 'description', 'image', 'sound', 'likes', 'dislikes', 'tags', 'prereqs', 'requirements', 'effects', 'maxCopies'];
     const rows = cards.map(card => {
         const serialized = serializeCard(card);
         return [
@@ -223,7 +245,9 @@ export function exportCardsCsvTemplate(cards: MutableCard[] = Object.values(CARD
             serialized.name,
             serialized.type,
             serialized.archetype,
+            serialized.protagonistId || '',
             String(serialized.cost ?? 0),
+            serialized.costResource || 'SP',
             serialized.description || serialized.desc || '',
             serialized.image || '',
             serialized.sound || '',
@@ -241,13 +265,15 @@ export function exportCardsCsvTemplate(cards: MutableCard[] = Object.values(CARD
 
 export function exportCardsCsvBlankTemplate(): string {
     return toCsv([
-        ['id', 'name', 'type', 'archetype', 'cost', 'description', 'image', 'sound', 'likes', 'dislikes', 'tags', 'prereqs', 'requirements', 'effects', 'maxCopies'],
+        ['id', 'name', 'type', 'archetype', 'protagonistId', 'cost', 'costResource', 'description', 'image', 'sound', 'likes', 'dislikes', 'tags', 'prereqs', 'requirements', 'effects', 'maxCopies'],
         [
             'custom-card-id',
             'Nombre de carta',
             CardType.PERSONAJE,
             ARCHETYPES.SHONEN,
+            '',
             '1',
+            'SP',
             'Descripcion visible',
             'asset-o-url',
             '',
@@ -358,6 +384,7 @@ function mergeCard(existing: MutableCard, updates: Partial<AdminCardRecord>): Mu
         extendedLore: updates.extendedLore ?? existing.extendedLore,
         type,
         cost: updates.cost !== undefined ? Number(updates.cost) : existing.cost,
+        costResource: updates.costResource !== undefined ? updates.costResource : existing.costResource,
         archetype: cleanString(updates.archetype) || existing.archetype,
         image: updates.image !== undefined ? updates.image : existing.image,
         sound: updates.sound !== undefined ? updates.sound : existing.sound,
@@ -365,6 +392,11 @@ function mergeCard(existing: MutableCard, updates: Partial<AdminCardRecord>): Mu
         tags: updates.tags ?? existing.tags,
         requirements: updates.requirements !== undefined ? updates.requirements as CardRequirement[] : existing.requirements,
         effects: updates.effects !== undefined ? updates.effects as CardEffect[] : existing.effects,
+        entryEffects: updates.entryEffects !== undefined ? updates.entryEffects as CardEffect[] : existing.entryEffects,
+        climaxTiers: updates.climaxTiers !== undefined ? updates.climaxTiers : existing.climaxTiers,
+        protagonistId: updates.protagonistId !== undefined ? updates.protagonistId : existing.protagonistId,
+        formIndex: updates.formIndex !== undefined ? Number(updates.formIndex) : existing.formIndex,
+        totalForms: updates.totalForms !== undefined ? Number(updates.totalForms) : existing.totalForms,
         affinity: canHaveLikes ? existing.affinity : undefined,
         likesData: canHaveLikes ? {
             likes,
@@ -384,8 +416,8 @@ function mergeCard(existing: MutableCard, updates: Partial<AdminCardRecord>): Mu
 }
 
 function sanitizeFinalEventEffects(card: MutableCard): MutableCard {
-    if (card.type === CardType.EVENT_FINAL && card.effects?.some(effect => effect.type === EffectType.VICTORY || effect.type === 'VICTORY')) {
-        card.effects = card.effects.filter(effect => effect.type === EffectType.VICTORY || effect.type === 'VICTORY').slice(0, 1);
+    if (card.type === CardType.CLIMAX_EVENT || card.type === CardType.PLOT_TWIST_EVENT) {
+        card.effects = (card.effects || []).filter(effect => effect.type !== EffectType.VICTORY && effect.type !== 'VICTORY');
     }
     return card;
 }
@@ -407,6 +439,7 @@ function upsertCsvRow(row: CsvRow): MutableCard {
         name: row.values.name,
         type: row.values.type,
         cost: row.values.cost ? Number(row.values.cost) : undefined,
+        costResource: row.values.costResource === 'FP' ? 'FP' : row.values.costResource === 'SP' ? 'SP' : undefined,
         description: row.values.description || row.values.desc,
         backstory: row.values.backstory,
         extendedLore: row.values.extendedLore,
@@ -415,6 +448,7 @@ function upsertCsvRow(row: CsvRow): MutableCard {
         sound: row.values.sound,
         maxCopies: row.values.maxCopies ? Number(row.values.maxCopies) : undefined,
         tags: existing ? importedTags : Array.from(new Set([...(importedTags || []), 'admin-custom'])),
+        protagonistId: row.values.protagonistId || undefined,
         eventPrerequisites: row.values.prereqs ? parseList(row.values.prereqs) : undefined,
         requirements: row.values.requirements ? parseJsonArray(row.values.requirements) as CardRequirement[] : undefined,
         effects: row.values.effects ? parseJsonArray(row.values.effects) as CardEffect[] : undefined,
@@ -531,6 +565,7 @@ function validateCsvRow(row: CsvRow, knownIds: Set<string>): CsvValidationIssue[
     if (card.type && !VALID_CARD_TYPES.has(card.type)) add('error', 'type', `Categoria invalida: ${card.type}.`);
     if (card.archetype && !VALID_ARCHETYPES.has(card.archetype)) add('error', 'archetype', `Arquetipo invalido: ${card.archetype}.`);
     if (card.cost && !Number.isFinite(Number(card.cost))) add('error', 'cost', 'El costo debe ser numerico.');
+    if (card.costResource && !['SP', 'FP'].includes(card.costResource)) add('error', 'costResource', 'El recurso de costo debe ser SP o FP.');
     if (card.maxCopies && !Number.isFinite(Number(card.maxCopies))) add('error', 'maxCopies', 'Max copias debe ser numerico.');
     if (!card.description?.trim() && !card.desc?.trim()) add('warning', 'description', 'Falta descripcion visible.');
     if (!card.image?.trim()) add('warning', 'image', 'Falta imagen o asset id.');
@@ -583,12 +618,19 @@ function validateCardForAudit(card: MutableCard, knownIds: Set<string>): CardAud
     if (!VALID_CARD_TYPES.has(card.type)) add('error', 'content', `Categoria invalida: ${card.type}.`);
     if (!VALID_ARCHETYPES.has(String(card.archetype))) add('error', 'content', `Arquetipo invalido: ${card.archetype}.`);
     if (!Number.isFinite(Number(card.cost)) || Number(card.cost) < 0) add('error', 'content', 'Costo invalido.');
+    if (!['SP', 'FP'].includes(card.costResource || 'SP')) add('error', 'content', 'Moneda de costo invalida.');
     if (!card.effects?.length) add('warning', 'effects', 'No tiene efectos definidos.');
 
     for (const message of validateEffects(card.effects || [])) add('error', 'effects', message);
     for (const message of validateRequirements(card.requirements || [], knownIds)) add('error', 'reference', message);
-    if ((card.type === CardType.EVENT || card.type === CardType.EVENT_FINAL || card.type === CardType.EVENT_KEY) && !hasMaterialRequirement(card.requirements || [])) {
+    if ((card.type === CardType.EVENT || card.type === CardType.CLIMAX_EVENT || card.type === CardType.PLOT_TWIST_EVENT) && !hasMaterialRequirement(card.requirements || [])) {
         add('warning', 'reference', 'El evento deberia requerir al menos una carta material en campo.');
+    }
+    if (card.type === CardType.CLIMAX_EVENT && (!card.climaxTiers || card.climaxTiers.length !== 3)) {
+        add('error', 'reference', 'El Climax debe definir niveles x2, x4 y x10.');
+    }
+    if (card.type === CardType.PLOT_TWIST_EVENT && card.effects.some(effect => effect.type === EffectType.VICTORY || effect.type === 'VICTORY')) {
+        add('error', 'effects', 'Un Plot-Twist no puede ganar automaticamente.');
     }
     for (const id of card.eventPrerequisites || []) {
         if (!knownIds.has(id)) add('error', 'reference', `Prerequisito inexistente: ${id}.`);
@@ -615,7 +657,7 @@ function hasMaterialRequirement(requirements: CardRequirement[]): boolean {
             || req.cardType === CardType.PERSONAJE
             || req.cardType === CardType.ITEM
             || req.cardType === CardType.LOCATION
-            || req.cardType === CardType.TOKEN
+            || req.cardType === CardType.QUICK_EVENT
         )
     );
 }

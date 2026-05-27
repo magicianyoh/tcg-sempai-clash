@@ -27,6 +27,7 @@ async function main(): Promise<void> {
         const deck = existingDeck || store.createDeck(username, {
             name: `Demo - ${template.name}`,
             archetypeId: template.archetypeId,
+            protagonistId: template.protagonistId,
             cards: template.cards,
             backgroundId: `bg_0${((index - 1) % 4) + 1}`,
         });

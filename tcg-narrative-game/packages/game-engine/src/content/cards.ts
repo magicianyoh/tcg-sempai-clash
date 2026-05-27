@@ -1,20 +1,34 @@
 import { CardData, CardEffect, CardRequirement, CardType, EffectType } from '@tcg/shared/types';
 import { ARCHETYPES } from '@tcg/shared/constants';
 
-type Target = 'SELF' | 'OPPONENT';
-type Strategy = 'aggro' | 'engine' | 'team' | 'control' | 'defense';
-type Pace = 'fast' | 'mid' | 'slow';
+type Resource = 'SP' | 'FP';
+type Strategy = 'rush' | 'engine' | 'bond' | 'control';
 type Named = [slug: string, name: string, description: string];
+type ExtraMaterial = { kind: 'support' | 'item' | 'location'; card: Named };
 type Hero = {
     slug: string;
     name: string;
     description: string;
     strategy: Strategy;
-    pace: Pace;
+    resource: Resource;
     support: Named;
     item: Named;
-    final: string;
-    events: Named[];
+    location: Named;
+    normalEvents: Named[];
+    climax: Named;
+    plotTwist: Named;
+    extraMaterials?: ExtraMaterial[];
+    quickEvents?: Named[];
+    eventMaterials?: string[][];
+    eventMaterialCounts?: number[];
+    climaxMaterials?: string[];
+    routeId?: string;
+    routeLabel?: string;
+    protagonistSlug?: string;
+    generateAvatar?: boolean;
+    eventStoryBonus?: number;
+    eventSelfFillerDelta?: number;
+    eventOpponentFillerBonus?: number;
 };
 type Plan = {
     id: string;
@@ -22,7 +36,6 @@ type Plan = {
     theme: string;
     sharedCharacters: Named[];
     sharedItems: Named[];
-    locations: Named[];
     heroes: Hero[];
 };
 
@@ -30,493 +43,843 @@ export const CARDS: Record<string, CardData> = {};
 
 const plans: Plan[] = [
     {
-        id: ARCHETYPES.SHONEN, prefix: 'shonen', theme: 'duelos, entrenamiento y amistad',
-        sharedCharacters: [
-            ['rival-swordsman', 'Rival Swordsman', 'Presiona al heroe a pelear mejor.'],
-            ['old-master', 'Old Master', 'Convierte derrotas en tecnica.'],
-            ['team-medic', 'Team Medic', 'Mantiene al grupo en pie.'],
-        ],
-        sharedItems: [
-            ['training-weights', 'Training Weights', 'Pesas para acelerar el crecimiento.'],
-            ['spirit-headband', 'Spirit Headband', 'Recuerda la promesa del equipo.'],
-            ['secret-scroll', 'Secret Scroll', 'Tecnica guardada para el momento critico.'],
-        ],
-        locations: [
-            ['family-dojo', 'Family Dojo', 'El origen de la disciplina.'],
-            ['tournament-ring', 'Tournament Ring', 'La rivalidad se vuelve publica.'],
-            ['city-rooftop', 'City Rooftop', 'Reuniones antes de la pelea final.'],
-        ],
+        id: ARCHETYPES.MECHA,
+        prefix: 'mecha',
+        theme: 'pilots, machines and decisive launches',
+        sharedCharacters: [['chief-engineer', 'Chief Engineer Sora', 'Keeps damaged frames moving.'], ['bridge-officer', 'Bridge Officer Nao', 'Reads the battlefield before impact.']],
+        sharedItems: [['reserve-reactor', 'Reserve Reactor', 'A dangerous source of output.'], ['targeting-array', 'Targeting Array', 'Turns telemetry into a clean shot.']],
         heroes: [
-            { slug: 'dragon-ryu', name: 'Ryu Dragon Flame', strategy: 'aggro', pace: 'fast', description: 'Ataca antes de pensar y convierte cada golpe en Story.', support: ['spark-kaito', 'Spark Kaito', 'Mejor amigo que cubre la espalda de Ryu.'], item: ['dragon-gauntlet', 'Dragon Gauntlet', 'Canaliza golpes explosivos.'], final: 'Dragon Comet Finish', events: [['street-challenge', 'Street Challenge', 'Ryu acepta pelear por orgullo.'], ['rival-ignition', 'Rival Ignition', 'La rivalidad enciende la arena.'], ['flame-breakthrough', 'Flame Breakthrough', 'El poder se desborda.'], ['citywide-showdown', 'Citywide Showdown', 'La pelea decide el arco entero.']] },
-            { slug: 'kenji-discipline', name: 'Kenji of the Thousand Forms', strategy: 'engine', pace: 'mid', description: 'Gana por curva estable, robo y eventos de entrenamiento.', support: ['scribe-mika', 'Scribe Mika', 'Anota cada postura y corrige errores.'], item: ['iron-prayer-beads', 'Iron Prayer Beads', 'Pesan como una promesa.'], final: 'Thousand Form Kata', events: [['dawn-repetition', 'Dawn Repetition', 'Entrena antes del sol.'], ['master-trial', 'Master Trial', 'El maestro exige precision.'], ['broken-stance', 'Broken Stance Lesson', 'Aprende perdiendo.'], ['perfect-guard', 'Perfect Guard', 'La defensa se vuelve ofensiva.'], ['temple-tournament', 'Temple Tournament', 'La disciplina enfrenta al talento.']] },
-            { slug: 'hiro-nakama', name: 'Hiro Nakama Captain', strategy: 'team', pace: 'slow', description: 'Escala con aliados y efectos positivos por afinidad.', support: ['mascot-poko', 'Mascot Poko', 'Un companero pequeno que une al equipo.'], item: ['team-banner', 'Team Banner', 'Simbolo de promesa colectiva.'], final: 'Nakama Constellation', events: [['first-promise', 'First Promise', 'El equipo jura no separarse.'], ['rescue-rookie', 'Rescue the Rookie', 'Hiro salva antes que ganar.'], ['shared-camp', 'Shared Training Camp', 'Cada aliado cubre una debilidad.'], ['team-reunion', 'Broken Team Reunion', 'El grupo vuelve tras la derrota.'], ['all-out-friendship', 'All-Out Friendship', 'Todos atacan al mismo tiempo.'], ['final-cheer', 'Final Cheer', 'La amistad sostiene el ultimo golpe.']] },
+            { slug: 'brave-gai', name: 'Brave Engine Gai', strategy: 'bond', resource: 'SP', description: 'A super robot commander who wins through courage and combination.', support: ['lion-partner', 'Lion Partner Galeon', 'A mechanical lion that answers his shout.'], item: ['brave-key', 'Brave Key', 'Ignites the combination program.'], location: ['combination-hangar', 'Combination Hangar', 'Launch rails align five machines.'], extraMaterials: [{ kind: 'item', card: ['goldion-core', 'Goldion Core', 'Condenses every engine output for the finishing strike.'] }, { kind: 'location', card: ['final-launch-rail', 'Final Launch Rail', 'Aligns the united machine with its final target.'] }], normalEvents: [['brave-launch', 'Brave Launch', 'Gai calls the team into formation.'], ['hell-combination', 'Hell Combination', 'All engines unite in a single frame.'], ['protect-the-city', 'Protect the City', 'The machine stands between civilians and ruin.'], ['courage-overload', 'Courage Overload', 'The team overloads its shields to create one final opening.']], climax: ['golden-hammer', 'Golden Hammer Finale', 'Courage becomes an unavoidable final strike.'], climaxMaterials: ['goldion-core', 'final-launch-rail'], plotTwist: ['cracked-courage', 'Cracked Courage', 'A final overload exposes the cost of heroism.'] },
+            { slug: 'vector-arlen', name: 'Vector Pilot Arlen', strategy: 'engine', resource: 'SP', description: 'A real robot ace who spends resources with military precision.', support: ['spotter-lio', 'Spotter Lio', 'Feeds corrected trajectories to Arlen.'], item: ['beam-carbine', 'Beam Carbine', 'A reliable rifle for measured sorties.'], location: ['colony-front', 'Colony Front', 'Every shot risks the station behind it.'], normalEvents: [['sortie-order', 'Sortie Order', 'Arlen launches under strict command.'], ['ace-intercept', 'Ace Intercept', 'A rival unit tests every maneuver.'], ['supply-line', 'Supply Line Gambit', 'The battle turns on fuel and ammunition.'], ['colony-shield', 'Colony Shield', 'Arlen chooses what the war protects.']], climax: ['last-vector', 'Last Vector Assault', 'One calculated route ends the campaign.'], plotTwist: ['hidden-mines', 'Hidden Minefield', 'The perfect route hides a final trap.'] },
+            { slug: 'unit09-shin', name: 'Unit-09 Shin', strategy: 'control', resource: 'FP', description: 'A reluctant pilot who turns psychological pressure into power.', support: ['operator-mari', 'Operator Mari', 'Keeps Shin connected when words fail.'], item: ['sync-plugs', 'Sync Plugs', 'They improve control and deepen the pain.'], location: ['sealed-cage', 'Sealed Cage', 'A launch bay built like a prison.'], normalEvents: [['forced-entry', 'Forced Entry', 'Shin is ordered into the machine.'], ['silent-angel', 'Silent Angel Attack', 'A shape in the sky refuses explanation.'], ['sync-collapse', 'Sync Collapse', 'The cockpit becomes an argument with the self.'], ['berserk-frame', 'Berserk Frame', 'The unit acts beyond command.'], ['empty-theater', 'Empty Theater', 'Shin must choose whether others are real.']], climax: ['world-refusal', 'World Refusal', 'He rejects the painless ending.'], plotTwist: ['closed-heart', 'Closed Heart', 'Isolation pulls at the final choice.'] },
+            { slug: 'kaiju-mina', name: 'Kaiju Breaker Mina', strategy: 'rush', resource: 'FP', description: 'A rescue pilot who weaponizes collateral pressure against kaiju.', support: ['evac-lead', 'Evac Lead Jun', 'Clears civilians before Mina fires.'], item: ['pile-bunker', 'Pile Bunker', 'A close-range answer for giant armor.'], location: ['floodwall-city', 'Floodwall City', 'A district designed to survive impact.'], normalEvents: [['alarm-siren', 'Kaiju Alarm', 'Sirens force Mina into motion.'], ['street-intercept', 'Street Intercept', 'The fight crosses inhabited blocks.'], ['breach-response', 'Breach Response', 'A wall falls and a new route opens.'], ['alpha-kaiju', 'Alpha Kaiju Rising', 'The source of the swarm emerges.']], climax: ['breaker-salvo', 'Breaker Salvo', 'Mina stakes the skyline on one volley.'], plotTwist: ['second-roar', 'Second Roar', 'The fallen monster moves once more.'] },
+            {
+                slug: 'revenge-leon',
+                name: 'Vengeance Pilot Leon',
+                strategy: 'control',
+                resource: 'SP',
+                description: 'The son of a fallen colonel pursues the unknown frame that killed his father.',
+                support: ['intel-rhea', 'Intel Officer Rhea', 'Decrypts battlefield transmissions that should not exist.'],
+                item: ['colonel-tag', 'Colonel Voss Dog Tag', 'A keepsake carrying a corrupted combat record.'],
+                location: ['frontier-depot', 'Frontier Resource Depot', 'Both armies bleed for its fuel cells.'],
+                extraMaterials: [
+                    { kind: 'item', card: ['alien-transponder', 'Alien Transponder', 'A signal proving the war is being guided from within.'] },
+                    { kind: 'support', card: ['rival-commander', 'Commander Selene', 'An enemy ace who accepts a human truce.'] },
+                    { kind: 'location', card: ['orbital-rift', 'Orbital Rift', 'Invasion craft descend behind both banners.'] },
+                ],
+                normalEvents: [['ashes-sortie', 'Sortie Through Ashes', 'Leon takes his father s unfinished assignment.'], ['masked-frame', 'The Masked Frame', 'The killer unit appears without a faction mark.'], ['resource-siege', 'Siege of the Depot', 'A territorial battle exhausts both armies.'], ['signal-beneath', 'Signal Beneath the War', 'Rhea exposes nonhuman command codes.'], ['human-ceasefire', 'Human Ceasefire', 'Enemy pilots turn their guns away from one another.'], ['invasion-front', 'Invasion Front', 'The masked machine returns among the invaders.']],
+                climax: ['earthbound-alliance', 'Earthbound Alliance', 'Leon leads united human frames against the infiltrators and his father s killer.'],
+                plotTwist: ['father-record', 'Father s Final Recording', 'A hidden command reveals why the colonel entered that battle.'],
+                quickEvents: [['decrypt-beacon', 'Decrypt Unknown Beacon', 'Discard a failed reading to find the next recorded battle.']],
+            },
         ],
     },
     {
-        id: ARCHETYPES.MECHA, prefix: 'mecha', theme: 'pilotos, sincronizacion y guerra orbital',
-        sharedCharacters: [['chief-mechanic', 'Chief Mechanic Sora', 'Mantiene el chasis en marcha.'], ['bridge-operator', 'Bridge Operator Nao', 'Filtra telemetria critica.'], ['stern-commander', 'Stern Commander Vale', 'Ordena avanzar aunque duela.']],
-        sharedItems: [['beam-rifle', 'Beam Rifle', 'Solucion directa contra blindajes.'], ['plug-suit', 'Plug Suit', 'Mejora sincronizacion neural.'], ['energy-battery', 'Energy Battery', 'Reserva para turnos largos.']],
-        locations: [['launch-bay', 'Launch Bay Seven', 'Salida de emergencia al frente.'], ['underground-base', 'Underground Base', 'Refugio y sala de mando.'], ['orbital-front', 'Orbital Front', 'La guerra sale de la atmosfera.']],
+        id: ARCHETYPES.SHONEN,
+        prefix: 'shonen',
+        theme: 'training, rivals and impossible resolve',
+        sharedCharacters: [['old-master', 'Old Master Gen', 'Turns defeat into a lesson.'], ['arena-medic', 'Arena Medic Yui', 'Keeps the cast fighting.']],
+        sharedItems: [['training-weights', 'Training Weights', 'A painful route to growth.'], ['promise-band', 'Promise Band', 'A vow worn in battle.']],
         heroes: [
-            { slug: 'ace-hiro', name: 'Ace Pilot Hiro', strategy: 'aggro', pace: 'fast', description: 'Piloto de asalto que gana por tempo y dano temprano.', support: ['wingmate-juno', 'Wingmate Juno', 'Cubre los flancos de Hiro.'], item: ['overdrive-thrusters', 'Overdrive Thrusters', 'Permiten entrar y salir antes del rival.'], final: 'Meteor Lance Charge', events: [['emergency-launch', 'Emergency Launch', 'Hiro despega sin esperar permiso.'], ['aerial-dogfight', 'Aerial Dogfight', 'El mecha domina el cielo cercano.'], ['midseason-overdrive', 'Mid-Season Overdrive', 'El motor rojo supera sus limites.'], ['orbital-spearhead', 'Orbital Spearhead', 'Hiro abre camino a la flota.']] },
-            { slug: 'rei-sync', name: 'Rei Sync Oracle', strategy: 'engine', pace: 'mid', description: 'Piloto de sincronizacion perfecta, roba y prepara upgrades.', support: ['sync-engineer-mira', 'Sync Engineer Mira', 'Ajusta el nucleo neural.'], item: ['neural-key', 'Neural Key', 'Desbloquea capas de control.'], final: 'Silent Singularity', events: [['calibration-silence', 'Calibration Silence', 'Rei escucha la maquina respirar.'], ['ghost-signal', 'Ghost Signal', 'Un eco adelanta el ataque enemigo.'], ['perfect-sync', 'Perfect Sync', 'Piloto y mecha actuan como uno.'], ['core-upgrade', 'Core Upgrade', 'La unidad despierta una funcion oculta.'], ['white-horizon', 'White Horizon', 'La batalla se vuelve lectura de datos.']] },
-            { slug: 'shinji-unit', name: 'Shinji Reluctant Unit', strategy: 'control', pace: 'slow', description: 'No quiere pilotar; gana controlando crisis y estados mentales.', support: ['blue-guardian', 'Blue Guardian Rei', 'Presencia calma en la cabina.'], item: ['sdat-player', 'S-DAT Player', 'Aisla el ruido del campo.'], final: 'Instrumentality Refusal', events: [['get-in-robot', 'Get in the Robot', 'La orden que inicia el trauma.'], ['enemy-ambush', 'Enemy Ambush', 'La unidad queda sin escapatoria.'], ['berserk-mode', 'Berserk Mode', 'El piloto pierde el control.'], ['mirror-self', 'Mirror of the Self', 'La batalla se vuelve introspectiva.'], ['human-instrumentality', 'Human Instrumentality', 'Todas las voces se mezclan en una.'], ['choose-world', 'I Choose the World', 'Shinji rechaza desaparecer.']] },
+            { slug: 'dragon-ryu', name: 'Ryu Dragon Flame', strategy: 'rush', resource: 'SP', description: 'A reckless striker whose rival pushes his fire higher.', support: ['spark-kaito', 'Spark Kaito', 'Best friend and first defender.'], item: ['dragon-gauntlet', 'Dragon Gauntlet', 'Turns momentum into flame.'], location: ['street-ring', 'Street Ring', 'Where pride first draws a crowd.'], extraMaterials: [{ kind: 'item', card: ['comet-bracer', 'Comet Bracer', 'Focuses Ryu s mastered flame without burning his promise.'] }, { kind: 'location', card: ['final-skyline', 'Final Skyline Ring', 'The decisive duel rises above the city.'] }], normalEvents: [['first-challenge', 'First Challenge', 'Ryu accepts a fight he should avoid.'], ['rival-ignition', 'Rival Ignition', 'His rival forces a hotter technique.'], ['valley-training', 'Valley Training Breakthrough', 'Ryu earns control before demanding victory.'], ['skyline-duel', 'Skyline Duel', 'The city watches a final exchange.']], climax: ['dragon-comet', 'Dragon Comet Finish', 'All fire falls as a single blow.'], climaxMaterials: ['comet-bracer', 'final-skyline'], plotTwist: ['rival-stands', 'Rival Still Stands', 'The defeated rival rises for one answer.'] },
+            { slug: 'kenji-forms', name: 'Kenji Thousand Forms', strategy: 'engine', resource: 'SP', description: 'A disciplined martial artist building a perfect sequence.', support: ['scribe-mika', 'Scribe Mika', 'Records every stance and opening.'], item: ['iron-beads', 'Iron Prayer Beads', 'Focus given physical weight.'], location: ['mountain-dojo', 'Mountain Dojo', 'Repetition becomes ritual.'], extraMaterials: [{ kind: 'item', card: ['final-scroll', 'Final Kata Scroll', 'Combines every corrected stance into a readable sequence.'] }, { kind: 'location', card: ['silent-courtyard', 'Silent Courtyard', 'No audience remains between Kenji and perfection.'] }], normalEvents: [['dawn-drill', 'Dawn Drill', 'Kenji begins before anyone wakes.'], ['master-trial', 'Master Trial', 'A teacher attacks his weak form.'], ['broken-stance', 'Broken Stance', 'Failure reveals the missing motion.'], ['temple-bracket', 'Temple Bracket', 'The tournament tests his entire style.']], climax: ['perfect-kata', 'Perfect Kata', 'A thousand forms resolve into one.'], climaxMaterials: ['final-scroll', 'silent-courtyard'], plotTwist: ['unreadable-style', 'Unreadable Style', 'An opponent abandons all known technique.'] },
+            { slug: 'nakama-hiro', name: 'Hiro Nakama Captain', strategy: 'bond', resource: 'SP', description: 'A captain who scales through allies and shared promises.', support: ['mascot-poko', 'Mascot Poko', 'The small heart of the team.'], item: ['team-banner', 'Team Banner', 'Everyone signed the same vow.'], location: ['camp-ground', 'Training Camp', 'Friendship is tested away from home.'], extraMaterials: [{ kind: 'item', card: ['constellation-banner', 'Constellation Banner', 'Every teammate adds a mark before the final charge.'] }, { kind: 'support', card: ['final-lineup', 'Final Lineup', 'The full team takes positions around Hiro.'] }], normalEvents: [['team-oath', 'Team Oath', 'Nobody fights alone again.'], ['rookie-rescue', 'Rookie Rescue', 'Hiro gives up the lead to save someone.'], ['camp-training', 'Camp Training', 'Every weakness gets a partner.'], ['broken-reunion', 'Broken Team Reunion', 'Old anger yields to purpose.'], ['all-in-charge', 'All-In Charge', 'Every teammate takes a position.']], climax: ['constellation-hit', 'Nakama Constellation', 'Their promises strike together.'], climaxMaterials: ['constellation-banner', 'final-lineup'], plotTwist: ['friendship-doubt', 'Friendship Doubt', 'A secret asks whether trust was deserved.'] },
+            { slug: 'spirit-aya', name: 'Aya Spirit Strategist', strategy: 'control', resource: 'FP', description: 'A tactician who accepts setbacks to arrange a reversal.', support: ['fox-mentor', 'Fox Mentor Rin', 'Smiles whenever a trap closes.'], item: ['sealed-talisman', 'Sealed Talisman', 'Stores a curse for the correct beat.'], location: ['spirit-gate', 'Spirit Gate', 'A threshold where bargains matter.'], extraMaterials: [{ kind: 'item', card: ['verdict-seal', 'Verdict Seal', 'Closes every escape clause in Aya s final contract.'] }, { kind: 'support', card: ['ninth-tail-witness', 'Ninth Tail Witness', 'Confirms that the demon accepted Aya s terms.'] }], normalEvents: [['curse-mark', 'Curse Mark', 'Aya takes a burden willingly.'], ['feint-ritual', 'Feint Ritual', 'The opponent attacks an illusion.'], ['counter-seal', 'Counter Seal', 'The stored pain returns as leverage.'], ['demon-parley', 'Demon Parley', 'Aya bargains with the last threat.']], climax: ['nine-tail-verdict', 'Nine-Tail Verdict', 'Every plan closes on one seal.'], climaxMaterials: ['verdict-seal', 'ninth-tail-witness'], plotTwist: ['broken-contract', 'Broken Contract', 'The bargain rewrites its price.'] },
+            {
+                slug: 'roads-aric',
+                name: 'Roadbound Aric',
+                strategy: 'bond',
+                resource: 'SP',
+                description: 'A young adventurer crosses hostile territories seeking the demon who ruined his home.',
+                support: ['mapmaker-lyra', 'Mapmaker Lyra', 'Marks every friend and every grave along the road.'],
+                item: ['fathers-hilt', 'Broken Father s Hilt', 'The only clue Aric carries from childhood.'],
+                location: ['border-road', 'Border Road', 'The first path beyond the burned village.'],
+                extraMaterials: [
+                    { kind: 'support', card: ['stone-guardian', 'Stone Guardian Bor', 'An old defender who teaches Aric endurance.'] },
+                    { kind: 'location', card: ['demon-pass', 'Demon King s Pass', 'A road where allied banners finally converge.'] },
+                    { kind: 'item', card: ['blood-sigil', 'Bloodline Sigil', 'Proof that the enemy shares Aric s lineage.'] },
+                ],
+                normalEvents: [['first-mile', 'The First Mile', 'Aric leaves grief behind and accepts the road.'], ['allied-camp', 'Allied Campfire', 'Strangers become a party around one flame.'], ['territory-trials', 'Trials of Three Territories', 'Each frontier forces a different sacrifice.'], ['father-shadow', 'The Demon s Shadow', 'A familiar stance reveals an impossible connection.'], ['bloodline-truth', 'Bloodline Truth', 'Aric learns the demon king is his father.'], ['gate-march', 'March on the Black Gate', 'Every ally he met marches beside him.']],
+                climax: ['last-son-strike', 'Last Son Strike', 'Aric defeats his father without surrendering the bonds that made him stronger.'],
+                plotTwist: ['demon-inheritance', 'Demon Inheritance', 'The fallen king offers Aric the throne and its power.'],
+                quickEvents: [['roadside-rumor', 'Roadside Rumor', 'A discarded lead points the party to the next territory.']],
+            },
         ],
     },
     {
-        id: ARCHETYPES.HAREM_INVERSO, prefix: 'otome', theme: 'corte, romance politico y banderas de destino',
-        sharedCharacters: [['crown-prince', 'Crown Prince Lian', 'Encanto oficial y problemas publicos.'], ['duke-heir', 'Duke Heir Rowan', 'Aliado frio con recursos.'], ['court-wizard', 'Court Wizard Noel', 'Lee magia y mentiras.']],
-        sharedItems: [['sealed-letter', 'Sealed Letter', 'Invitacion o amenaza.'], ['silk-dress', 'Silk Dress', 'Etiqueta que cambia escenas.'], ['tea-set', 'Tea Set', 'Politica servida en porcelana.']],
-        locations: [['rose-garden', 'Rose Garden', 'Confesiones y emboscadas sociales.'], ['academy-hall', 'Academy Hall', 'Todos miran y juzgan.'], ['royal-ballroom', 'Royal Ballroom', 'El baile decide reputaciones.']],
+        id: ARCHETYPES.SHOJO,
+        prefix: 'shojo',
+        theme: 'emotion, romance and visible magic',
+        sharedCharacters: [['best-friend', 'Best Friend Emi', 'Reads feelings before words.'], ['class-rival', 'Class Rival Rika', 'Makes every emotion public.']],
+        sharedItems: [['ribbon-charm', 'Ribbon Charm', 'Keeps one honest promise.'], ['star-compact', 'Star Compact', 'Reflects a hidden truth.']],
         heroes: [
-            { slug: 'plain-heroine', name: 'Plain Heroine Mira', strategy: 'team', pace: 'mid', description: 'Gana por afinidades romanticas y apoyos de corte.', support: ['loyal-maid', 'Loyal Maid Rina', 'Sabe quien miente en palacio.'], item: ['pressed-flower', 'Pressed Flower Bookmark', 'Recuerdo de una promesa sencilla.'], final: 'True Heart Ending', events: [['corner-collision', 'Corner Collision', 'Un encuentro accidental cambia la ruta.'], ['tea-politics', 'Tea Party Politics', 'La heroina sobrevive al rumor.'], ['first-dance', 'First Dance', 'El publico nota una eleccion.'], ['garden-rescue', 'Garden Rescue', 'Un aliado rompe el protocolo.'], ['chosen-route', 'Chosen Route', 'Mira decide su propio final.']] },
-            { slug: 'doom-villainess', name: 'Villainess Reborn Selene', strategy: 'control', pace: 'slow', description: 'Evita condenas bloqueando eventos y manipulando reputacion.', support: ['shadow-butler', 'Shadow Butler Klaus', 'Oculta pruebas antes del juicio.'], item: ['doom-diary', 'Doom Flag Diary', 'Lista de muertes evitables.'], final: 'Condemnation Reversed', events: [['bad-end-memory', 'Memory of the Bad End', 'Selene recuerda su condena.'], ['apology-strategy', 'Apology Strategy', 'Una disculpa cambia el tablero.'], ['rival-confrontation', 'Rival Confrontation', 'La antigua heroina desafia su ruta.'], ['evidence-swap', 'Evidence Swap', 'Las pruebas pasan a otras manos.'], ['public-condemnation', 'Public Condemnation', 'El juicio llega demasiado pronto.'], ['doom-flag-broken', 'Doom Flag Broken', 'La villana escapa del guion.']] },
-            { slug: 'saintess-aria', name: 'Saintess Aria', strategy: 'engine', pace: 'mid', description: 'Acumula recursos sagrados y protege aliados clave.', support: ['holy-knight', 'Holy Knight Ciel', 'Escudo jurado de la santa.'], item: ['silver-relic', 'Silver Relic', 'Amplifica plegarias antiguas.'], final: 'Saintly Benediction', events: [['temple-awakening', 'Temple Awakening', 'La luz responde por primera vez.'], ['healing-procession', 'Healing Procession', 'La santa gana apoyo popular.'], ['magic-exams', 'Magic Exams', 'El poder sagrado es medido.'], ['dungeon-rescue', 'Dungeon Rescue', 'La fe entra al peligro.'], ['miracle-dawn', 'Miracle at Dawn', 'El reino presencia una prueba imposible.']] },
+            {
+                slug: 'mage-luna',
+                name: 'Card Mage Luna',
+                strategy: 'engine',
+                resource: 'SP',
+                description: 'A magical heroine who captures runaway feelings as cards.',
+                support: ['seal-familiar', 'Seal Familiar Pipi', 'Finds magic before Luna can.'],
+                item: ['capture-wand', 'Capture Wand', 'Seals a spell with a flourish.'],
+                location: ['moon-school', 'Moonlit School', 'Ordinary hallways conceal magic.'],
+                extraMaterials: [
+                    { kind: 'item', card: ['bloom-seal', 'Bloom Seal Key', 'A final seal holding the feelings Luna already saved.'] },
+                    { kind: 'support', card: ['true-heart-sakura', 'True Heart Sakura', 'Her honest wish opens the last captured heart.'] },
+                ],
+                normalEvents: [['first-transform', 'First Transformation', 'A ribbon becomes a uniform.'], ['runaway-heart', 'Runaway Heart Card', 'Emotion escapes into the city.'], ['moon-capture', 'Moon Capture', 'Luna learns restraint.'], ['secret-reveal', 'Secret Reveal', 'Her double life becomes visible.']],
+                eventMaterials: [['capture-wand'], ['seal-familiar', 'moon-school'], ['ribbon-charm', 'best-friend'], ['star-compact', 'class-rival']],
+                eventMaterialCounts: [1, 2, 2, 2],
+                climax: ['eternal-bloom', 'Eternal Card Bloom', 'Every sealed heart blooms together.'],
+                climaxMaterials: ['bloom-seal', 'true-heart-sakura'],
+                plotTwist: ['unsealed-sorrow', 'Unsealed Sorrow', 'One feeling refuses a happy ending.'],
+            },
+            {
+                slug: 'diary-mio',
+                name: 'Ordinary Diary Mio',
+                strategy: 'bond',
+                resource: 'SP',
+                description: 'A direct romance heroine powered by honest friends.',
+                support: ['wingwoman-saki', 'Wingwoman Saki', 'Pushes Mio to speak first.'],
+                item: ['heart-diary', 'Heart Diary', 'Pages full of unsent sentences.'],
+                location: ['rainy-crossing', 'Rainy Crossing', 'One umbrella changes everything.'],
+                extraMaterials: [
+                    { kind: 'item', card: ['answered-letter', 'Answered Letter', 'A reply written only after every misunderstanding is faced.'] },
+                    { kind: 'location', card: ['sunrise-rooftop', 'Sunrise Rooftop', 'Where Mio finally reads the last page aloud.'] },
+                ],
+                normalEvents: [['shared-umbrella', 'Shared Umbrella', 'A small kindness becomes a rumor.'], ['first-date', 'First Date', 'Mio risks being understood.'], ['missed-message', 'Missed Message', 'A silence tests whether she will keep trusting.'], ['confession-rain', 'Confession in Rain', 'She stops hiding in narration.']],
+                eventMaterials: [['heart-diary'], ['wingwoman-saki', 'rainy-crossing'], ['ribbon-charm', 'best-friend'], ['star-compact', 'class-rival']],
+                eventMaterialCounts: [1, 2, 2, 2],
+                climax: ['answer-at-dawn', 'Answer at Dawn', 'The final page receives an answer.'],
+                climaxMaterials: ['answered-letter', 'sunrise-rooftop'],
+                plotTwist: ['lost-page', 'Lost Diary Page', 'A missing truth interrupts the confession.'],
+            },
+            {
+                slug: 'princess-sera',
+                name: 'Lost Princess Sera',
+                strategy: 'control',
+                resource: 'FP',
+                description: 'A forgotten heir uncovering a dangerous kingdom.',
+                support: ['guard-toma', 'Royal Guard Toma', 'Recognizes the crest before Sera does.'],
+                item: ['moon-tiara', 'Moon Tiara', 'Evidence that also paints a target.'],
+                location: ['masked-palace', 'Masked Palace', 'Every ballroom guest has an agenda.'],
+                extraMaterials: [
+                    { kind: 'item', card: ['oath-scroll', 'Oath Scroll', 'The court records what Sera promises before coronation.'] },
+                    { kind: 'support', card: ['gate-witness', 'Gate Witness Elen', 'She saw who opened the palace for the exiled heir.'] },
+                    { kind: 'item', card: ['royal-seal', 'Royal Silver Seal', 'Authority returned only after the oath is tested.'] },
+                    { kind: 'location', card: ['silver-throne', 'Silver Throne Hall', 'The realm gathers to hear its true heir.'] },
+                ],
+                normalEvents: [['palace-dream', 'Palace Dream', 'Sera remembers a throne.'], ['hidden-crest', 'Hidden Crest', 'The court sees her proof.'], ['masquerade-threat', 'Masquerade Threat', 'An assassin tests her resolve.'], ['exile-return', 'Return from Exile', 'Allies open the gates.'], ['coronation-oath', 'Coronation Oath', 'She names what she will protect.']],
+                eventMaterials: [['moon-tiara'], ['guard-toma', 'masked-palace'], ['ribbon-charm', 'class-rival'], ['star-compact', 'best-friend'], ['oath-scroll', 'gate-witness']],
+                eventMaterialCounts: [1, 2, 2, 2, 2],
+                climax: ['silver-kingdom', 'Silver Kingdom Return', 'Her truth reaches the entire realm.'],
+                climaxMaterials: ['royal-seal', 'silver-throne'],
+                plotTwist: ['false-heir', 'False Heir', 'A rival presents an impossible bloodline.'],
+            },
+            {
+                slug: 'idol-hikari',
+                name: 'Idol Heart Hikari',
+                strategy: 'rush',
+                resource: 'FP',
+                eventStoryBonus: 2,
+                eventSelfFillerDelta: -2,
+                description: 'An idol heroine converting public pressure into a dazzling lead.',
+                support: ['manager-koh', 'Manager Koh', 'Counts every heartbeat and deadline.'],
+                item: ['stage-mic', 'Stage Microphone', 'Turns a whisper into a stadium moment.'],
+                location: ['festival-stage', 'Festival Stage', 'Spotlights expose every hesitation.'],
+                extraMaterials: [
+                    { kind: 'item', card: ['encore-setlist', 'Encore Setlist', 'A song order rewritten after the scandal.'] },
+                    { kind: 'location', card: ['starlight-platform', 'Starlight Platform', 'A final stage with nowhere left to hide.'] },
+                ],
+                normalEvents: [['audition-call', 'Audition Call', 'Hikari steps into public view.'], ['viral-song', 'Viral Song', 'Her feelings become everyone s chorus.'], ['scandal-night', 'Scandal Night', 'Fame demands a response.'], ['encore-promise', 'Encore Promise', 'She sings without a mask.']],
+                eventMaterials: [['stage-mic'], ['manager-koh', 'festival-stage'], ['ribbon-charm', 'class-rival'], ['star-compact', 'best-friend']],
+                eventMaterialCounts: [1, 2, 2, 2],
+                climax: ['starlight-confession', 'Starlight Confession', 'The whole crowd hears the truth.'],
+                climaxMaterials: ['encore-setlist', 'starlight-platform'],
+                plotTwist: ['blackout-stage', 'Blackout Stage', 'Silence arrives at the decisive note.'],
+            },
+            {
+                slug: 'loop-ren',
+                name: 'Loopbound Ren',
+                strategy: 'bond',
+                resource: 'SP',
+                description: 'A reincarnated soul relives the same life until love offers a route home.',
+                support: ['haru-memory', 'Haru of Every Spring', 'The one face Ren recognizes in every lifetime.'],
+                item: ['cracked-watch', 'Cracked Loop Watch', 'Its hands reset whenever Ren dies.'],
+                location: ['station-platform', 'Last Train Platform', 'A meeting point unchanged across lives.'],
+                extraMaterials: [
+                    { kind: 'item', card: ['letter-many-lives', 'Letter Across Lives', 'A confession carried through resets.'] },
+                    { kind: 'location', card: ['return-door', 'Door of Return', 'A threshold opening only after honest farewell.'] },
+                ],
+                normalEvents: [['first-reset', 'First Reset', 'Ren wakes after death in the same morning.'], ['recognition', 'The Face That Remains', 'Haru remembers a feeling she should not know.'], ['lives-in-love', 'Lives Spent in Love', 'Ren stops treating affection as a failed timeline.'], ['last-loop', 'The Last Loop', 'A final death offers a path beyond repetition.'], ['farewell-promise', 'Farewell Promise', 'Ren chooses truth before the door opens.']],
+                climax: ['worldward-return', 'Return Beyond the World', 'Love releases Ren from reincarnation and leads back home.'],
+                plotTwist: ['one-more-life', 'One More Life', 'Haru asks for one more lifetime together.'],
+                quickEvents: [['remember-tomorrow', 'Remember Tomorrow', 'Ren abandons one possibility to recover the next moment.']],
+            },
+            {
+                slug: 'wildlight-nao',
+                name: 'Wildlight Nao',
+                strategy: 'engine',
+                resource: 'SP',
+                description: 'A magical girl without powers gathers the wild energy consuming her city.',
+                support: ['botanist-yori', 'Botanist Yori', 'Recognizes monsters as frightened lifeforms.'],
+                item: ['restoration-wand', 'Restoration Wand', 'Absorbs unstable magic and restores ordinary life.'],
+                location: ['storm-park', 'Stormglass Park', 'Plants and animals twist under runaway light.'],
+                extraMaterials: [
+                    { kind: 'support', card: ['friend-mayu', 'Mayu in the Shelter', 'Nao s friend refuses to abandon the city.'] },
+                    { kind: 'item', card: ['world-seed', 'World Seed', 'Holds more wild force than a body should endure.'] },
+                    { kind: 'item', card: ['city-core', 'City Light Core', 'The restored district lends Nao one controlled spark.'] },
+                    { kind: 'location', card: ['sunbreak-sanctuary', 'Sunbreak Sanctuary', 'Survivors gather beyond the last wild surge.'] },
+                    { kind: 'item', card: ['radiance-vessel', 'Radiance Vessel', 'A vessel able to receive the world s excess light.'] },
+                    { kind: 'location', card: ['restored-horizon', 'Restored Horizon', 'A peaceful skyline waiting beyond the storm.'] },
+                ],
+                normalEvents: [['powerless-call', 'Powerless Call', 'Nao faces the first monster without transforming.'], ['wand-awakening', 'Wand Awakening', 'The lost wand restores a corrupted creature.'], ['garden-rescue', 'Garden Rescue', 'Nao saves her friends as the storm spreads.'], ['beast-to-bloom', 'Beast to Bloom', 'Absorbed power returns monsters to plants and animals.'], ['world-surge', 'World Surge', 'All wild energy converges on the city.']],
+                eventMaterials: [['restoration-wand'], ['botanist-yori', 'storm-park'], ['friend-mayu', 'ribbon-charm'], ['world-seed', 'star-compact'], ['city-core', 'sunbreak-sanctuary']],
+                eventMaterialCounts: [1, 2, 2, 2, 2],
+                climax: ['pure-radiance', 'Pure Radiance', 'Nao becomes living energy to absorb the world s uncontrolled force.'],
+                climaxMaterials: ['radiance-vessel', 'restored-horizon'],
+                plotTwist: ['last-petal', 'Last Petal', 'One remaining creature refuses to let her vanish.'],
+                quickEvents: [['wand-trace', 'Wand Energy Trace', 'Nao spends a fragment of magic to locate the next surge.']],
+            },
         ],
     },
     {
-        id: ARCHETYPES.SLICE_OF_LIFE, prefix: 'slice', theme: 'clubes, escuela y pequenos momentos decisivos',
-        sharedCharacters: [['class-friend', 'Class Friend Yui', 'Convierte silencio en conversacion.'], ['club-treasurer', 'Club Treasurer Mako', 'Hace que el plan sea posible.'], ['stray-cat', 'Stray Cat Mochi', 'Aparece cuando falta calma.']],
-        sharedItems: [['lunch-box', 'Lunch Box', 'Comida compartida, escena ganada.'], ['club-notebook', 'Club Notebook', 'Registra objetivos diarios.'], ['festival-flyer', 'Festival Flyer', 'Promete un evento mayor.']],
-        locations: [['council-room', 'Council Room', 'Donde se arregla lo practico.'], ['music-room', 'Music Room', 'Ensayos, dudas y ruido.'], ['school-roof', 'School Roof', 'Lugar de confesiones tranquilas.']],
+        id: ARCHETYPES.ISEKAI,
+        prefix: 'isekai',
+        theme: 'foreign worlds, bargains and improbable power',
+        sharedCharacters: [['guild-clerk', 'Guild Clerk Mina', 'Turns quests into survival.'], ['dragon-ally', 'Ancient Dragon Rook', 'An ally too large to ignore.']],
+        sharedItems: [['world-map', 'Incomplete World Map', 'Shows paths, not consequences.'], ['mana-potion', 'Mana Potion', 'One more spell at a price.']],
         heroes: [
-            { slug: 'president-aoi', name: 'President Aoi', strategy: 'engine', pace: 'mid', description: 'Organiza la partida con robo y locaciones eficientes.', support: ['vice-president-ren', 'Vice President Ren', 'Ejecuta planes antes del recreo.'], item: ['agenda-stamp', 'Agenda Stamp', 'Marca tareas como completadas.'], final: 'Perfect Festival Schedule', events: [['council-meeting', 'First Council Meeting', 'Aoi toma control del calendario.'], ['budget-crisis', 'Budget Crisis', 'El club necesita recursos.'], ['midterm-balance', 'Midterm Balance', 'Estudiar tambien es una batalla.'], ['festival-logistics', 'Festival Logistics', 'Todo depende de la agenda.'], ['graduation-address', 'Graduation Address', 'La presidenta cierra el ano.']] },
-            { slug: 'loner-niko', name: 'Cynical Loner Niko', strategy: 'control', pace: 'slow', description: 'Reduce Filler y bloquea caos social hasta abrirse al grupo.', support: ['quiet-neighbor', 'Quiet Neighbor Sumi', 'Se sienta al lado sin exigir palabras.'], item: ['observation-journal', 'Observation Journal', 'Cada gesto queda anotado.'], final: 'After-School Smile', events: [['window-monologue', 'Window Seat Monologue', 'Niko observa desde lejos.'], ['forced-club', 'Forced Club Visit', 'La rutina se rompe.'], ['rainy-errand', 'Rainy Day Errand', 'Ayudar no estaba planeado.'], ['christmas-detour', 'Christmas Eve Detour', 'El aislamiento pierde fuerza.'], ['kyoto-talk', 'Kyoto Honest Talk', 'El viaje obliga a hablar.'], ['group-photo', 'First Real Group Photo', 'Niko acepta quedarse.']] },
-            { slug: 'guitar-hana', name: 'Guitarist Hana', strategy: 'team', pace: 'fast', description: 'Reune banda rapido y gana por eventos de concierto.', support: ['drummer-riko', 'Drummer Riko', 'Mantiene el pulso del grupo.'], item: ['sticker-guitar', 'Sticker Guitar', 'Una guitarra comun con identidad propia.'], final: 'First Live Encore', events: [['borrowed-chord', 'Borrowed Chord', 'Hana aprende su primer riff publico.'], ['recruit-drummer', 'Recruit the Drummer', 'La banda deja de ser fantasia.'], ['practice-noise', 'Practice Room Noise', 'El ensayo molesta a todos.'], ['school-concert', 'School Concert', 'El escenario escolar espera.']] },
-        ],
-    },
-    {
-        id: ARCHETYPES.SHOJO, prefix: 'shojo', theme: 'romance, magia y emociones visibles',
-        sharedCharacters: [['best-friend', 'Best Friend Emi', 'Lee el corazon antes que la protagonista.'], ['mysterious-senpai', 'Mysterious Senpai', 'Aparece cuando todo se complica.'], ['class-rival', 'Class Rival Rika', 'Competencia romantica y emocional.']],
-        sharedItems: [['ribbon-charm', 'Ribbon Charm', 'Amuleto que guarda promesas.'], ['love-letter', 'Love Letter', 'Una carta que nunca queda quieta.'], ['star-compact', 'Star Compact', 'Brilla cuando se dice la verdad.']],
-        locations: [['school-gate', 'School Gate', 'Llegadas tarde y encuentros clave.'], ['planetarium', 'Planetarium', 'Confesiones bajo estrellas falsas.'], ['shrine-steps', 'Shrine Steps', 'Deseos atados a cintas.']],
-        heroes: [
-            { slug: 'card-mage-luna', name: 'Card Mage Luna', strategy: 'engine', pace: 'mid', description: 'Captura cartas magicas y gana por recursos encadenados.', support: ['seal-familiar', 'Seal Familiar Pipi', 'Detecta magia perdida.'], item: ['capture-wand', 'Capture Wand', 'Cierra cartas antes de que huyan.'], final: 'Eternal Card Bloom', events: [['first-transform', 'First Transformation', 'El uniforme magico aparece.'], ['runaway-card', 'Runaway Card', 'La magia desordena la escuela.'], ['moonlit-capture', 'Moonlit Capture', 'Luna aprende a sellar.'], ['identity-reveal', 'Identity Reveal', 'El secreto casi se rompe.'], ['eternal-power', 'Eternal Power', 'El mazo magico reconoce a Luna.']] },
-            { slug: 'diary-mio', name: 'Ordinary Diary Mio', strategy: 'team', pace: 'fast', description: 'Romance directo con aliados y escenas de confesion.', support: ['wingwoman-saki', 'Wingwoman Saki', 'Empuja a Mio a hablar.'], item: ['heart-diary', 'Heart Diary', 'Donde se escriben frases imposibles.'], final: 'Confession After Rain', events: [['fated-encounter', 'Fated Encounter', 'Un paraguas cambia el dia.'], ['first-date', 'First Date', 'La cita sale casi bien.'], ['friend-betrayal', 'Friend Betrayal', 'El triangulo duele.'], ['noble-sacrifice', 'Noble Sacrifice', 'Mio elige cuidar antes de ganar.']] },
-            { slug: 'lost-princess-sera', name: 'Lost Princess Sera', strategy: 'control', pace: 'slow', description: 'Revela linaje, bloquea amenazas y protege el destino.', support: ['royal-guard', 'Royal Guard Toma', 'Recuerda un juramento perdido.'], item: ['moon-tiara', 'Moon Tiara', 'Prueba de sangre real.'], final: 'Silver Kingdom Return', events: [['palace-dream', 'Dream of the Palace', 'Sera ve una vida que no recuerda.'], ['hidden-crest', 'Hidden Crest', 'El simbolo real aparece.'], ['masquerade-threat', 'Masquerade Threat', 'La corte intenta silenciarla.'], ['identity-reveal', 'Identity Reveal', 'La princesa acepta su nombre.'], ['moonlit-coronation', 'Moonlit Coronation', 'El reino vuelve a tener voz.'], ['silver-oath', 'Silver Oath', 'Sera decide gobernar distinto.']] },
-        ],
-    },
-    {
-        id: ARCHETYPES.HAREM, prefix: 'harem', theme: 'comedia romantica, caos social y eleccion final',
-        sharedCharacters: [['childhood-friend', 'Childhood Friend Nana', 'Conoce todos los defectos del protagonista.'], ['student-idol', 'Student Idol Kira', 'Convierte todo en espectaculo.'], ['sharp-senpai', 'Sharp-Tongue Senpai', 'Corta escenas demasiado comodas.']],
-        sharedItems: [['club-key', 'Club Key', 'Abre habitaciones comprometedoras.'], ['festival-ticket', 'Festival Ticket', 'Siempre hay alguien de mas.'], ['study-notes', 'Study Notes', 'Excusa para juntarse.']],
-        locations: [['club-room', 'Club Room', 'Centro del desorden romantico.'], ['shopping-arcade', 'Shopping Arcade', 'Citas que se cruzan.'], ['summer-beach', 'Summer Beach', 'Donde el Filler amenaza.']],
-        heroes: [
-            { slug: 'average-yu', name: 'Average Yu', strategy: 'team', pace: 'fast', description: 'Se tropieza en problemas y gana con afinidades rapidas.', support: ['chaos-neighbor', 'Chaos Neighbor Momo', 'Aparece en la peor puerta.'], item: ['lucky-charm', 'Lucky Charm', 'La suerte explica demasiado.'], final: 'Honest Choice', events: [['lucky-fall', 'Lucky Pervert Fall', 'La escena que nadie puede explicar.'], ['date-clash', 'Weekend Date Clash', 'Dos planes, una tarde.'], ['valentine-panic', 'Valentine Panic', 'Demasiado chocolate.'], ['true-answer', 'One True Answer', 'Yu deja de huir.']] },
-            { slug: 'transfer-ren', name: 'Transfer Student Ren', strategy: 'aggro', pace: 'mid', description: 'Nuevo en clase, acelera drama y presion social.', support: ['mystery-roommate', 'Mystery Roommate Aki', 'Sabe secretos que no deberia.'], item: ['transfer-form', 'Transfer Form', 'Papel que reordena la clase.'], final: 'New Seat Promise', events: [['new-student', 'New Student Arrives', 'Ren entra cuando todo estaba estable.'], ['rumor-burst', 'Rumor Burst', 'La escuela inventa versiones.'], ['beach-war', 'Beach Volleyball War', 'Competencia con tension.'], ['jealousy-storm', 'Jealousy Storm', 'El aula se parte en bandos.'], ['after-class-truth', 'After-Class Truth', 'Ren explica por que llego.']] },
-            { slug: 'manager-taku', name: 'Club Manager Taku', strategy: 'engine', pace: 'slow', description: 'Gana ordenando recursos, horarios y escenas de grupo.', support: ['schedule-queen', 'Schedule Queen Hina', 'Nadie llega tarde con ella cerca.'], item: ['shared-calendar', 'Shared Calendar', 'Todas las rutas en una pagina.'], final: 'Festival Fireworks Choice', events: [['club-recruitment', 'Club Recruitment', 'Taku necesita miembros.'], ['study-spiral', 'Study Group Spiral', 'Estudiar se vuelve confesion.'], ['budget-committee', 'Budget Committee', 'El romance requiere fondos.'], ['fireworks-festival', 'Fireworks Festival', 'La agenda apunta al cielo.'], ['last-meeting', 'Last Club Meeting', 'La eleccion no puede postergarse.'], ['one-route', 'One Route Saved', 'Taku cierra el calendario.']] },
-        ],
-    },
-    {
-        id: ARCHETYPES.ISEKAI, prefix: 'isekai', theme: 'otro mundo, habilidades raras y construccion de destino',
-        sharedCharacters: [['guild-clerk', 'Guild Clerk Mina', 'Traduce misiones y deudas.'], ['dragon-ally', 'Ancient Dragon Rook', 'Aliado demasiado grande.'], ['merchant-lio', 'Merchant Lio', 'Convierte botin en plan.']],
-        sharedItems: [['world-map', 'World Map', 'No esta completo, pero ayuda.'], ['mana-potion', 'Mana Potion', 'Recurso simple, turno complejo.'], ['starter-sword', 'Starter Sword', 'Arma comun con destino raro.']],
-        locations: [['starter-village', 'Starter Village', 'Lugar que siempre se salva primero.'], ['dungeon-core', 'Dungeon Core', 'La aventura baja bajo tierra.'], ['demon-border', 'Demon Border', 'La guerra espera al otro lado.']],
-        heroes: [
-            { slug: 'cheat-hero', name: 'Cheat Hero Kai', strategy: 'aggro', pace: 'fast', description: 'Abusa de poder temprano y cierra antes de estabilizar.', support: ['spell-tutor', 'Spell Tutor Fia', 'Ensena reglas que Kai rompe.'], item: ['cheat-window', 'Cheat Window', 'Interfaz que no deberia existir.'], final: 'Demon Lord Speedrun', events: [['hero-summoning', 'Hero Summoning', 'Kai cae con stats injustos.'], ['cheat-unlock', 'Cheat Skill Unlock', 'El sistema se rinde.'], ['quest-skip', 'First Quest Skip', 'La mision termina rapido.'], ['war-breaker', 'Kingdom War Breaker', 'Kai rompe la linea enemiga.']] },
-            { slug: 'slime-founder', name: 'Slime Founder Rimu', strategy: 'engine', pace: 'slow', description: 'Construye nacion con robo, locaciones y aliados.', support: ['goblin-minister', 'Goblin Minister Garo', 'Hace gobierno de improvisacion.'], item: ['nation-charter', 'Nation Charter', 'Primer documento del nuevo pais.'], final: 'Monster Nation Summit', events: [['cave-rebirth', 'Cave Rebirth', 'Rimu despierta sin forma humana.'], ['name-tribe', 'Name the Tribe', 'Nombrar aliados crea deberes.'], ['dungeon-alliance', 'Dungeon Alliance', 'Los monstruos negocian.'], ['harvest-feast', 'Harvest Feast', 'La ciudad celebra prosperidad.'], ['world-secret', 'Secret of the World', 'El origen del sistema aparece.'], ['one-banner', 'Nation Under One Banner', 'El pueblo monstruo se reconoce.']] },
-            { slug: 'farming-villainess', name: 'Farming Villainess Ema', strategy: 'control', pace: 'mid', description: 'Evita la mala ruta cultivando recursos y apagando guerras.', support: ['field-knight', 'Field Knight Orin', 'Protege graneros y secretos.'], item: ['rice-ledger', 'Rice Ledger', 'Produccion contra destino tragico.'], final: 'Harvest Route Ending', events: [['bad-end-memory', 'Bad End Memory', 'Ema recuerda el futuro fatal.'], ['rice-field', 'First Rice Field', 'La granja reemplaza al duelo.'], ['tax-fight', 'Noble Tax Fight', 'La economia se vuelve batalla.'], ['peace-feast', 'Peace Feast', 'Comer juntos evita guerra.'], ['secret-revealed', 'Secret Revealed', 'La villana explica su plan.']] },
-        ],
-    },
-    {
-        id: ARCHETYPES.SURVIVAL_GAME, prefix: 'survival', theme: 'juegos mortales, recursos escasos y traiciones',
-        sharedCharacters: [['hacker-kid', 'Hacker Kid Zero', 'Abre puertas y sospechas.'], ['ex-soldier', 'Ex-Soldier Mara', 'Sabe sobrevivir sin hablar mucho.'], ['field-medic', 'Field Medic Iko', 'Compra un turno mas.']],
-        sharedItems: [['survival-knife', 'Survival Knife', 'Herramienta o amenaza.'], ['kevlar-vest', 'Kevlar Vest', 'Reduce consecuencias.'], ['ration-pack', 'Ration Pack', 'Comida para otra escena.']],
-        locations: [['abandoned-school', 'Abandoned School', 'Reglas en pizarras rotas.'], ['safe-room', 'Safe Room', 'Nada seguro dura mucho.'], ['death-arena', 'Death Arena', 'Donde el juego muestra dientes.']],
-        heroes: [
-            { slug: 'smiling-hunter', name: 'Smiling Hunter Rei', strategy: 'aggro', pace: 'fast', description: 'Disfruta la presion y gana por Filler rival.', support: ['trap-maker', 'Trap Maker Jin', 'Rie cuando algo hace click.'], item: ['red-wire', 'Red Wire', 'La decision incorrecta explota.'], final: 'Last Laugh Duel', events: [['game-start', 'Game Start', 'Rei entiende las reglas rapido.'], ['supply-raid', 'Supply Drop Raid', 'Toma recursos por fuerza.'], ['trap-triggered', 'Trap Triggered', 'El rival pisa el error.'], ['duel', 'One-on-One Duel', 'Rei fuerza una escena cerrada.']] },
-            { slug: 'lucky-runner', name: 'Lucky Runner Yuto', strategy: 'defense', pace: 'slow', description: 'Sobrevive limpiando Filler y robando salidas.', support: ['protector-ami', 'Protector Ami', 'Empuja a Yuto fuera del peligro.'], item: ['bent-coin', 'Bent Coin', 'La suerte tiene peso.'], final: 'Exit Door Miracle', events: [['morning-broadcast', 'Morning Broadcast', 'Yuto escucha nombres caer.'], ['temporary-alliance', 'Temporary Alliance', 'Sobrevivir requiere confiar mal.'], ['narrow-escape', 'Narrow Escape', 'La puerta cierra tarde.'], ['heroic-sacrifice', 'Heroic Sacrifice', 'Alguien compra tiempo.'], ['last-safe-room', 'Last Safe Room', 'La salida aparece sin plan.']] },
-            { slug: 'rebel-medic', name: 'Rebel Medic Sayo', strategy: 'control', pace: 'mid', description: 'Rompe el juego desde dentro y descarta amenazas.', support: ['signal-runner', 'Signal Runner Toma', 'Lleva mensajes sin ser visto.'], item: ['blackout-kit', 'Blackout Kit', 'Apaga camaras y rutas.'], final: 'Broadcast the Truth', events: [['patch-wounded', 'Patch the Wounded', 'Sayo cura al rival.'], ['hidden-rulebook', 'Hidden Rulebook', 'Las reglas tienen huecos.'], ['night-ambush', 'Night Ambush', 'Intentan callarla.'], ['control-room', 'Control Room Break-In', 'El tablero se ve desde arriba.'], ['signal-hijack', 'Signal Hijack', 'Todos oyen la verdad.']] },
-        ],
-    },
-    {
-        id: ARCHETYPES.SPOKON, prefix: 'spokon', theme: 'deporte, entrenamiento y remontadas',
-        sharedCharacters: [['demon-coach', 'Demon Coach Genda', 'Hace correr hasta que aparece Story.'], ['team-manager', 'Team Manager Nao', 'Sostiene al equipo fuera de camara.'], ['veteran-senpai', 'Veteran Senpai Kuro', 'Ensenanza por mirada dura.']],
-        sharedItems: [['worn-shoes', 'Worn Shoes', 'Kilometros de promesa.'], ['team-uniform', 'Team Uniform', 'Pertenecer tambien es poder.'], ['ice-spray', 'Ice Spray', 'Otro turno para seguir.']],
-        locations: [['old-gym', 'Old Gym', 'El piso cruje como recuerdo.'], ['training-camp', 'Training Camp Field', 'Verano, sudor y curry.'], ['national-stadium', 'National Stadium', 'El sueno tiene luces grandes.']],
-        heroes: [
-            { slug: 'iron-rookie', name: 'Iron Rookie Daichi', strategy: 'engine', pace: 'mid', description: 'Entrena, roba y convierte esfuerzo en curva estable.', support: ['timer-mika', 'Timer Mika', 'Cuenta repeticiones sin piedad.'], item: ['weighted-anklets', 'Weighted Anklets', 'Duelen para que el salto importe.'], final: 'Ten Thousandth Shot', events: [['first-practice', 'First Practice', 'Daichi falla frente a todos.'], ['camp-grind', 'Training Camp Grind', 'La repeticion se vuelve identidad.'], ['sudden-injury', 'Sudden Injury', 'El cuerpo cobra deuda.'], ['overtime-legs', 'Overtime Legs', 'Daichi sigue cuando nadie puede.'], ['qualifier', 'Nationals Qualifier', 'El esfuerzo se mide en marcador.']] },
-            { slug: 'team-heart', name: 'Team Heart Sora', strategy: 'team', pace: 'slow', description: 'Escala con personajes y remontadas colectivas.', support: ['bench-cheer', 'Bench Cheer Yuna', 'El banco tambien juega.'], item: ['captain-whistle', 'Captain Whistle', 'Llama al equipo al mismo ritmo.'], final: 'Miracle Team Comeback', events: [['new-member', 'New Member Trial', 'El equipo acepta una pieza rara.'], ['practice-loss', 'Practice Match Loss', 'Perder muestra el hueco.'], ['motivation', 'Motivational Speech', 'Sora une al vestuario.'], ['rival-school', 'Rival School Clash', 'El rival rompe la confianza.'], ['miracle-comeback', 'Miracle Comeback', 'Todos corren el ultimo minuto.'], ['victory-line', 'Victory Line', 'La pelota cruza con todo el equipo.']] },
-            { slug: 'data-setter', name: 'Data Setter Kei', strategy: 'control', pace: 'fast', description: 'Lee patrones, bloquea jugadas rivales y gana por precision.', support: ['analyst-haru', 'Analyst Haru', 'Convierte errores en graficos.'], item: ['playbook-tablet', 'Playbook Tablet', 'La estrategia entra a la cancha.'], final: 'Perfect Set Point', events: [['scout-rival', 'Scout the Rival', 'Kei ve la jugada antes.'], ['practice-download', 'Practice Match Download', 'Cada punto alimenta el plan.'], ['formation-lock', 'Formation Lock', 'El rival queda sin angulo.'], ['set-point-trap', 'Set Point Trap', 'La cancha se cierra.']] },
-        ],
-    },
-    {
-        id: ARCHETYPES.KAIJU, prefix: 'kaiju', theme: 'monstruos gigantes, evacuacion y defensa desesperada',
-        sharedCharacters: [['biologist', 'Kaiju Biologist Dr. Imai', 'Encuentra patrones en rugidos.'], ['news-chopper', 'News Chopper Crew', 'Muestra el desastre desde arriba.'], ['defense-droid', 'Defense Droid Unit', 'Compra segundos contra colosos.']],
-        sharedItems: [['maser-cannon', 'Maser Cannon', 'Rayo que obliga al monstruo a mirar.'], ['shelter-key', 'Shelter Key', 'Abrir una puerta salva un episodio.'], ['tissue-sample', 'Tissue Sample', 'La ciencia empieza viscosa.']],
-        locations: [['tokyo-bay', 'Tokyo Bay', 'Siempre salen del mar.'], ['defense-hq', 'Defense HQ', 'Pantallas, gritos y mapas.'], ['monster-island', 'Monster Island', 'Origen de amenazas imposibles.']],
-        heroes: [
-            { slug: 'mecha-pilot', name: 'Mecha-K Pilot Ren', strategy: 'aggro', pace: 'fast', description: 'Enfrenta monstruos con acero y dano directo.', support: ['co-pilot-aya', 'Co-Pilot Aya', 'Sincroniza el segundo asiento.'], item: ['mecha-blueprint', 'Mecha Blueprint', 'Planos para pelear de igual a igual.'], final: 'Steel Titan Uppercut', events: [['mecha-deploy', 'Mecha Deployment', 'El robot entra entre sirenas.'], ['monster-clash', 'First Monster Clash', 'Acero contra escamas.'], ['weapon-charge', 'Super Weapon Charge', 'La ciudad presta energia.'], ['rampage-duel', 'Total Rampage Duel', 'Ren enfrenta al alfa.']] },
-            { slug: 'city-survivor', name: 'City Survivor Miki', strategy: 'defense', pace: 'slow', description: 'Gana evacuando, reduciendo Filler y resistiendo.', support: ['rescue-driver', 'Rescue Driver Goro', 'Sabe calles que ya no existen.'], item: ['evac-map', 'Evacuation Map', 'Rutas marcadas antes del colapso.'], final: 'Shelter Lights at Dawn', events: [['siren-warning', 'Siren Warning', 'Miki corre antes de mirar atras.'], ['wall-breached', 'Wall Breached', 'La ciudad pierde su borde.'], ['temporary-retreat', 'Temporary Retreat', 'Sobrevivir tambien avanza la historia.'], ['shelter-chain', 'Shelter Chain', 'Una puerta salva muchas.'], ['reconstruction', 'Reconstruction Promise', 'La ciudad decide volver.']] },
-            { slug: 'defense-captain', name: 'Defense Captain Aki', strategy: 'control', pace: 'mid', description: 'Coordina ciencia y fuerza militar para controlar el campo.', support: ['radar-officer', 'Radar Officer Sen', 'Ve venir al kaiju antes que nadie.'], item: ['command-tablet', 'Command Tablet', 'Ordenes, rutas y municion.'], final: 'Operation City Saved', events: [['briefing', 'Emergency Briefing', 'Aki divide la ciudad en zonas.'], ['weakness-found', 'Weakness Found', 'La ciencia encuentra una apertura.'], ['reinforcements', 'Reinforcements Arrive', 'La defensa deja de estar sola.'], ['destroyer-plan', 'Oxygen Destroyer Plan', 'La solucion tambien da miedo.'], ['evacuation-line', 'Final Evacuation Line', 'La defensa aguanta hasta el final.']] },
+            { slug: 'cheat-kai', name: 'Cheat Hero Kai', strategy: 'rush', resource: 'SP', eventSelfFillerDelta: 2, description: 'An overpowered summon trying to clear the world quickly.', support: ['tutor-fia', 'Spell Tutor Fia', 'Explains rules Kai ignores.'], item: ['cheat-window', 'Cheat Window', 'An interface no one else sees.'], location: ['starter-village', 'Starter Village', 'A tutorial worth saving.'], normalEvents: [['summon-circle', 'Summoning Circle', 'Kai arrives with unfair numbers.'], ['skill-unlock', 'Cheat Skill Unlock', 'The world system yields.'], ['castle-rush', 'Castle Rush', 'He skips the expected journey.']], climax: ['demon-speedrun', 'Demon Lord Speedrun', 'Kai challenges the ending early.'], plotTwist: ['patch-note', 'Emergency Patch Note', 'The world finally balances him.'] },
+            { slug: 'slime-rimu', name: 'Slime Founder Rimu', strategy: 'engine', resource: 'SP', description: 'A small monster building a nation through alliances.', support: ['minister-garo', 'Minister Garo', 'Organizes a growing village.'], item: ['nation-charter', 'Nation Charter', 'Names duties before borders.'], location: ['monster-capital', 'Monster Capital', 'A settlement becomes a promise.'], extraMaterials: [{ kind: 'item', card: ['unity-charter', 'Unity Charter', 'Every allied tribe signs the nation into being.'] }, { kind: 'location', card: ['summit-capital', 'Summit Capital Hall', 'The new nation gathers beneath one banner.'] }], normalEvents: [['cave-rebirth', 'Cave Rebirth', 'Rimu wakes without a human body.'], ['tribe-name', 'Name the Tribe', 'Names become power and duty.'], ['trade-pact', 'Trade Pact', 'Peace earns resources.'], ['border-war', 'Border War', 'A nation must defend itself.'], ['summit-call', 'Summit Call', 'Every faction arrives at one table.']], climax: ['one-banner', 'Nation Under One Banner', 'Rimu makes coexistence unavoidable.'], climaxMaterials: ['unity-charter', 'summit-capital'], plotTwist: ['ancient-claim', 'Ancient Claim', 'An older ruler demands the land.'] },
+            { slug: 'villainess-ema', name: 'Farming Villainess Ema', strategy: 'control', resource: 'FP', description: 'A doomed noble farming her way out of war.', support: ['field-knight', 'Field Knight Orin', 'Guards harvests and secrets.'], item: ['rice-ledger', 'Rice Ledger', 'Production rewritten as strategy.'], location: ['peace-fields', 'Peace Fields', 'Crops grow where armies expected battle.'], extraMaterials: [{ kind: 'item', card: ['peace-ledger', 'Peace Harvest Ledger', 'Records enough food to make war economically absurd.'] }, { kind: 'location', card: ['shared-feast', 'Shared Feast Hall', 'Enemy banners lower around the same harvest table.'] }], normalEvents: [['bad-end-memory', 'Bad End Memory', 'Ema sees her execution.'], ['first-harvest', 'First Harvest', 'Food changes political math.'], ['tax-revolt', 'Tax Revolt', 'The nobles demand their old route.'], ['peace-feast', 'Peace Feast', 'Enemies share the same table.']], climax: ['harvest-ending', 'Harvest Route Ending', 'Ema replaces tragedy with abundance.'], climaxMaterials: ['peace-ledger', 'shared-feast'], plotTwist: ['blight-season', 'Blight Season', 'One rotten crop threatens the peace.'] },
+            { slug: 'artisan-nia', name: 'Summoned Artisan Nia', strategy: 'engine', resource: 'FP', description: 'A crafter recovering broken relics into impossible tools.', support: ['salvager-pep', 'Salvager Pep', 'Finds treasure in discarded scenes.'], item: ['portable-forge', 'Portable Forge', 'Repairs what the story abandons.'], location: ['ruin-market', 'Ruin Market', 'Lost objects find new owners.'], extraMaterials: [{ kind: 'item', card: ['gate-blueprint', 'Masterwork Blueprint', 'Translates salvaged relics into a stable final design.'] }, { kind: 'location', card: ['anvil-gate', 'Anvil Gate Workshop', 'Nia assembles the portal without sacrificing its craft.'] }], normalEvents: [['workshop-fall', 'Workshop Fall', 'Nia lands among broken artifacts.'], ['relic-repair', 'Relic Repair', 'A discarded tool returns useful.'], ['guild-contract', 'Guild Contract', 'Craft earns political weight.'], ['world-anvil', 'World Anvil', 'The final material is revealed.']], climax: ['masterwork-gate', 'Masterwork Gate', 'Her creation opens a way home.'], climaxMaterials: ['gate-blueprint', 'anvil-gate'], plotTwist: ['shattered-blueprint', 'Shattered Blueprint', 'A lost fragment changes the design.'] },
+            {
+                slug: 'vending-hako',
+                name: 'Vending Shogun Hako',
+                strategy: 'engine',
+                resource: 'SP',
+                description: 'A reincarnated vending machine earns loyalty in ancient Japan one offering at a time.',
+                support: ['ronin-chiyo', 'Ronin Chiyo', 'Carries Hako through provinces and speaks for the machine.'],
+                item: ['coin-slot', 'Sacred Coin Slot', 'Accepts offerings and dispenses impossible provisions.'],
+                location: ['roadside-shrine', 'Roadside Shrine Stall', 'Villagers first mistake Hako for a minor god.'],
+                extraMaterials: [
+                    { kind: 'item', card: ['tea-can', 'Warm Tea Can', 'A diplomatic gift no daimyo can reproduce.'] },
+                    { kind: 'support', card: ['merchant-kiku', 'Merchant Kiku', 'Turns miraculous goods into political influence.'] },
+                    { kind: 'location', card: ['castle-court', 'Castle Court', 'The final market is also a battlefield.'] },
+                ],
+                normalEvents: [['fallen-machine', 'Fallen Machine at the Shrine', 'Hako wakes without limbs in a war-torn province.'], ['ronin-pact', 'Ronin Pact', 'Chiyo learns what each glowing button provides.'], ['tea-diplomacy', 'Tea Can Diplomacy', 'Refreshments halt a feud long enough to bargain.'], ['merchant-revolt', 'Merchant Revolt', 'Hako funds commoners against a starving lord.'], ['castle-siege', 'Siege by Supply', 'An army follows the machine that never runs dry.'], ['throne-offering', 'Offering at the Throne', 'The capital accepts Hako as more than an object.']],
+                climax: ['steel-shogunate', 'Steel Shogunate', 'A vending machine becomes shogun by feeding a country before ruling it.'],
+                plotTwist: ['empty-stock', 'Out of Stock', 'The decisive offering jams inside Hako s old mechanism.'],
+                quickEvents: [['restock-offering', 'Restock Offering', 'Hako spends a coin reserve to dispense the next turning point.']],
+            },
+            {
+                slug: 'refused-yuna',
+                name: 'Refused Reincarnation Yuna',
+                strategy: 'control',
+                resource: 'SP',
+                description: 'A girl repeatedly offers her life for reincarnation, while gatekeepers fear what she would become.',
+                support: ['gatekeeper-noa', 'Gatekeeper Noa', 'Guides other souls across while denying Yuna passage.'],
+                item: ['offering-thread', 'Offering Thread', 'Marks every life Yuna tried to trade.'],
+                location: ['crossroads-office', 'Crossroads Office', 'A waiting room between tragic worlds.'],
+                extraMaterials: [
+                    { kind: 'support', card: ['saved-soul', 'Saved Soul Emi', 'A stranger reincarnated because Yuna intervened.'] },
+                    { kind: 'location', card: ['sealed-gate', 'Sealed Reincarnation Gate', 'The door barred specifically against Yuna.'] },
+                    { kind: 'item', card: ['ruin-permit', 'Forbidden Reincarnation Permit', 'A stamped permission Noa hoped would never be issued.'] },
+                    { kind: 'location', card: ['ruined-horizon', 'Ruined New Horizon', 'The world that awaits Yuna beyond the gate.'] },
+                ],
+                normalEvents: [['first-offer', 'First Offering', 'Yuna offers her future so a dying child can cross.'], ['denial-stamp', 'Denial Stamp', 'The gatekeepers reject only her application.'], ['borrowed-fates', 'Borrowed Fates', 'She meets lives changed by her sacrifices.'], ['danger-file', 'The Danger File', 'Noa reveals why the gate fears her soul.'], ['open-at-last', 'The Gate Opens at Last', 'Yuna smiles when the prohibition breaks.']],
+                climax: ['beautiful-ruin', 'Reincarnation of Ruin', 'Yuna reaches another world, implying she came only to destroy it.'],
+                climaxMaterials: ['ruin-permit', 'ruined-horizon'],
+                plotTwist: ['one-soul-plea', 'One Soul Pleads', 'A saved life asks Yuna to choose creation instead.'],
+                quickEvents: [['crossroads-petition', 'Crossroads Petition', 'Yuna discards another denied request to force her file forward.']],
+            },
+            {
+                slug: 'bartender-zatos',
+                name: 'Forbidden Bartender Zatos',
+                strategy: 'engine',
+                resource: 'SP',
+                eventStoryBonus: 2,
+                eventOpponentFillerBonus: 2,
+                description: 'Zatos spreads forbidden taverns through Dragant, the city of the dead and occupied Brassfang.',
+                routeId: 'last-call',
+                routeLabel: 'Ruta Ultima Ronda',
+                support: ['persley', 'P.E.R.S.L.E.Y', 'A bioalchemical android companion who guards Zatos, gathers energy crystals and contains a hidden Berserk presence.'],
+                item: ['traveling-tap', 'Forbidden Traveling Tap', 'A portable bar rig outlawed by imperial decree.'],
+                location: ['dragant-bar', 'The Molten Scale Bar', 'A tavern for dragons disguised as people.'],
+                extraMaterials: [
+                    { kind: 'support', card: ['tower-medium', 'Tower Medium Shiki', 'A medium whose illusion grants the dead one last ordinary night.'] },
+                    { kind: 'item', card: ['farewell-glass', 'Farewell Glass', 'A cup reserved for spirits who accept their final truth.'] },
+                    { kind: 'item', card: ['remorse-ledger', 'Ledger of Last Remorse', 'Records the final truths confessed before each spirit fades.'] },
+                    { kind: 'support', card: ['orc-brewer', 'Brassfang Brewer', 'An orc artisan who hides rebel plans beneath the foam of each cask.'] },
+                    { kind: 'item', card: ['regent-weapon', 'Captured Regent Weapon', 'A seized bioalchemical weapon proving how the Empire rules Brassfang.'] },
+                    { kind: 'item', card: ['rebellion-barrel', 'Rebellion Barrel', 'A cask rolled into the street as the signal for uprising.'] },
+                    { kind: 'item', card: ['valkania-map', 'Contraband Map of Valkania', 'Tavern routes expose hidden passages into the imperial capital.'] },
+                    { kind: 'location', card: ['valkania-underbar', 'Valkania Underbar', 'A concealed counter beneath the capital where proof reaches its final patron.'] },
+                    { kind: 'location', card: ['last-call-tower', 'Last Call Tower', 'A bar where remorseful dead drink once before fading.'] },
+                    { kind: 'location', card: ['brassfang-city', 'Brassfang', 'A former orc trading city subdued by a bioalchemical regent.'] },
+                ],
+                normalEvents: [['dragant-license', 'Dragant: Fireproof License', 'Zatos convinces dragon nobles that ale can be treasure.'], ['dragant-cellar', 'Dragant: Cellar of Hoards', 'A second round turns territorial hoarding into alliance.'], ['shiki-illusion', 'Nameless Kingdom: Shiki s Illusion', 'The new tavern reveals patrons who are already dead.'], ['last-remorse', 'Nameless Kingdom: Last Remorse', 'Every ghost receives one final drink and truth.'], ['brassfang-bar', 'Brassfang: Bar Against the Regent', 'Orcs and beastfolk gather where resistance can speak.'], ['broken-tavern', 'Brassfang: The Broken Tavern', 'Clients destroy the bar while overthrowing the imperial weapon.']],
+                climax: ['valkania-capital', 'Last Call in Valkania', 'Zatos reaches the capital seeking the truth of Emperor Ard Mahl.'],
+                plotTwist: ['imperial-prohibition', 'Imperial Prohibition', 'Ard Mahl declares every tavern a weapon of rebellion.'],
+                quickEvents: [['tab-rumor', 'A Rumor on the Tab', 'Discard an unpaid debt to learn where the next bar must open.']],
+                eventMaterials: [
+                    ['traveling-tap'],
+                    ['persley', 'dragant-bar'],
+                    ['tower-medium', 'last-call-tower'],
+                    ['farewell-glass', 'remorse-ledger'],
+                    ['brassfang-city', 'orc-brewer'],
+                    ['regent-weapon', 'rebellion-barrel'],
+                ],
+                eventMaterialCounts: [1, 2, 2, 2, 2, 2],
+                climaxMaterials: ['valkania-map', 'valkania-underbar'],
+            },
+            {
+                slug: 'bartender-zatos-rainwood',
+                name: 'Forbidden Bartender Zatos',
+                strategy: 'engine',
+                resource: 'SP',
+                eventStoryBonus: 2,
+                eventOpponentFillerBonus: 2,
+                description: 'Zatos follows bioalchemical secrets from a survivor s orb through Rainwood and into Valkania.',
+                protagonistSlug: 'bartender-zatos',
+                generateAvatar: false,
+                routeId: 'rainwood',
+                routeLabel: 'Ruta Rainwood',
+                support: ['persley', 'P.E.R.S.L.E.Y', 'Zatos s energetic companion gathers crystals to hold back the Berserk presence within her.'],
+                item: ['energy-crystals', 'Energy Crystals', 'Charged fragments that keep P.E.R.S.L.E.Y. stable and reveal imperial extraction.'],
+                location: ['crystal-quarry', 'Hidden Crystal Quarry', 'An imperial extraction site feeding the same energy that sustains P.E.R.S.L.E.Y.'],
+                extraMaterials: [
+                    { kind: 'support', card: ['medium', 'Medium', 'The only survivor of her village. Her mysterious crystal orb crosses planes and summons spirits.'] },
+                    { kind: 'support', card: ['caballero-w', 'Caballero W', 'A massive knight in dark modern glasses who calls his absurd two-handed wind blade Claire.'] },
+                    { kind: 'support', card: ['noland', 'Noland', 'A bearded guardian of the rain-soaked forest who knows bioalchemy and throws a gigantic axe like an apple.'] },
+                    { kind: 'item', card: ['spirit-orb', 'Transcendent Crystal Orb', 'Medium uses the orb to reach beyond reality and invite the dead to speak.'] },
+                    { kind: 'item', card: ['claire', 'Claire, Wind Greatsword', 'Caballero W named a blade heavy enough to split an imperial gate.'] },
+                    { kind: 'item', card: ['imperial-seal', 'Seal of Ard Mahl', 'An imperial authority mark that treats taverns and bioalchemy as contraband.'] },
+                    { kind: 'item', card: ['berserk-core', 'Berserk Core Seal', 'A fragile limiter separating P.E.R.S.L.E.Y. from the presence within.'] },
+                    { kind: 'item', card: ['rainwood-axe', 'Noland s Rain Axe', 'A massive alchemical axe entrusted only when the forest chooses an ally.'] },
+                    { kind: 'item', card: ['rainwood-valkania-map', 'Rainwood Map to Valkania', 'Noland marks a concealed route from the forest to the imperial capital.'] },
+                    { kind: 'item', card: ['ard-mahl-dossier', 'Dossier of Ard Mahl', 'Evidence connecting the emperor to forbidden bioalchemy.'] },
+                    { kind: 'location', card: ['rainwood-lodge', 'Rainwood Lodge', 'Noland protects an ancestral secret beneath a forest where rain never stops.'] },
+                    { kind: 'location', card: ['capital-cellar', 'Capital Underbar', 'A final illegal bar opened beneath Valkania s palace.'] },
+                    { kind: 'support', card: ['throneguard', 'Disillusioned Throneguard', 'A palace sentinel who recognizes Ard Mahl s lies in the bartender s evidence.'] },
+                ],
+                normalEvents: [['orb-survivor', 'The Medium and the Orb', 'A village survivor lets the tavern hear spirits whose warning points toward the Empire.'], ['berserk-presence', 'P.E.R.S.L.E.Y.: The Other Presence', 'Crystal hunger threatens to awaken the being buried inside Zatos s companion.'], ['claire-road', 'Claire Opens the Imperial Road', 'Caballero W cuts through Ard Mahl s pursuit and leads Zatos into the rain forest.'], ['rainwood-oath', 'Rainwood: Noland s Oath', 'Noland reveals the forest secret and the bioalchemical origin of P.E.R.S.L.E.Y. before the capital.']],
+                climax: ['truth-on-tap', 'Truth on Tap in Valkania', 'Zatos opens a forbidden final bar beneath the palace and exposes Ard Mahl s bioalchemical empire.'],
+                plotTwist: ['berserk-last-call', 'Berserk Last Call', 'The force inside P.E.R.S.L.E.Y. offers imperial power in exchange for freedom.'],
+                quickEvents: [['crystal-rumor', 'A Crystal on the Tab', 'Discard a false lead to locate the next bioalchemical clue.']],
+                eventMaterials: [
+                    ['medium'],
+                    ['energy-crystals', 'berserk-core'],
+                    ['caballero-w', 'claire'],
+                    ['noland', 'rainwood-lodge', 'rainwood-axe'],
+                ],
+                eventMaterialCounts: [1, 2, 2, 3],
+                climaxMaterials: ['rainwood-valkania-map', 'ard-mahl-dossier', 'capital-cellar', 'throneguard'],
+            },
         ],
     },
 ];
 
-const storyFloors: Record<Pace, number[]> = {
-    fast: [0, 8, 18, 30],
-    mid: [0, 6, 14, 24, 34],
-    slow: [0, 5, 12, 20, 28, 38],
-};
+const QUICK_EVENT_SET: Named[] = [
+    ['commercial-break', 'Commercial Break', 'Interrupts momentum long enough to regroup.'],
+    ['training-montage', 'Training Montage', 'Condenses effort into visible growth.'],
+    ['misunderstanding', 'Misunderstanding', 'Noise spreads through any story.'],
+    ['recap', 'Recap Episode', 'Repeats context while buying options.'],
+    ['rival-cut-in', 'Rival Cut-In', 'An opponent claims the frame.'],
+    ['last-save', 'Last Minute Save', 'Someone returns exactly on cue.'],
+    ['genre-shift', 'Genre Shift', 'The narrative changes its rules.'],
+    ['plot-armor', 'Plot Armor', 'The story refuses an early defeat.'],
+    ['resolution-key', 'Resolution Key', 'A final symbolic piece for a Climax.'],
+    ['reversal-cut', 'Reversal Cut', 'A hidden setup for the final response.'],
+];
+
+function fx(type: EffectType, value: number, target: 'SELF' | 'OPPONENT', description: string, extra: Partial<CardEffect> = {}): CardEffect {
+    return { type, value, target, description, ...extra };
+}
 
 function add(card: CardData): void {
     CARDS[card.id] = card;
 }
 
-function fx(type: EffectType | string, value?: number, target: Target = 'SELF', description?: string, extra: Partial<CardEffect> = {}): CardEffect {
-    return { type, value, target, description, ...extra };
+function line(prefix: string, hero: string): string {
+    return `${prefix}-hero-${hero}`;
 }
 
-function protagonistEffects(strategy: Strategy): CardEffect[] {
-    if (strategy === 'aggro') return [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP (Story Points) al jugarse.')];
-    if (strategy === 'engine') return [fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'Roba +1 carta al inicio de tu proximo turno.')];
-    if (strategy === 'team') return [fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta al jugarse.')];
-    if (strategy === 'control') return [fx(EffectType.FILLER, -1, 'SELF', 'Reduce en 1 tus FP (Filler Points) al jugarse.')];
-    return [fx(EffectType.FILLER, -2, 'SELF', 'Reduce en 2 tus FP (Filler Points) al jugarse.')];
+function strategyEffects(strategy: Strategy, stage = 0): CardEffect[] {
+    if (strategy === 'rush') return [fx(EffectType.STORY, 1 + Math.min(stage, 2), 'SELF', `Otorga +${1 + Math.min(stage, 2)} SP al concretar un Evento.`)];
+    if (strategy === 'engine') return stage > 1
+        ? [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP al concretar un Evento.'), fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta al concretar un Evento.')]
+        : [fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta al concretar un Evento.')];
+    if (strategy === 'bond') return [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP al concretar un Evento si la escena avanza.')];
+    return [fx(EffectType.FILLER, -1 - Math.min(stage, 1), 'SELF', `Reduce ${1 + Math.min(stage, 1)} FP al concretar un Evento.`)];
 }
 
-function supportEffects(strategy: Strategy, index: number): CardEffect[] {
-    if (strategy === 'aggro') return [fx(EffectType.FILLER, 1 + (index % 2), 'OPPONENT', `Otorga +${1 + (index % 2)} FP (Filler Points) al rival al jugarse.`)];
-    if (strategy === 'engine') return [fx(index % 2 === 0 ? EffectType.DRAW : EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', index % 2 === 0 ? 'Roba +1 carta al jugarse.' : 'Roba +1 carta al inicio de tu proximo turno.')];
-    if (strategy === 'team') return [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP (Story Points) al jugarse.')];
-    if (strategy === 'control') return [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', `Impide al rival jugar cartas de ${index % 2 === 0 ? 'Item' : 'Personaje'} durante 1 turno.`, { cardType: index % 2 === 0 ? CardType.ITEM : CardType.PERSONAJE, turns: 1 })];
-    return [fx(EffectType.FILLER, -1, 'SELF', 'Reduce en 1 tus FP (Filler Points) al jugarse.')];
+function eventEffects(strategy: Strategy, step: number): CardEffect[] {
+    const story = 3 + step;
+    const effects = [fx(EffectType.STORY, story, 'SELF', `Otorga +${story} SP al activar este Evento.`)];
+    if (strategy === 'rush') effects.push(fx(EffectType.FILLER, 1 + (step > 1 ? 1 : 0), 'OPPONENT', 'Otorga FP al rival por la presion del arco.'));
+    if (strategy === 'engine' && step % 2 === 1) effects.push(fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta al activar este Evento.'));
+    if (strategy === 'control' && step >= 1) effects.push(fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Silencia una carta rival el proximo turno.', { turns: 1 }));
+    return effects;
 }
 
-function itemEffects(strategy: Strategy, index: number): CardEffect[] {
-    if (strategy === 'aggro') return [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP (Story Points) al jugarse.')];
-    if (strategy === 'engine') return [fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta al jugarse.')];
-    if (strategy === 'team') return [fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'Roba +1 carta al inicio de tu proximo turno.')];
-    if (strategy === 'control') return [fx(EffectType.DISCARD, 1, 'OPPONENT', 'El rival descarta 1 carta al azar al jugarse.')];
-    return [fx(EffectType.FILLER, -1 - (index % 2), 'SELF', `Reduce en ${1 + (index % 2)} tus FP (Filler Points) al jugarse.`)];
-}
-
-function locationEffects(strategy: Strategy, index: number): CardEffect[] {
-    if (strategy === 'aggro') return [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP (Story Points) al jugarse.')];
-    if (strategy === 'engine') return [fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'Roba +1 carta al inicio de tu proximo turno.')];
-    if (strategy === 'team') return [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP (Story Points) al jugarse.')];
-    if (strategy === 'control') return [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', `Impide al rival jugar cartas de ${index % 2 === 0 ? 'Evento' : 'Item'} durante 1 turno.`, { cardType: index % 2 === 0 ? CardType.EVENT : CardType.ITEM, turns: 1 })];
-    return [fx(EffectType.FILLER, -2, 'SELF', 'Reduce en 2 tus FP (Filler Points) al jugarse.')];
-}
-
-function eventEffects(strategy: Strategy, step: number, final = false): CardEffect[] {
-    if (final) return [fx(EffectType.VICTORY, 1, 'SELF', 'Ganas la partida al concretar este Evento Final.')];
-    if (strategy === 'aggro') return [fx(EffectType.STORY, 2 + (step % 2), 'SELF', `Otorga +${2 + (step % 2)} SP (Story Points) al activar este evento.`), fx(EffectType.FILLER, 1, 'OPPONENT', 'Otorga +1 FP (Filler Points) al rival al activar este evento.')];
-    if (strategy === 'engine') return [fx(EffectType.DRAW, step % 2 === 0 ? 2 : 1, 'SELF', `Roba +${step % 2 === 0 ? 2 : 1} carta(s) al activar este evento.`), fx(EffectType.NEXT_EVENT_REDUCE_REQUIREMENT, 1, 'SELF', 'Tu proximo evento ignora 1 requisito para poder jugarse.', { turns: 2 })];
-    if (strategy === 'team') return [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP (Story Points) al activar este evento.'), fx(EffectType.EXTRA_DRAW_NEXT_TURN, 1, 'SELF', 'Roba +1 carta al inicio de tu proximo turno.')];
-    if (strategy === 'control') return [fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Impide que el rival use 1 carta al azar de su mano durante el proximo turno.', { turns: 1 }), fx(EffectType.FILLER, -1, 'SELF', 'Reduce en 1 tus FP (Filler Points) al activar este evento.')];
-    return [fx(EffectType.FILLER, -2, 'SELF', 'Reduce en 2 tus FP (Filler Points) al activar este evento.'), fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta al activar este evento.')];
-}
-
-function requirements(protagonistId: string, supportId: string, itemId: string, locationId: string, previousEventId: string | undefined, floor: number, step: number, final = false): CardRequirement[] {
-    const story = final ? Math.max(36, floor) : floor;
-    if (step === 0 && !final) {
-        return [{ type: 'CARD_ON_BOARD', cardIds: [protagonistId], value: 1, description: 'Requiere al protagonista en campo.' }];
+function heroEventEffects(hero: Hero): CardEffect[] {
+    const effects: CardEffect[] = [];
+    if (hero.eventStoryBonus) {
+        effects.push(fx(EffectType.STORY, hero.eventStoryBonus, 'SELF', `Otorga +${hero.eventStoryBonus} SP por la identidad de esta ruta.`));
     }
-
-    const reqs: CardRequirement[] = [
-        { type: 'STORY_MIN', value: story, description: `Requiere ${story} SP (Story Points).` },
-        { type: 'CARD_ON_BOARD', value: final ? 2 : 1, description: final ? 'Requiere 2 cartas en campo en este arco.' : 'Requiere 1 carta en campo en este arco.' },
-    ];
-    void previousEventId;
-    void supportId;
-    void itemId;
-    void locationId;
-    if (step >= 3 && !final) reqs[1] = { type: 'CARD_ON_BOARD', value: 2, description: 'Requiere 2 cartas en campo en este arco.' };
-    return reqs;
+    if (hero.eventSelfFillerDelta) {
+        const value = hero.eventSelfFillerDelta;
+        const description = value > 0
+            ? `Recibe +${value} FP por acelerar su propio arco.`
+            : `Reduce ${Math.abs(value)} FP al transformar presion en avance.`;
+        effects.push(fx(EffectType.FILLER, value, 'SELF', description));
+    }
+    if (hero.eventOpponentFillerBonus) {
+        effects.push(fx(EffectType.FILLER, hero.eventOpponentFillerBonus, 'OPPONENT', `Otorga +${hero.eventOpponentFillerBonus} FP al rival por la presion de esta ruta.`));
+    }
+    return effects;
 }
 
-const COMMON_TOKEN_ARCHETYPES = Object.values(ARCHETYPES);
-const commonTokenCards: Array<{
-    slug: string;
-    name: string;
-    description: string;
-    cost: number;
-    effects: CardEffect[];
-    requirements?: CardRequirement[];
-}> = [
-    {
-        slug: 'cold-open',
-        name: 'Cold Open',
-        description: 'La escena arranca antes del opening y te da una opcion rapida.',
-        cost: 1,
-        effects: [fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta al activar el evento.')],
-        requirements: [{ type: 'CARD_ON_BOARD', cardType: CardType.PROTAGONIST, value: 1, description: 'Requiere un protagonista en campo.' }],
-    },
-    {
-        slug: 'commercial-break',
-        name: 'Commercial Break',
-        description: 'Corta el ritmo rival justo cuando intenta tomar velocidad.',
-        cost: 2,
-        effects: [fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Silencia 1 carta aleatoria de la mano rival durante el proximo turno.', { turns: 1 })],
-        requirements: [{ type: 'STORY_MIN', value: 6, description: 'Requiere 6 SP.' }],
-    },
-    {
-        slug: 'training-montage',
-        name: 'Training Montage',
-        description: 'Condensa esfuerzo en progreso visible para cualquier historia.',
-        cost: 2,
-        effects: [fx(EffectType.STORY, 3, 'SELF', 'Otorga +3 SP al activar el evento.')],
-        requirements: [{ type: 'CARD_ON_BOARD', cardType: CardType.ITEM, value: 1, description: 'Requiere un item en campo.' }],
-    },
-    {
-        slug: 'misunderstanding',
-        name: 'Misunderstanding',
-        description: 'Un malentendido llena la pantalla de ruido narrativo.',
-        cost: 1,
-        effects: [fx(EffectType.FILLER, 2, 'OPPONENT', 'Otorga +2 FP al rival al activar el evento.')],
-        requirements: [{ type: 'CARD_ON_BOARD', cardType: CardType.PERSONAJE, value: 1, description: 'Requiere un personaje en campo.' }],
-    },
-    {
-        slug: 'recap-episode',
-        name: 'Recap Episode',
-        description: 'Reordena lo ya visto y compra una carta extra.',
-        cost: 2,
-        effects: [fx(EffectType.DRAW, 2, 'SELF', 'Roba +2 cartas al activar el evento.'), fx(EffectType.FILLER, 1, 'SELF', 'Recibes +1 FP por perder ritmo.')],
-        requirements: [{ type: 'STORY_MIN', value: 10, description: 'Requiere 10 SP.' }],
-    },
-    {
-        slug: 'rival-interrupts',
-        name: 'Rival Interrupts',
-        description: 'El rival entra en plano y obliga a cambiar el orden de jugadas.',
-        cost: 3,
-        effects: [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', 'Impide al rival jugar items durante 1 turno.', { cardType: CardType.ITEM, turns: 1 }), fx(EffectType.FILLER, 1, 'OPPONENT', 'Otorga +1 FP al rival.')],
-        requirements: [{ type: 'STORY_MIN', value: 12, description: 'Requiere 12 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.LOCATION, value: 1, description: 'Requiere una locacion en campo.' }],
-    },
-    {
-        slug: 'last-minute-save',
-        name: 'Last Minute Save',
-        description: 'Una aparicion a ultimo segundo limpia el desastre acumulado.',
-        cost: 3,
-        effects: [fx(EffectType.FILLER, -3, 'SELF', 'Reduce en 3 tus FP.'), fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta.')],
-        requirements: [{ type: 'FILLER_MAX', value: 8, description: 'Requiere tener 8 FP o menos.' }, { type: 'CARD_ON_BOARD', cardType: CardType.PERSONAJE, value: 1, description: 'Requiere un personaje en campo.' }],
-    },
-    {
-        slug: 'genre-shift',
-        name: 'Genre Shift',
-        description: 'La serie cambia de tono y reduce una condicion del siguiente evento.',
-        cost: 4,
-        effects: [fx(EffectType.NEXT_EVENT_REDUCE_REQUIREMENT, 1, 'SELF', 'Tu proximo evento ignora 1 requisito.', { turns: 2 }), fx(EffectType.DRAW, 1, 'SELF', 'Roba +1 carta.')],
-        requirements: [{ type: 'STORY_MIN', value: 16, description: 'Requiere 16 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.LOCATION, value: 1, description: 'Requiere una locacion en campo.' }],
-    },
-    {
-        slug: 'plot-armor',
-        name: 'Plot Armor',
-        description: 'La historia protege al protagonista, aunque el rival proteste.',
-        cost: 4,
-        effects: [fx(EffectType.FILLER, -2, 'SELF', 'Reduce en 2 tus FP.'), fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Silencia 1 carta aleatoria rival.', { turns: 1 }), fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP.')],
-        requirements: [{ type: 'STORY_MIN', value: 20, description: 'Requiere 20 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.ITEM, value: 1, description: 'Requiere item en campo.' }],
-    },
-    {
-        slug: 'season-finale-teaser',
-        name: 'Season Finale Teaser',
-        description: 'Muestra el cierre de temporada y acelera el camino al final.',
-        cost: 5,
-        effects: [fx(EffectType.STORY, 4, 'SELF', 'Otorga +4 SP.'), fx(EffectType.DRAW, 2, 'SELF', 'Roba +2 cartas.'), fx(EffectType.FILLER, 2, 'OPPONENT', 'Otorga +2 FP al rival.')],
-        requirements: [{ type: 'STORY_MIN', value: 26, description: 'Requiere 26 SP.' }, { type: 'CARD_ON_BOARD', cardType: CardType.LOCATION, value: 1, description: 'Requiere locacion en campo.' }, { type: 'CARD_ON_BOARD', cardType: CardType.ITEM, value: 1, description: 'Requiere item en campo.' }],
-    },
-];
+function materialEffect(kind: 'support' | 'item' | 'location', strategy: Strategy): CardEffect[] {
+    if (kind === 'support') return strategy === 'control'
+        ? [fx(EffectType.FILLER, -1, 'SELF', 'Reduce 1 FP al concretar el Evento que lo usa.')]
+        : [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP al concretar el Evento que lo usa.')];
+    if (kind === 'item') return strategy === 'engine'
+        ? [fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta al concretar el Evento que lo usa.')]
+        : [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP al concretar el Evento que lo usa.')];
+    return [fx(EffectType.FILLER, -1, 'SELF', 'Reduce 1 FP al concretar el Evento que la usa.')];
+}
 
-function lineId(prefix: string, type: 'protagonist' | 'char' | 'item' | 'loc' | 'event', slug: string): string {
-    return `${prefix}-${type}-${slug}`;
+function eventResourceRequirement(resource: Resource, step: number): CardRequirement {
+    const storyThresholds = [1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31];
+    const fillerThresholds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    const thresholds = resource === 'SP' ? storyThresholds : fillerThresholds;
+    const value = thresholds[Math.min(step, thresholds.length - 1)];
+    return resource === 'SP'
+        ? { type: 'STORY_MIN', value, description: `Requiere ${value} SP.` }
+        : { type: 'FILLER_MIN', value, description: `Requiere ${value} FP.` };
+}
+
+function progressiveMaterialCount(step: number, totalNormalEvents: number): number {
+    void totalNormalEvents;
+    if (step === 0) return 1;
+    return 2;
+}
+
+function routeMaterialRequirement(
+    materialIds: string[],
+    step: number,
+    totalNormalEvents: number,
+    customIds?: string[],
+    customCount?: number,
+): CardRequirement {
+    const value = customCount ?? progressiveMaterialCount(step, totalNormalEvents);
+    const eligibleIds = customIds?.length ? customIds : step === 0 ? materialIds.slice(0, 1) : materialIds;
+    return {
+        type: 'CARD_ON_BOARD',
+        cardIds: eligibleIds,
+        value,
+        description: `Requiere ${value} material(es) validos de la ruta en el arco actual.`,
+    };
 }
 
 for (const plan of plans) {
-    const sharedCharacterIds = plan.sharedCharacters.map(([slug]) => lineId(plan.prefix, 'char', slug));
-    const sharedItemIds = plan.sharedItems.map(([slug]) => lineId(plan.prefix, 'item', slug));
-    const locationIds = plan.locations.map(([slug]) => lineId(plan.prefix, 'loc', slug));
+    const sharedCharacterIds = plan.sharedCharacters.map(card => `${plan.prefix}-shared-char-${card[0]}`);
+    const sharedItemIds = plan.sharedItems.map(card => `${plan.prefix}-shared-item-${card[0]}`);
 
     plan.sharedCharacters.forEach(([slug, name, description], index) => add({
-        id: lineId(plan.prefix, 'char', slug),
+        id: `${plan.prefix}-shared-char-${slug}`,
         name,
         type: CardType.PERSONAJE,
-        cost: 1 + (index % 3),
+        cost: 1 + index,
+        costResource: 'SP',
         description,
-        backstory: `${name} sostiene la fantasia de ${plan.theme}.`,
-        effects: supportEffects(index === 0 ? 'team' : index === 1 ? 'engine' : 'control', index),
+        backstory: `${name} appears across multiple routes of ${plan.theme}.`,
+        effects: [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP al concretar el Evento que lo usa.')],
         archetype: plan.id,
-        image: lineId(plan.prefix, 'char', slug),
+        image: `${plan.prefix}-shared-char-${slug}`,
         affinity: { compatibleWith: [] },
-        likesData: { likes: [sharedItemIds[index % sharedItemIds.length], locationIds[index % locationIds.length]], dislikes: [] },
+        likesData: { likes: [], dislikes: [] },
+        maxCopies: 3,
+        tags: [`shared:${plan.prefix}`],
     }));
-
     plan.sharedItems.forEach(([slug, name, description], index) => add({
-        id: lineId(plan.prefix, 'item', slug),
+        id: `${plan.prefix}-shared-item-${slug}`,
         name,
         type: CardType.ITEM,
-        cost: 1 + (index % 3),
+        cost: 1 + index,
+        costResource: 'SP',
         description,
-        backstory: `${name} es una herramienta recurrente de ${plan.theme}.`,
-        effects: itemEffects(index === 0 ? 'engine' : index === 1 ? 'defense' : 'aggro', index),
+        backstory: `${name} can support any protagonist of this archetype.`,
+        effects: index === 0 ? [fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta al concretar el Evento que lo usa.')] : [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP al concretar el Evento que lo usa.')],
         archetype: plan.id,
-        image: lineId(plan.prefix, 'item', slug),
+        image: `${plan.prefix}-shared-item-${slug}`,
+        maxCopies: 3,
+        tags: [`shared:${plan.prefix}`],
     }));
 
-    plan.locations.forEach(([slug, name, description], index) => add({
-        id: lineId(plan.prefix, 'loc', slug),
-        name,
-        type: CardType.LOCATION,
-        cost: 1 + (index % 2),
-        description,
-        backstory: `${name} concentra escenas de ${plan.theme}.`,
-        effects: locationEffects(index === 0 ? 'engine' : index === 1 ? 'team' : 'control', index),
-        archetype: plan.id,
-        image: lineId(plan.prefix, 'loc', slug),
-    }));
-
-    const protagonistIds = plan.heroes.map(hero => lineId(plan.prefix, 'protagonist', hero.slug));
-
-    plan.heroes.forEach((hero, index) => {
-        const protagonistId = lineId(plan.prefix, 'protagonist', hero.slug);
-        const supportId = lineId(plan.prefix, 'char', hero.support[0]);
-        const itemId = lineId(plan.prefix, 'item', hero.item[0]);
-        const locationId = locationIds[index % locationIds.length];
-        const likes = [itemId, sharedItemIds[index % sharedItemIds.length], locationId, supportId, sharedCharacterIds[index % sharedCharacterIds.length]];
-        const dislikes = [sharedCharacterIds[(index + 2) % sharedCharacterIds.length]];
-
+    for (const [slug, name, description] of QUICK_EVENT_SET) {
+        const tokenId = `${plan.prefix}-token-${slug}`;
+        const requirements: CardRequirement[] = [];
+        let cost = 1;
+        let costResource: Resource = 'SP';
+        let effects: CardEffect[];
+        switch (slug) {
+            case 'commercial-break':
+                effects = [fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta inmediatamente.')];
+                break;
+            case 'training-montage':
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requiere haber completado 1 Evento.' });
+                effects = plan.id === ARCHETYPES.MECHA
+                    ? [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP inmediatamente.'), fx(EffectType.SEARCH_CARD_TYPE, 1, 'SELF', 'Busca 1 Item en el deck.', { cardType: CardType.ITEM })]
+                    : [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP inmediatamente.'), fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta inmediatamente.')];
+                cost = 2;
+                break;
+            case 'misunderstanding':
+                if (plan.id === ARCHETYPES.ISEKAI) {
+                    requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requiere haber completado 1 Evento.' });
+                    cost = 2;
+                }
+                effects = plan.id === ARCHETYPES.ISEKAI
+                    ? [fx(EffectType.INVOKE_CARD_TO_OPPONENT_HAND, 1, 'OPPONENT', 'Invoca Demon Lord Gouki en la mano rival.', { cardId: 'isekai-external-demon-lord-gouki' })]
+                    : [fx(EffectType.FILLER, 2, 'OPPONENT', 'Otorga +2 FP al rival inmediatamente.')];
+                break;
+            case 'recap':
+                requirements.push({ type: 'DISCARD_FROM_HAND', value: 1, description: 'Descarta 1 carta de tu mano como costo adicional.' });
+                effects = [fx(EffectType.SEARCH_CARD_TYPE, 1, 'SELF', 'Descarta 1 carta: busca 1 Evento normal en tu deck y lo agrega a tu mano.', { cardType: CardType.EVENT })];
+                break;
+            case 'rival-cut-in':
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requiere haber completado 1 Evento.' });
+                effects = [fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Silencia una carta aleatoria rival durante el proximo turno.', { turns: 1 })];
+                break;
+            case 'last-save':
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requiere haber completado 1 Evento.' });
+                requirements.push({ type: 'DISCARD_FROM_HAND', value: 2, description: 'Descarta 2 cartas de tu mano como costo adicional.' });
+                effects = [fx(EffectType.RECOVER_FROM_CEMETERY, 1, 'SELF', 'Descarta 2 cartas: recupera la ultima carta de tu Cementerio a la mano.')];
+                costResource = 'FP';
+                break;
+            case 'genre-shift':
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requiere haber completado 1 Evento.' });
+                effects = [fx(EffectType.NEXT_EVENT_REDUCE_REQUIREMENT, 1, 'SELF', 'El siguiente Evento ignora un requisito.', { turns: 2 })];
+                break;
+            case 'plot-armor':
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 2, description: 'Requiere haber completado 2 Eventos.' });
+                effects = [fx(EffectType.PROTECT_PROTAGONIST, 1, 'SELF', 'Protege al Protagonista del proximo silencio.', { turns: 2 }), fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP inmediatamente.')];
+                costResource = 'FP';
+                cost = 2;
+                break;
+            case 'resolution-key':
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 2, description: 'Requiere haber completado 2 Eventos.' });
+                effects = [fx(EffectType.SEARCH_CLIMAX, 1, 'SELF', 'Busca el Evento Climax y lo agrega a tu mano.')];
+                cost = 2;
+                break;
+            default:
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 2, description: 'Requiere haber completado 2 Eventos.' });
+                effects = plan.id === ARCHETYPES.MECHA
+                    ? [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', 'Impide al rival jugar Items durante el proximo turno.', { turns: 1, cardType: CardType.ITEM })]
+                    : plan.id === ARCHETYPES.SHOJO
+                        ? [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', 'Impide al rival jugar Personajes durante el proximo turno.', { turns: 1, cardType: CardType.PERSONAJE })]
+                        : [fx(EffectType.SILENCE_PROTAGONIST_NEXT_EVENT, 1, 'OPPONENT', 'Silencia los efectos del Protagonista rival en su proximo Evento.', { turns: 2 })];
+                cost = 2;
+                costResource = 'FP';
+                break;
+        }
         add({
-            id: protagonistId,
-            name: hero.name,
-            type: CardType.PROTAGONIST,
-            cost: 0,
-            description: hero.description,
-            backstory: `${hero.name} representa una ruta ${hero.strategy} dentro de ${plan.theme}.`,
-            effects: protagonistEffects(hero.strategy),
+            id: tokenId,
+            name,
+            type: CardType.QUICK_EVENT,
+            cost,
+            costResource,
+            description: `${description} Se resuelve inmediatamente al jugarla.`,
+            backstory: `${name} is a fast intervention within ${plan.theme}.`,
+            requirements,
+            effects,
             archetype: plan.id,
-            image: protagonistId,
-            maxCopies: 1,
-            affinity: { compatibleWith: [supportId, sharedCharacterIds[index % sharedCharacterIds.length], sharedCharacterIds[(index + 1) % sharedCharacterIds.length]] },
-            likesData: { likes, dislikes },
-            tags: [`strategy:${hero.strategy}`, `pace:${hero.pace}`],
+            image: tokenId,
+            maxCopies: 2,
+            tags: [`shared:${plan.prefix}`, 'quick-event'],
         });
+    }
 
-        add({
-            id: supportId,
-            name: hero.support[1],
-            type: CardType.PERSONAJE,
-            cost: hero.strategy === 'aggro' ? 1 : hero.strategy === 'control' ? 3 : 2,
-            description: hero.support[2],
-            backstory: `${hero.support[1]} es el soporte directo de ${hero.name}.`,
-            effects: supportEffects(hero.strategy, index),
-            archetype: plan.id,
-            image: supportId,
-            affinity: { compatibleWith: [protagonistId] },
-            likesData: { likes: [itemId, locationId], dislikes: dislikes.slice(0, 1) },
-            tags: [`line:${protagonistId}`, `strategy:${hero.strategy}`],
-        });
+    plan.heroes.forEach((hero, heroIndex) => {
+        const protagonistId = line(plan.prefix, hero.protagonistSlug || hero.slug);
+        const routeId = hero.routeId || hero.slug;
+        const routeTags = [`route:${routeId}`, ...(hero.routeLabel ? [`route-label:${hero.routeLabel}`] : [])];
+        const supportId = `${protagonistId}-support-${hero.support[0]}`;
+        const itemId = `${protagonistId}-item-${hero.item[0]}`;
+        const locationId = `${protagonistId}-loc-${hero.location[0]}`;
+        const normalCount = hero.normalEvents.length;
+        const totalForms = normalCount + 1;
+        const climaxMaterialSlugs = new Set(hero.climaxMaterials || []);
+        const normalExtraMaterialIds = (hero.extraMaterials || [])
+            .filter(({ card }) => !climaxMaterialSlugs.has(card[0]))
+            .map(({ kind, card }) =>
+                `${protagonistId}-${kind === 'location' ? 'loc' : kind}-${card[0]}`
+            );
+        const materialIdBySlug = new Map<string, string>([
+            [hero.item[0], itemId],
+            [hero.support[0], supportId],
+            [hero.location[0], locationId],
+            ...plan.sharedItems.map(([slug]) => [slug, `${plan.prefix}-shared-item-${slug}`] as [string, string]),
+            ...plan.sharedCharacters.map(([slug]) => [slug, `${plan.prefix}-shared-char-${slug}`] as [string, string]),
+            ...(hero.extraMaterials || []).map(({ kind, card }) => [
+                card[0],
+                `${protagonistId}-${kind === 'location' ? 'loc' : kind}-${card[0]}`,
+            ] as [string, string]),
+        ]);
+        const materialIds = [
+            itemId,
+            supportId,
+            locationId,
+            ...normalExtraMaterialIds,
+            ...sharedItemIds,
+            ...sharedCharacterIds,
+        ];
 
+        for (let form = 0; hero.generateAvatar !== false && form < totalForms; form++) {
+            const formId = form === 0 ? protagonistId : `${protagonistId}-form-${form + 1}`;
+            add({
+                id: formId,
+                name: form === 0 ? hero.name : `${hero.name} - Arco ${form + 1}`,
+                type: CardType.PROTAGONIST,
+                cost: 0,
+                costResource: hero.resource,
+                description: hero.description,
+                backstory: `${hero.name} follows a ${hero.strategy} route through ${plan.theme}.`,
+                effects: hero.resource === 'FP'
+                    ? [fx(EffectType.FILLER, hero.strategy === 'control' ? 4 : 3, 'SELF', `Recibe +${hero.strategy === 'control' ? 4 : 3} FP al concretar un Evento para alimentar su estrategia.`), ...strategyEffects(hero.strategy, form)]
+                    : strategyEffects(hero.strategy, form),
+                entryEffects: form === 0
+                    ? [fx(hero.resource === 'SP' ? EffectType.STORY : EffectType.FILLER, hero.resource === 'SP' ? 4 : hero.strategy === 'control' ? 6 : 5, 'SELF', hero.resource === 'SP' ? 'Inicia la historia con +4 SP.' : `Inicia bajo presion con +${hero.strategy === 'control' ? 6 : 5} FP utilizables.`)]
+                    : [],
+                archetype: plan.id,
+                image: formId,
+                maxCopies: 0,
+                affinity: { compatibleWith: [supportId, sharedCharacterIds[heroIndex % sharedCharacterIds.length]] },
+                likesData: { likes: [supportId, itemId, locationId], dislikes: [sharedCharacterIds[(heroIndex + 1) % sharedCharacterIds.length]] },
+                tags: [`line:${protagonistId}`, `form:${form}`, `strategy:${hero.strategy}`, 'avatar-only'],
+                protagonistId,
+                formIndex: form,
+                totalForms,
+            });
+        }
+
+        if (hero.generateAvatar !== false) {
+            add({
+                id: supportId,
+                name: hero.support[1],
+                type: CardType.PERSONAJE,
+                cost: hero.resource === 'FP' ? 1 : 2,
+                costResource: hero.resource,
+                description: hero.support[2],
+                backstory: `${hero.support[1]} belongs to the route of ${hero.name}.`,
+                effects: materialEffect('support', hero.strategy),
+                archetype: plan.id,
+                image: supportId,
+                affinity: { compatibleWith: [protagonistId] },
+                likesData: {
+                    likes: [itemId, locationId, ...(hero.slug.startsWith('bartender-zatos') ? [protagonistId] : [])],
+                    dislikes: [],
+                },
+                tags: [`line:${protagonistId}`],
+                protagonistId,
+                maxCopies: 3,
+            });
+        }
         add({
             id: itemId,
             name: hero.item[1],
             type: CardType.ITEM,
-            cost: hero.strategy === 'aggro' ? 2 : 1,
+            cost: 1,
+            costResource: hero.resource,
             description: hero.item[2],
-            backstory: `${hero.item[1]} es la pieza material del arco de ${hero.name}.`,
-            effects: itemEffects(hero.strategy, index),
+            backstory: `${hero.item[1]} is a key material in ${hero.name} s route.`,
+            effects: materialEffect('item', hero.strategy),
             archetype: plan.id,
             image: itemId,
-            tags: [`line:${protagonistId}`, `strategy:${hero.strategy}`],
+            tags: [`line:${protagonistId}`, ...routeTags],
+            protagonistId,
+            maxCopies: normalCount >= 4 ? 3 : 2,
+        });
+        add({
+            id: locationId,
+            name: hero.location[1],
+            type: CardType.LOCATION,
+            cost: 2,
+            costResource: hero.resource,
+            description: hero.location[2],
+            backstory: `${hero.location[1]} anchors a decisive scene for ${hero.name}.`,
+            effects: materialEffect('location', hero.strategy),
+            archetype: plan.id,
+            image: locationId,
+            tags: [`line:${protagonistId}`, ...routeTags],
+            protagonistId,
+        maxCopies: 3,
+        });
+        (hero.extraMaterials || []).forEach(({ kind, card: [slug, name, description] }) => {
+            const materialId = `${protagonistId}-${kind === 'location' ? 'loc' : kind}-${slug}`;
+            const type = kind === 'support' ? CardType.PERSONAJE : kind === 'item' ? CardType.ITEM : CardType.LOCATION;
+            add({
+                id: materialId,
+                name,
+                type,
+                cost: kind === 'item' ? 1 : 2,
+                costResource: hero.resource,
+                description,
+                backstory: `${name} marks a later turning point in the route of ${hero.name}.`,
+                effects: materialEffect(kind, hero.strategy),
+                archetype: plan.id,
+                image: materialId,
+                ...(kind === 'support' ? {
+                    affinity: { compatibleWith: [protagonistId] },
+                    likesData: { likes: [itemId, locationId], dislikes: [] },
+                } : {}),
+                tags: [`line:${protagonistId}`, ...routeTags, ...(climaxMaterialSlugs.has(slug) ? ['climax-only'] : [])],
+                protagonistId,
+                maxCopies: 3,
+            });
+        });
+        (hero.quickEvents || []).forEach(([slug, name, description]) => {
+            const quickId = `${protagonistId}-quick-${slug}`;
+            add({
+                id: quickId,
+                name,
+                type: CardType.QUICK_EVENT,
+                cost: 1,
+                costResource: hero.resource,
+                description: `${description} Se resuelve inmediatamente al jugarla.`,
+                backstory: `${name} keeps the route of ${hero.name} moving without skipping its narrative order.`,
+                requirements: [
+                    { type: 'DISCARD_FROM_HAND', value: 1, description: 'Descarta 1 carta de tu mano como costo adicional.' },
+                ],
+                effects: [
+                    fx(EffectType.SEARCH_CARD_TYPE, 1, 'SELF', 'Busca 1 Evento normal de esta ruta en tu deck y lo agrega a tu mano.', { cardType: CardType.EVENT }),
+                ],
+                archetype: plan.id,
+                image: quickId,
+                maxCopies: 2,
+                tags: [`line:${protagonistId}`, ...routeTags, 'quick-event'],
+                protagonistId,
+            });
         });
 
-        let previousEventId: string | undefined;
-        const floors = storyFloors[hero.pace];
-        hero.events.forEach(([slug, name, description], step) => {
-            const eventId = lineId(plan.prefix, 'event', `${hero.slug}-${slug}`);
+        let previousEvent: string | undefined;
+        hero.normalEvents.forEach(([slug, name, description], step) => {
+            const eventId = `${protagonistId}-event-${slug}`;
+            const customMaterialIds = hero.eventMaterials?.[step]
+                ?.map(materialSlug => materialIdBySlug.get(materialSlug))
+                .filter((id): id is string => Boolean(id));
+            const requirements: CardRequirement[] = [
+                routeMaterialRequirement(materialIds, step, normalCount, customMaterialIds, hero.eventMaterialCounts?.[step]),
+                eventResourceRequirement(hero.resource, step),
+            ];
             add({
                 id: eventId,
                 name,
                 type: CardType.EVENT,
-                cost: Math.min(4, 1 + Math.floor(step / 2)),
+                cost: Math.min(3, 1 + Math.floor(step / 2)),
+                costResource: hero.resource,
                 description,
-                backstory: `${name} pertenece a la ruta de ${hero.name}.`,
-                eventPrerequisites: previousEventId ? [previousEventId] : [],
-                requirements: requirements(protagonistId, supportId, itemId, locationId, previousEventId, floors[Math.min(step, floors.length - 1)], step),
-                effects: eventEffects(hero.strategy, step),
+                backstory: `${description} En la ruta de ${hero.name}, este momento redefine su siguiente arco.`,
+                eventPrerequisites: previousEvent ? [previousEvent] : [],
+                requirements,
+                effects: [...eventEffects(hero.strategy, step), ...heroEventEffects(hero)],
                 archetype: plan.id,
                 image: eventId,
                 maxCopies: 1,
-                tags: [`line:${protagonistId}`, `order:${String(step + 1).padStart(2, '0')}`, `pace:${hero.pace}`, `strategy:${hero.strategy}`],
+                tags: [`line:${protagonistId}`, ...routeTags, `order:${String(step + 1).padStart(2, '0')}`],
+                protagonistId,
             });
-            previousEventId = eventId;
+            previousEvent = eventId;
         });
 
-        const finalId = `${protagonistId}-final-event`;
+        const climaxId = `${protagonistId}-climax-${hero.climax[0]}`;
+        const climaxMaterialIds = hero.climaxMaterials
+            ?.map(materialSlug => materialIdBySlug.get(materialSlug))
+            .filter((id): id is string => Boolean(id)) || materialIds;
+        const climaxBaseRequirements: CardRequirement[] = [
+            { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 2, description: 'Requiere 2 materiales validos de la ruta en el arco Climax.' },
+            eventResourceRequirement(hero.resource, normalCount),
+        ];
+        const climaxX4Requirements: CardRequirement[] = [
+            { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 3, description: 'Requiere 3 materiales validos de la ruta en el arco Climax.' },
+            eventResourceRequirement(hero.resource, normalCount + 1),
+        ];
+        const climaxX10Requirements: CardRequirement[] = [
+            { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 4, description: 'Requiere ocupar los 4 slots con materiales validos de la ruta.' },
+            eventResourceRequirement(hero.resource, normalCount + 3),
+        ];
         add({
-            id: finalId,
-            name: hero.final,
-            type: CardType.EVENT_FINAL,
-            cost: 5,
-            description: `Final de temporada de ${hero.name}.`,
-            backstory: `${hero.final} cierra la ruta ${hero.strategy} de ${hero.name}.`,
-            eventPrerequisites: previousEventId ? [previousEventId] : [],
-            requirements: requirements(protagonistId, supportId, itemId, locationId, previousEventId, floors[floors.length - 1], hero.events.length, true),
-            effects: eventEffects(hero.strategy, hero.events.length, true),
+            id: climaxId,
+            name: hero.climax[1],
+            type: CardType.CLIMAX_EVENT,
+            cost: hero.resource === 'FP' ? 1 : 3,
+            costResource: hero.resource,
+            description: hero.climax[2],
+            backstory: `${hero.climax[1]} is the Climax Event of ${hero.name}.`,
+            eventPrerequisites: previousEvent ? [previousEvent] : [],
+            requirements: climaxBaseRequirements,
+            climaxTiers: [
+                { multiplier: 2, requirements: climaxBaseRequirements },
+                { multiplier: 4, requirements: climaxX4Requirements },
+                { multiplier: 10, requirements: climaxX10Requirements },
+            ],
+            effects: [fx(EffectType.STORY, 8, 'SELF', 'Otorga +8 SP multiplicados por el nivel Climax.'), fx(EffectType.FILLER, -2, 'SELF', 'Reduce 2 FP multiplicados por el nivel Climax.')],
             archetype: plan.id,
-            image: finalId,
+            image: climaxId,
             maxCopies: 1,
-            tags: [`line:${protagonistId}`, 'act_final', `strategy:${hero.strategy}`],
+            tags: [`line:${protagonistId}`, ...routeTags, 'climax'],
+            protagonistId,
+        });
+
+        const plotId = `${protagonistId}-plot-${hero.plotTwist[0]}`;
+        const plotEffects = hero.strategy === 'control'
+            ? [fx(EffectType.MODIFY_CLIMAX_LEVEL, 2, 'OPPONENT', 'Reduce dos niveles del Climax rival.'), fx(EffectType.FILLER, -3, 'SELF', 'Reduce 3 FP propios.')]
+            : hero.strategy === 'rush'
+                ? [fx(EffectType.MODIFY_CLIMAX_LEVEL, 1, 'OPPONENT', 'Reduce un nivel del Climax rival.'), fx(EffectType.STORY, 5, 'SELF', 'Otorga +5 SP en la respuesta.')]
+                : [fx(EffectType.MODIFY_CLIMAX_LEVEL, 1, 'OPPONENT', 'Reduce un nivel del Climax rival.'), fx(EffectType.FILLER, 4, 'OPPONENT', 'Otorga +4 FP al rival.')];
+        add({
+            id: plotId,
+            name: hero.plotTwist[1],
+            type: CardType.PLOT_TWIST_EVENT,
+            cost: 0,
+            costResource: hero.resource,
+            description: hero.plotTwist[2],
+            backstory: `${hero.plotTwist[1]} is the last comeback chance of ${hero.name}.`,
+            requirements: [
+                { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 2, description: 'Requiere 2 materiales validos de la ruta durante la respuesta.' },
+                eventResourceRequirement(hero.resource, Math.max(1, normalCount - 2)),
+            ],
+            effects: plotEffects,
+            archetype: plan.id,
+            image: plotId,
+            maxCopies: 0,
+            tags: [`line:${protagonistId}`, ...routeTags, 'plot-twist', 'response-only'],
+            protagonistId,
         });
     });
-
-    for (const protagonistId of protagonistIds) {
-        for (const sharedId of sharedCharacterIds) {
-            CARDS[sharedId].affinity = {
-                compatibleWith: Array.from(new Set([...(CARDS[sharedId].affinity?.compatibleWith || []), protagonistId])),
-            };
-        }
-    }
-}
-
-for (const archetype of COMMON_TOKEN_ARCHETYPES) {
-    for (const token of commonTokenCards) {
-        add({
-            id: `common-token-${String(archetype).toLowerCase()}-${token.slug}`,
-            name: token.name,
-            type: CardType.TOKEN,
-            cost: token.cost,
-            description: token.description,
-            backstory: `${token.name} es un recurso comun de estructura narrativa que puede aparecer en cualquier arquetipo.`,
-            effects: token.effects,
-            requirements: token.requirements,
-            archetype,
-            image: `common-token-${token.slug}`,
-            maxCopies: 2,
-            tags: ['common_token', 'shared_story_tool'],
-        });
-    }
 }
 
 add({
-    id: 'isekai-char-demon-lord-gouki',
+    id: 'isekai-external-demon-lord-gouki',
     name: 'Demon Lord Gouki',
     type: CardType.PERSONAJE,
-    cost: 4,
-    description: 'Un demonio que excede las dimensiones y disfruta incomodar a seres de otros mundos.',
-    backstory: 'Gouki no conquista mundos: los dobla, los mira desde afuera y deja que sus habitantes entiendan tarde que ya estaban dentro de su sombra.',
-    effects: [
-        fx(EffectType.HAND_SP_DECAY_PERCENT, 5, 'SELF', 'Mientras esta carta este en tu mano, pierdes 5% de tus SP (Story Points) al inicio de cada turno.'),
-    ],
+    cost: 0,
+    costResource: 'SP',
+    description: 'Un demonio que excede dimensiones y disfruta incomodar a seres de otros mundos.',
+    backstory: 'Gouki aparece sin invitacion, ocupa una mano ajena y exige protagonismo.',
+    effects: [fx(
+        EffectType.HAND_RANDOM_FILLER_THEN_DISCARD,
+        3,
+        'SELF',
+        'Mientras permanece en tu mano, recibes entre 1 y 3 FP al inicio de tu turno durante 3 turnos; luego va al Cementerio.',
+        { turns: 3 },
+    )],
     archetype: ARCHETYPES.ISEKAI,
-    image: 'isekai-char-demon-lord-gouki',
-    maxCopies: 1,
-    tags: ['demon_lord', 'curse', 'admin-custom-safe'],
+    image: 'isekai-external-demon-lord-gouki',
+    maxCopies: 0,
+    affinity: { compatibleWith: [] },
+    likesData: { likes: [], dislikes: [] },
+    tags: ['external-only', 'demon-lord'],
 });
-
-const demonLordEvent = CARDS['isekai-event-cheat-hero-demon-battle'] || CARDS['isekai-event-slime-founder-demon-council'];
-if (demonLordEvent) {
-    demonLordEvent.effects.push(
-        fx(
-            EffectType.INVOKE_CARD_TO_OPPONENT_HAND,
-            1,
-            'OPPONENT',
-            'Invoca Demon Lord Gouki en la mano del rival al activar este evento.',
-            { cardId: 'isekai-char-demon-lord-gouki' },
-        ),
-    );
-}
-
-for (const card of Object.values(CARDS)) {
-    if (card.type === CardType.EVENT_FINAL && card.effects.some(effect => effect.type === EffectType.VICTORY || effect.type === 'VICTORY')) {
-        card.effects = card.effects.filter(effect => effect.type === EffectType.VICTORY || effect.type === 'VICTORY').slice(0, 1);
-    }
-}

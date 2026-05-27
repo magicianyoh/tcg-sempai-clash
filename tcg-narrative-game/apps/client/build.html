@@ -131,6 +131,44 @@
             flex-wrap: wrap;
         }
 
+        .protagonist-picker {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            margin-bottom: 16px;
+            padding-bottom: 4px;
+        }
+
+        .protagonist-option {
+            flex: 1 0 180px;
+            min-height: 106px;
+            padding: 12px;
+            border: 2px solid rgba(255,255,255,.16);
+            border-radius: 8px;
+            background: rgba(0,0,0,.28);
+            color: #fff;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .protagonist-option.selected,
+        .protagonist-option:hover {
+            border-color: #4ecdc4;
+            background: rgba(78,205,196,.12);
+        }
+
+        .protagonist-option strong {
+            display: block;
+            font-size: .94rem;
+            margin-bottom: 6px;
+        }
+
+        .protagonist-option span {
+            font-size: .72rem;
+            color: rgba(255,255,255,.7);
+            line-height: 1.35;
+        }
+
         .filter-tab {
             padding: 6px 10px;
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -216,6 +254,11 @@
         .card .type-badge.event_final {
             background: #ffd700;
             color: #000;
+        }
+
+        .card .type-badge.climax_event {
+            background: #ffd166;
+            color: #001315;
         }
 
         .card .type-badge.filler {
@@ -443,6 +486,23 @@
             opacity: 0.82;
         }
 
+        .add-events-btn {
+            width: 100%;
+            margin-top: 9px;
+            padding: 7px 5px;
+            border: 1px solid #4ecdc4;
+            border-radius: 5px;
+            background: rgba(78, 205, 196, 0.14);
+            color: #fff;
+            font-size: 0.68rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .add-events-btn:hover {
+            background: rgba(78, 205, 196, 0.3);
+        }
+
         .bg-option span {
             position: relative;
             z-index: 1;
@@ -530,7 +590,61 @@
             color: #e94560;
         }
 
+        @media (max-width: 900px) {
+            .header {
+                gap: 10px;
+                padding: 12px;
+            }
+
+            .user-info {
+                gap: 6px;
+            }
+
+            .wiki-btn,
+            .logout-btn {
+                padding: 8px 10px;
+            }
+
+            .container {
+                display: flex;
+                flex-direction: column;
+                height: auto;
+                padding: 10px;
+                gap: 10px;
+            }
+
+            .panel {
+                overflow: visible;
+            }
+
+            .archetype-list {
+                flex-direction: row;
+                overflow-x: auto;
+                padding-bottom: 4px;
+            }
+
+            .archetype-btn {
+                min-width: 158px;
+            }
+
+            .protagonist-option {
+                flex-basis: min(72vw, 210px);
+            }
+        }
+
         @media (max-width: 560px) {
+            .header h1 {
+                font-size: 1.15rem;
+            }
+
+            .user-info {
+                font-size: .8rem;
+            }
+
+            .cards-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
             .deck-select-row {
                 grid-template-columns: 1fr;
             }
@@ -563,14 +677,17 @@
         </div>
 
         <div class="panel" id="cards-panel">
+            <h2>Protagonista</h2>
+            <div class="protagonist-picker" id="protagonist-picker">
+                <p style="color:rgba(255,255,255,.6)">Selecciona un arquetipo</p>
+            </div>
             <h2>Cartas Disponibles <span id="cards-count">(0)</span></h2>
             <div class="filter-tabs" id="filter-tabs">
                 <button class="filter-tab active" data-type="ALL">Todas</button>
-                <button class="filter-tab" data-type="PROTAGONIST">Protagonista</button>
                 <button class="filter-tab" data-type="PERSONAJE">Personaje</button>
                 <button class="filter-tab" data-type="ITEM">Objeto</button>
                 <button class="filter-tab" data-type="LOCATION">Locación</button>
-                <button class="filter-tab" data-type="TOKEN">Token</button>
+                <button class="filter-tab" data-type="QUICK_EVENT">Quick Event</button>
                 <button class="filter-tab" data-type="EVENT">Evento</button>
             </div>
             <div class="cards-grid" id="cards-grid">
@@ -644,7 +761,10 @@
     </div>
 
     <script>
-        const API_URL = window.location.origin;
+        const DEPLOY_API_URL = '%VITE_API_URL%';
+        const API_URL = DEPLOY_API_URL && !DEPLOY_API_URL.startsWith('%')
+            ? DEPLOY_API_URL.replace(/\/$/, '')
+            : window.location.origin;
         const DECK_SIZE = 20;
         const MAX_COPIES = 3;
 
@@ -662,7 +782,12 @@
             KAIJU: { name: '🦖 Kaiju', desc: 'Monstruos gigantes' },
         };
 
+        Object.keys(ARCHETYPES).forEach(key => {
+            if (!['SHONEN', 'MECHA', 'SHOJO', 'ISEKAI'].includes(key)) delete ARCHETYPES[key];
+        });
+
         let selectedArchetype = null;
+        let selectedProtagonist = null;
         let selectedTypeFilter = 'ALL';
         let deckCards = [];
         let savedDecks = [];
@@ -870,8 +995,10 @@
                     document.querySelectorAll('.archetype-btn').forEach(b => b.classList.remove('selected'));
                     btn.classList.add('selected');
                     selectedArchetype = btn.dataset.archetype;
+                    selectedProtagonist = null;
                     deckCards = [];
                     currentEditingDeckId = null;
+                    renderProtagonists();
                     renderCards();
                     renderDeck();
                 });
@@ -898,6 +1025,37 @@
             }[char] || char));
         }
 
+        function renderProtagonists() {
+            const picker = document.getElementById('protagonist-picker');
+            if (!selectedArchetype) {
+                picker.innerHTML = '<p style="color:rgba(255,255,255,.6)">Selecciona un arquetipo</p>';
+                return;
+            }
+            const protagonists = (CARDS[selectedArchetype] || [])
+                .filter(card => card.type === 'PROTAGONIST' && Number(card.formIndex || 0) === 0);
+            picker.innerHTML = protagonists.map(card => `
+                <button class="protagonist-option ${card.id === selectedProtagonist ? 'selected' : ''}" data-protagonist="${card.id}" type="button">
+                    <strong>${escapeHtml(card.name)}</strong>
+                    <span>${escapeHtml(card.description || card.desc || 'Avatar de la historia')}</span>
+                </button>
+            `).join('');
+            picker.querySelectorAll('[data-protagonist]').forEach(button => {
+                button.addEventListener('click', () => {
+                    selectedProtagonist = button.dataset.protagonist;
+                    deckCards = [];
+                    currentEditingDeckId = null;
+                    renderProtagonists();
+                    renderCards();
+                    renderDeck();
+                });
+            });
+        }
+
+        function cardRoute(card) {
+            const tag = (card.tags || []).find(value => value.startsWith('route:'));
+            return tag ? tag.slice('route:'.length) : null;
+        }
+
         function allCards() {
             return Object.values(CARDS).flat();
         }
@@ -916,13 +1074,16 @@
                 SURVIVAL_GAME: 'Survival Game',
                 HAREM_INVERSO: 'Harem Inverso',
                 EVENT_FINAL: 'Final Event',
+                CLIMAX_EVENT: 'Evento Climax',
+                PLOT_TWIST_EVENT: 'Plot-Twist',
                 EVENT_KEY: 'Key Event',
                 PROTAGONIST: 'Protagonista',
                 PERSONAJE: 'Personaje',
                 CHARACTER: 'Personaje',
                 LOCATION: 'Locacion',
                 ITEM: 'Item',
-                TOKEN: 'Token',
+                TOKEN: 'Quick Event',
+                QUICK_EVENT: 'Quick Event',
                 EVENT: 'Evento',
                 FILLER: 'Filler',
                 ISEKAI: 'Isekai',
@@ -940,12 +1101,16 @@
         function renderCards() {
             const grid = document.getElementById('cards-grid');
             let cards = CARDS[selectedArchetype] || [];
+            cards = cards.filter(card => card.type !== 'PROTAGONIST'
+                && card.type !== 'PLOT_TWIST_EVENT'
+                && !(card.tags || []).includes('external-only')
+                && (!card.protagonistId || card.protagonistId === selectedProtagonist));
 
             // Apply filter
             if (selectedTypeFilter !== 'ALL') {
                 cards = cards.filter(c => {
                     if (selectedTypeFilter === 'EVENT') {
-                        return c.type === 'EVENT' || c.type === 'EVENT_KEY' || c.type === 'EVENT_FINAL';
+                        return c.type === 'EVENT' || c.type === 'EVENT_KEY' || c.type === 'EVENT_FINAL' || c.type === 'CLIMAX_EVENT';
                     }
                     if (selectedTypeFilter === 'PERSONAJE') {
                         return c.type === 'PERSONAJE' || c.type === 'CHARACTER';
@@ -956,8 +1121,8 @@
 
             document.getElementById('cards-count').textContent = `(${cards.length})`;
 
-            if (!selectedArchetype) {
-                grid.innerHTML = '<p style="color: rgba(255,255,255,0.5); grid-column: 1/-1; text-align: center;">Selecciona un arquetipo</p>';
+            if (!selectedArchetype || !selectedProtagonist) {
+                grid.innerHTML = `<p style="color: rgba(255,255,255,0.5); grid-column: 1/-1; text-align: center;">${selectedArchetype ? 'Selecciona un protagonista' : 'Selecciona un arquetipo'}</p>`;
                 return;
             }
 
@@ -968,22 +1133,73 @@
 
                 return `
                     <div class="card ${isMax ? 'in-deck' : ''}" data-id="${card.id}">
-                        <span class="cost">${card.cost}</span>
-                        <span class="type-badge ${card.type.toLowerCase()}">${card.type.replace('_', ' ')}</span>
+                        <span class="cost">${card.cost} ${card.costResource || 'SP'}</span>
+                        <span class="type-badge ${card.type.toLowerCase()}">${displayEnum(card.type)}</span>
                         <div class="name">${card.name}</div>
                         <div class="desc">${card.desc}</div>
                         ${countInDeck > 0 ? `<span class="count">${countInDeck}/${maxCopies}</span>` : ''}
+                        ${isOpeningEvent(card) ? `<button class="add-events-btn" data-add-events="${escapeHtml(card.id)}" type="button">Agregar Eventos</button>` : ''}
                     </div>
                 `;
             }).join('');
 
+            grid.querySelectorAll('[data-add-events]').forEach(button => {
+                button.addEventListener('click', event => {
+                    event.stopPropagation();
+                    addEventRouteToDeck(button.dataset.addEvents);
+                });
+            });
             grid.querySelectorAll('.card').forEach(cardEl => {
                 cardEl.addEventListener('click', () => openCardDetail(cardEl.dataset.id));
             });
         }
 
+        function isOpeningEvent(card) {
+            return card.type === 'EVENT' && !(card.eventPrerequisites || card.prereqs || []).length;
+        }
+
+        function routeEventsFrom(startCard) {
+            const route = cardRoute(startCard);
+            const events = (CARDS[selectedArchetype] || []).filter(card =>
+                card.protagonistId === selectedProtagonist
+                && (card.type === 'EVENT' || card.type === 'CLIMAX_EVENT')
+                && (!route || !cardRoute(card) || cardRoute(card) === route));
+            const chain = [];
+            const visited = new Set();
+            let current = startCard;
+            while (current && !visited.has(current.id)) {
+                chain.push(current);
+                visited.add(current.id);
+                current = events.find(candidate =>
+                    !visited.has(candidate.id)
+                    && (candidate.eventPrerequisites || candidate.prereqs || []).includes(current.id));
+            }
+            return chain;
+        }
+
+        function addEventRouteToDeck(cardId) {
+            const startCard = getCardById(cardId);
+            if (!startCard || !isOpeningEvent(startCard)) return;
+            const chain = routeEventsFrom(startCard);
+            let added = 0;
+            chain.forEach(card => {
+                if (deckCards.length < DECK_SIZE && !deckCards.includes(card.id)) {
+                    deckCards.push(card.id);
+                    added++;
+                }
+            });
+            renderCards();
+            renderDeck();
+            const messageEl = document.getElementById('message');
+            const remaining = chain.length - added;
+            messageEl.textContent = remaining > 0
+                ? `Se agregaron ${added} Eventos. Faltan ${remaining} por falta de espacio o porque ya estaban en el mazo.`
+                : `Se agregó la cadena de ${chain.length} Eventos hasta Climax.`;
+            messageEl.className = 'message success';
+        }
+
         function addToDeck(cardId, amount = 1) {
-            if (!selectedArchetype) return;
+            if (!selectedArchetype || !selectedProtagonist) return;
             const card = CARDS[selectedArchetype].find(c => c.id === cardId);
             if (!card) return;
 
@@ -1016,7 +1232,7 @@
                 : `<div><strong>${escapeHtml(card.name)}</strong><br><span>${escapeHtml(image || 'Sin imagen asignada')}</span></div>`;
 
             document.getElementById('detail-card-name').textContent = card.name;
-            document.getElementById('detail-card-meta').textContent = `${displayEnum(card.type)} / ${displayEnum(card.archetype)} / costo ${card.cost} / ${countInDeck}/${maxCopies}`;
+            document.getElementById('detail-card-meta').textContent = `${displayEnum(card.type)} / ${displayEnum(card.archetype)} / costo ${card.cost} ${card.costResource || 'SP'}`;
             document.getElementById('detail-card-description').textContent = card.description || card.desc || '';
             const copyInput = document.getElementById('detail-copy-input');
             const remainingCopies = Math.max(1, Math.min(maxCopies - countInDeck, DECK_SIZE - deckCards.length));
@@ -1045,9 +1261,13 @@
 
         function describeRequirement(req) {
             if (req.type === 'STORY_MIN') return `Requiere ${req.value || 0} SP (Story Points).`;
+            if (req.type === 'FILLER_MIN') return `Requiere ${req.value || 0} FP (Filler Points).`;
             if (req.type === 'FILLER_MAX') return `FP (Filler Points) maximo ${req.value || 0}.`;
             if (req.type === 'EVENT_COMPLETED') return `Completar evento: ${(req.cardIds || []).map(cardName).join(', ')}.`;
-            if (req.type === 'CARD_ON_BOARD') return `En campo: ${(req.cardIds || []).map(cardName).join(', ') || req.cardType || req.tag || 'carta compatible'}.`;
+            if (req.type === 'EVENT_COUNT_MIN') return `Completar ${req.value || 1} Evento(s) antes de jugar esta carta.`;
+            if (req.type === 'CARD_ON_BOARD') return `En campo (${req.value || 1}): ${(req.cardIds || []).map(cardName).join(', ') || req.cardType || req.tag || 'carta compatible'}.`;
+            if (req.type === 'CARD_IN_COMPLETED_ARC') return `Arco previo revelado: ${displayEnum(req.cardType || 'carta compatible')}.`;
+            if (req.type === 'DISCARD_FROM_HAND') return `Descarta ${req.value || 1} carta(s) de tu mano.`;
             return `${req.type}`;
         }
 
@@ -1065,6 +1285,13 @@
             if (effect.type === 'NEXT_EVENT_REDUCE_REQUIREMENT') return 'Tu proximo evento ignora 1 requisito para poder jugarse.';
             if (effect.type === 'INVOKE_CARD_TO_OPPONENT_HAND') return `Invoca ${cardName(effect.cardId || 'isekai-char-demon-lord-gouki')} en la mano del rival.`;
             if (effect.type === 'HAND_SP_DECAY_PERCENT') return `Mientras esta carta este en tu mano, pierdes ${effect.value || 5}% de tus SP (Story Points) al inicio de cada turno.`;
+            if (effect.type === 'SEARCH_CLIMAX') return 'Busca el Evento Climax de esta linea y lo agrega a la mano.';
+            if (effect.type === 'SEARCH_CARD_TYPE') return `Busca 1 carta de tipo ${displayEnum(effect.cardType || 'ITEM')} en tu deck y la agrega a la mano.`;
+            if (effect.type === 'RECOVER_FROM_CEMETERY') return `Recupera ${effect.value || 1} carta(s) del Cementerio a la mano.`;
+            if (effect.type === 'RECOVER_FROM_COMPLETED_ARC') return `Devuelve hasta ${effect.value || 1} carta(s) de un arco resuelto a tu mano.`;
+            if (effect.type === 'MODIFY_CLIMAX_LEVEL') return `Reduce el multiplicador del Climax pendiente en ${effect.value || 1} nivel(es).`;
+            if (effect.type === 'PROTECT_PROTAGONIST') return 'Tu Protagonista ignora el proximo efecto que intente silenciarlo.';
+            if (effect.type === 'SILENCE_PROTAGONIST_NEXT_EVENT') return 'El Protagonista rival no activa sus efectos en su proximo Evento.';
             if (effect.type === 'VICTORY') return 'Puede cerrar la partida.';
             return `${effect.type}`;
         }
@@ -1085,7 +1312,7 @@
             if (deckCards.length === DECK_SIZE) countEl.classList.add('complete');
             if (deckCards.length > DECK_SIZE) countEl.classList.add('over');
 
-            saveBtn.disabled = deckCards.length !== DECK_SIZE;
+            saveBtn.disabled = deckCards.length !== DECK_SIZE || !selectedProtagonist;
 
             if (deckCards.length === 0) {
                 listEl.innerHTML = '<p style="color: rgba(255,255,255,0.5); text-align: center;">Haz clic en las cartas</p>';
@@ -1212,7 +1439,9 @@
             if (!selectedValue) {
                 deckCards = [];
                 currentEditingDeckId = null;
+                selectedProtagonist = null;
                 document.getElementById('deck-name').value = 'Mi Mazo';
+                renderProtagonists();
                 renderCards();
                 renderDeck();
                 return;
@@ -1224,6 +1453,7 @@
                 : savedDecks.find(d => d.id === deckId);
             if (deck) {
                 selectedArchetype = deck.archetypeId;
+                selectedProtagonist = deck.protagonistId || null;
                 document.querySelectorAll('.archetype-btn').forEach(b => {
                     b.classList.toggle('selected', b.dataset.archetype === selectedArchetype);
                 });
@@ -1231,6 +1461,7 @@
                 currentEditingDeckId = source === 'prebuilt' ? null : deckId;
                 document.getElementById('deck-name').value = source === 'prebuilt' ? `${deck.name} Custom` : deck.name;
                 selectedBackground = deck.backgroundId || 'bg_01';
+                renderProtagonists();
                 renderCards();
                 renderDeck();
                 renderBackgrounds();
@@ -1285,6 +1516,7 @@
                     body: JSON.stringify({
                         name,
                         archetypeId: selectedArchetype,
+                        protagonistId: selectedProtagonist,
                         cardIds: deckCards,
                         backgroundId: selectedBackground
                     })
@@ -1303,7 +1535,7 @@
                 messageEl.textContent = err.message;
                 messageEl.className = 'message error';
             } finally {
-                saveBtn.disabled = deckCards.length !== DECK_SIZE;
+                saveBtn.disabled = deckCards.length !== DECK_SIZE || !selectedProtagonist;
             }
         });
 

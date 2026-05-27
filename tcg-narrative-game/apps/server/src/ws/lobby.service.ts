@@ -1,6 +1,5 @@
 import { store } from '../store/memory.store';
-import { LobbyState, LobbyPlayer } from '@tcg/shared/protocol';
-import { GAME_CONSTANTS } from '@tcg/shared/constants';
+import { LobbyState, LobbyPlayer, LobbyMatchSummary } from '@tcg/shared/protocol';
 
 // ============================================
 // Lobby Service
@@ -25,7 +24,25 @@ export interface LobbyServiceResult {
     error?: string;
 }
 
+export interface LobbyChallenge {
+    challengeId: string;
+    lobbyId: string;
+    fromUsername: string;
+    toUsername: string;
+    fromDeckId: string;
+    timerEnabled: boolean;
+    privateMatch: boolean;
+}
+
+export interface LobbyChallengeResult extends LobbyServiceResult {
+    challenge?: LobbyChallenge;
+}
+
 export class LobbyService {
+    private readonly challenges = new Map<string, LobbyChallenge>();
+    private readonly matchLobbies = new Map<string, string>();
+    private readonly authorizedSpectators = new Map<string, Set<string>>();
+
     // Create a new lobby
     createLobby(formatId: string, ownerUsername: string): LobbyServiceResult {
         const lobbyId = generateLobbyId();
@@ -42,6 +59,7 @@ export class LobbyService {
             formatId,
             players: [owner],
             status: 'waiting',
+            activeMatches: [],
         };
 
         store.createLobby(lobby);
@@ -60,13 +78,12 @@ export class LobbyService {
             return { success: false, error: 'Lobby is not accepting players' };
         }
 
-        if (lobby.players.length >= 2) {
+        if (lobby.players.length >= 24) {
             return { success: false, error: 'Lobby is full' };
         }
 
-        // Check if player already in lobby
         if (lobby.players.find(p => p.username === username)) {
-            return { success: false, error: 'Already in this lobby' };
+            return { success: true, lobby };
         }
 
         const newPlayer: LobbyPlayer = {
@@ -78,6 +95,104 @@ export class LobbyService {
         store.updateLobby(lobby.lobbyId, lobby);
 
         return { success: true, lobby };
+    }
+
+    createChallenge(
+        lobbyId: string,
+        fromUsername: string,
+        toUsername: string,
+        fromDeckId: string,
+        timerEnabled: boolean,
+        privateMatch: boolean,
+    ): LobbyChallengeResult {
+        const lobby = store.getLobby(lobbyId);
+        if (!lobby || !lobby.players.some(player => player.username === fromUsername)) {
+            return { success: false, error: 'Not in this lobby' };
+        }
+        if (fromUsername === toUsername || !lobby.players.some(player => player.username === toUsername)) {
+            return { success: false, error: 'Player is not available in this lobby' };
+        }
+        if (!store.isUserDeck(fromUsername, fromDeckId)) {
+            return { success: false, error: 'Invalid deck' };
+        }
+        const challenge: LobbyChallenge = {
+            challengeId: `challenge_${Math.random().toString(36).slice(2, 11)}`,
+            lobbyId,
+            fromUsername,
+            toUsername,
+            fromDeckId,
+            timerEnabled,
+            privateMatch,
+        };
+        this.challenges.set(challenge.challengeId, challenge);
+        return { success: true, lobby, challenge };
+    }
+
+    answerChallenge(
+        challengeId: string,
+        username: string,
+        accepted: boolean,
+        deckId?: string,
+    ): LobbyChallengeResult {
+        const challenge = this.challenges.get(challengeId);
+        if (!challenge || challenge.toUsername !== username) {
+            return { success: false, error: 'Invitation not found' };
+        }
+        const lobby = store.getLobby(challenge.lobbyId);
+        if (!lobby || !lobby.players.some(player => player.username === challenge.fromUsername)) {
+            this.challenges.delete(challengeId);
+            return { success: false, error: 'Lobby is no longer available' };
+        }
+        if (accepted && (!deckId || !store.isUserDeck(username, deckId))) {
+            return { success: false, error: 'Invalid deck' };
+        }
+        this.challenges.delete(challengeId);
+        return { success: true, lobby, challenge };
+    }
+
+    recordMatch(lobbyId: string, summary: LobbyMatchSummary): LobbyState | undefined {
+        const lobby = store.getLobby(lobbyId);
+        if (!lobby) return undefined;
+        lobby.activeMatches = [...(lobby.activeMatches || []).filter(match => match.matchId !== summary.matchId), summary];
+        lobby.players.forEach(player => {
+            if (summary.players.includes(player.username)) player.activeMatchId = summary.matchId;
+        });
+        this.matchLobbies.set(summary.matchId, lobbyId);
+        store.updateLobby(lobbyId, lobby);
+        return lobby;
+    }
+
+    completeMatch(matchId: string, winner?: string): LobbyState | undefined {
+        const lobbyId = this.matchLobbies.get(matchId);
+        const lobby = lobbyId ? store.getLobby(lobbyId) : undefined;
+        if (!lobby) return undefined;
+        const summary = (lobby.activeMatches || []).find(match => match.matchId === matchId);
+        if (summary) {
+            summary.status = 'ended';
+            summary.winner = winner;
+        }
+        lobby.players.forEach(player => {
+            if (player.activeMatchId === matchId) player.activeMatchId = undefined;
+        });
+        store.updateLobby(lobby.lobbyId, lobby);
+        return lobby;
+    }
+
+    authorizeSpectator(matchId: string, username: string, lobbyId?: string): boolean {
+        const sourceLobbyId = this.matchLobbies.get(matchId);
+        const lobby = sourceLobbyId ? store.getLobby(sourceLobbyId) : undefined;
+        const summary = lobby?.activeMatches?.find(match => match.matchId === matchId && match.status === 'active');
+        const isLobbyMember = !!lobbyId && sourceLobbyId === lobbyId && !!lobby?.players.some(player => player.username === username);
+        const alreadyAuthorized = this.authorizedSpectators.get(matchId)?.has(username) === true;
+        if (!summary || summary.privateMatch || (!isLobbyMember && !alreadyAuthorized)) return false;
+        const spectators = this.authorizedSpectators.get(matchId) || new Set<string>();
+        spectators.add(username);
+        this.authorizedSpectators.set(matchId, spectators);
+        return true;
+    }
+
+    canReadMatch(matchId: string, username: string): boolean {
+        return this.authorizedSpectators.get(matchId)?.has(username) === true;
     }
 
     // Set player ready with deck
@@ -135,7 +250,6 @@ export class LobbyService {
             return { success: true };
         }
 
-        // Reset remaining player's ready status
         lobby.players.forEach(p => {
             p.ready = false;
         });

@@ -4,6 +4,7 @@
     "main": "dist/index.js",
     "scripts": {
         "dev": "ts-node -r tsconfig-paths/register src/index.ts",
+        "start": "ts-node -r tsconfig-paths/register src/index.ts",
         "build": "tsc",
         "test": "npm run test:content && npm run test:rules",
         "test:content": "ts-node -r tsconfig-paths/register src/scripts/contentIntegrity.ts",

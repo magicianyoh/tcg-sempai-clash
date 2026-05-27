@@ -54,7 +54,7 @@ let wikiContent: WikiContent = {
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 function apiBases(): string[] {
-    return [window.location.origin];
+    return [String((import.meta as any).env?.VITE_API_URL || window.location.origin).replace(/\/$/, '')];
 }
 
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {

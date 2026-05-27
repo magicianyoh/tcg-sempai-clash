@@ -3,7 +3,7 @@ import * as path from 'path';
 
 process.env.STORE_DB_PATH ||= path.join(os.tmpdir(), `sempai-balance-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
 
-import { ARCHETYPES, GAME_CONSTANTS } from '@tcg/shared/constants';
+import { GAME_CONSTANTS } from '@tcg/shared/constants';
 import { MatchState } from '@tcg/shared/types';
 import { MatchActionType } from '@tcg/shared/protocol';
 import { getPrebuiltDecks, PrebuiltDeckData } from '../decks/prebuilt-decks';
@@ -20,6 +20,7 @@ type SimulationSummary = {
     minTurns: number;
     maxTurns: number;
     avgCompletedEvents: number;
+    avgQuickEventsPlayed: number;
     earlyEnds: number;
     finalEventWins: number;
     fillerWins: number;
@@ -32,13 +33,13 @@ type SimulationResult = {
     winner: string;
     winReason: string;
     completedEvents: number;
+    quickEventsPlayed: number;
     timedOut: boolean;
 };
 
 const gamesPerArchetype = Number(process.env.BALANCE_GAMES_PER_ARCHETYPE || 4);
-const maxTurns = Number(process.env.BALANCE_MAX_TURNS || 32);
+const maxTurns = Number(process.env.BALANCE_MAX_TURNS || 60);
 const difficulty = (process.env.BALANCE_DIFFICULTY || 'normal') as CpuDifficulty;
-const maxHumanPlays = difficulty === 'hard' ? 3 : difficulty === 'easy' ? 1 : 2;
 
 function ensureUser(username: string): void {
     if (!store.findUser(username)) {
@@ -50,6 +51,7 @@ function createDeck(username: string, template: PrebuiltDeckData): string {
     return store.createDeck(username, {
         name: template.name,
         archetypeId: template.archetypeId,
+        protagonistId: template.protagonistId,
         cards: template.cards,
         backgroundId: template.backgroundId,
     }).id;
@@ -75,7 +77,7 @@ function progressHumanTurn(match: MatchState, username: string): MatchState {
     let current = match;
     let plays = 0;
 
-    while (!current.winner && current.activePlayerId === username && plays < maxHumanPlays) {
+    while (!current.winner && current.activePlayerId === username && plays < 20) {
         const playerIndex = current.playerOrder.indexOf(username);
         const plan = chooseCpuPlay(current, playerIndex);
         const action = actionFromPlan(plan);
@@ -95,7 +97,7 @@ function simulateGame(template: PrebuiltDeckData, runIndex: number): SimulationR
     const username = `balance_${template.archetypeId.toLowerCase()}_${runIndex}_${Math.random().toString(36).slice(2, 7)}`;
     ensureUser(username);
     const deckId = createDeck(username, template);
-    let match = matchService.createCpuMatch(username, deckId, template.archetypeId, difficulty, GAME_CONSTANTS.DEFAULT_FORMAT);
+    let match = matchService.createCpuMatch(username, deckId, template.archetypeId, difficulty, GAME_CONSTANTS.DEFAULT_FORMAT, false, template.id);
 
     while (!match.winner && match.turnNumber < maxTurns) {
         if (match.activePlayerId === username) {
@@ -108,11 +110,12 @@ function simulateGame(template: PrebuiltDeckData, runIndex: number): SimulationR
     const human = match.players[0];
     const cpu = match.players[1];
     return {
-        archetype: template.archetypeId,
+        archetype: template.protagonistId,
         turns: match.turnNumber,
         winner: match.winner || 'timeout',
         winReason: match.winReason || (match.winner ? 'unknown' : 'timeout'),
         completedEvents: human.completedEvents.length + cpu.completedEvents.length,
+        quickEventsPlayed: match.log.filter(entry => entry.action === 'quick_event_resolved').length,
         timedOut: !match.winner,
     };
 }
@@ -120,6 +123,7 @@ function simulateGame(template: PrebuiltDeckData, runIndex: number): SimulationR
 function summarize(archetype: string, results: SimulationResult[]): SimulationSummary {
     const turns = results.map(result => result.turns);
     const completedEvents = results.map(result => result.completedEvents);
+    const quickEvents = results.map(result => result.quickEventsPlayed);
     return {
         archetype,
         games: results.length,
@@ -129,24 +133,16 @@ function summarize(archetype: string, results: SimulationResult[]): SimulationSu
         minTurns: Math.min(...turns),
         maxTurns: Math.max(...turns),
         avgCompletedEvents: Number((completedEvents.reduce((sum, value) => sum + value, 0) / results.length).toFixed(2)),
+        avgQuickEventsPlayed: Number((quickEvents.reduce((sum, value) => sum + value, 0) / results.length).toFixed(2)),
         earlyEnds: results.filter(result => result.turns < 8).length,
-        finalEventWins: results.filter(result => result.winReason === 'final_event').length,
+        finalEventWins: results.filter(result => result.winReason === 'climax').length,
         fillerWins: results.filter(result => result.winReason === 'opponent_filler').length,
         timeouts: results.filter(result => result.timedOut).length,
     };
 }
 
-const templatesByArchetype = new Map<string, PrebuiltDeckData>();
-for (const deck of getPrebuiltDecks({ enabled: true, archetypes: {} })) {
-    if (!templatesByArchetype.has(deck.archetypeId)) {
-        templatesByArchetype.set(deck.archetypeId, deck);
-    }
-}
-
 const allResults: SimulationResult[] = [];
-for (const archetype of Object.values(ARCHETYPES)) {
-    const template = templatesByArchetype.get(archetype);
-    if (!template) continue;
+for (const template of getPrebuiltDecks({ enabled: true, archetypes: {} })) {
     for (let i = 0; i < gamesPerArchetype; i++) {
         allResults.push(simulateGame(template, i));
     }
@@ -166,7 +162,7 @@ console.log(JSON.stringify({
         gamesPerArchetype,
         maxTurns,
         difficulty,
-        maxHumanPlays,
+        actionLimitSafety: 20,
     },
     summaries,
     failed,

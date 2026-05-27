@@ -31,7 +31,9 @@ const ARCHETYPE_PRIORITIES: Record<string, Partial<Record<CardType, number>>> = 
         [CardType.PROTAGONIST]: 42,
         [CardType.PERSONAJE]: 28,
         [CardType.EVENT]: 34,
-        [CardType.TOKEN]: 24,
+        [CardType.CLIMAX_EVENT]: 120,
+        [CardType.PLOT_TWIST_EVENT]: 145,
+        [CardType.QUICK_EVENT]: 32,
         [CardType.EVENT_FINAL]: 120,
     },
     MECHA: {
@@ -39,6 +41,9 @@ const ARCHETYPE_PRIORITIES: Record<string, Partial<Record<CardType, number>>> = 
         [CardType.ITEM]: 34,
         [CardType.LOCATION]: 25,
         [CardType.EVENT]: 32,
+        [CardType.CLIMAX_EVENT]: 120,
+        [CardType.PLOT_TWIST_EVENT]: 145,
+        [CardType.QUICK_EVENT]: 32,
         [CardType.EVENT_FINAL]: 120,
     },
     HAREM_INVERSO: {
@@ -46,6 +51,9 @@ const ARCHETYPE_PRIORITIES: Record<string, Partial<Record<CardType, number>>> = 
         [CardType.PERSONAJE]: 34,
         [CardType.ITEM]: 22,
         [CardType.EVENT]: 30,
+        [CardType.CLIMAX_EVENT]: 120,
+        [CardType.PLOT_TWIST_EVENT]: 145,
+        [CardType.QUICK_EVENT]: 32,
         [CardType.EVENT_FINAL]: 120,
     },
     SLICE_OF_LIFE: {
@@ -60,6 +68,9 @@ const ARCHETYPE_PRIORITIES: Record<string, Partial<Record<CardType, number>>> = 
         [CardType.PERSONAJE]: 32,
         [CardType.ITEM]: 24,
         [CardType.EVENT]: 30,
+        [CardType.CLIMAX_EVENT]: 120,
+        [CardType.PLOT_TWIST_EVENT]: 145,
+        [CardType.QUICK_EVENT]: 32,
         [CardType.EVENT_FINAL]: 120,
     },
     HAREM: {
@@ -73,6 +84,9 @@ const ARCHETYPE_PRIORITIES: Record<string, Partial<Record<CardType, number>>> = 
         [CardType.ITEM]: 28,
         [CardType.PERSONAJE]: 26,
         [CardType.EVENT]: 34,
+        [CardType.CLIMAX_EVENT]: 120,
+        [CardType.PLOT_TWIST_EVENT]: 145,
+        [CardType.QUICK_EVENT]: 32,
         [CardType.EVENT_FINAL]: 120,
     },
     SURVIVAL_GAME: {
@@ -98,12 +112,12 @@ const ARCHETYPE_PRIORITIES: Record<string, Partial<Record<CardType, number>>> = 
     },
 };
 
-export function chooseCpuPlay(match: MatchState, cpuIndex: number): CpuPlayPlan | null {
+export function chooseCpuPlay(match: MatchState, cpuIndex: number, difficultyOverride?: CpuDifficulty): CpuPlayPlan | null {
     const cpu = match.players[cpuIndex];
     const humanIndex = cpuIndex === 0 ? 1 : 0;
     const opponent = match.players[humanIndex];
-    const cpuOpponent = match.cpuOpponent;
-    if (!cpuOpponent) return null;
+    const difficulty = difficultyOverride || match.cpuOpponent?.difficulty;
+    if (!difficulty) return null;
 
     const blockIndex = cpu.board.currentBlockIndex;
     const block = cpu.board.blocks[blockIndex];
@@ -115,7 +129,7 @@ export function chooseCpuPlay(match: MatchState, cpuIndex: number): CpuPlayPlan 
         humanIndex,
         cpu,
         opponent,
-        difficulty: cpuOpponent.difficulty,
+        difficulty,
         blockIndex,
         fieldCards: getFieldCards(cpu.board),
         opponentFieldCards: getFieldCards(opponent.board),
@@ -124,6 +138,7 @@ export function chooseCpuPlay(match: MatchState, cpuIndex: number): CpuPlayPlan 
 
     const plans = [
         ...buildEventPlans(context),
+        ...buildQuickEventPlans(context),
         ...buildBoardPlans(context),
     ];
 
@@ -140,7 +155,7 @@ export function chooseCpuPlay(match: MatchState, cpuIndex: number): CpuPlayPlan 
     viable.sort((a, b) => b.score - a.score);
 
     if (context.difficulty === 'easy' && viable.length > 1) {
-        if (Math.random() < 0.3) return null;
+        if (Math.random() < 0.16) return null;
         return viable[Math.floor(Math.random() * Math.min(3, viable.length))];
     }
 
@@ -181,15 +196,115 @@ function buildEventPlans(context: CpuContext): CpuPlayPlan[] {
     });
 }
 
+function buildQuickEventPlans(context: CpuContext): CpuPlayPlan[] {
+    const block = context.cpu.board.blocks[context.blockIndex];
+    const slot = block.slots.find(item => !item.cardId);
+    if (!slot) return [];
+    return context.cpu.hand.flatMap(cardId => {
+        const card = CARDS[cardId];
+        if (!card || card.type !== CardType.QUICK_EVENT) return [];
+        const validation = canPlayCard(context.match, context.cpuIndex, cardId, {
+            blockIndex: context.blockIndex,
+            position: slot.position,
+            isEventOrb: false,
+        });
+        if (!validation.ok) return [];
+        if (!preservesArcFuel(card, context)) return [];
+        if (!preservesPendingNarrativeCards(card, context)) return [];
+        const score = scoreByArchetype(card, context) + scoreEffects(card.effects, context)
+            + (card.requirements?.length ? 8 : 0);
+        return [{
+            cardId,
+            isEventActivation: false,
+            slotPosition: slot.position,
+            score: applyDifficultyNoise(score, context.difficulty),
+            reason: `quick:${card.name}:threat=${context.opponentThreat}`,
+        }];
+    });
+}
+
+function preservesArcFuel(card: CardData, context: CpuContext): boolean {
+    if (card.costResource !== 'FP') return true;
+    const event = getTargetEvent(context);
+    if (!event) return true;
+    let requiredFp = event.costResource === 'FP' ? event.cost : 0;
+    const missing = (event.requirements || []).filter(requirement =>
+        requirement.type === 'CARD_ON_BOARD' && !requirementSatisfiedInCurrentBlock(requirement, context)
+    );
+    for (const requirement of missing) {
+        const costs = context.cpu.hand
+            .map(id => CARDS[id])
+            .filter((candidate): candidate is CardData => Boolean(candidate) && candidate.id !== card.id)
+            .filter(candidate => scoreCardAgainstRequirements(candidate, [requirement]) > 0)
+            .map(candidate => candidate.costResource === 'FP' ? candidate.cost : 0);
+        if (costs.length) requiredFp += Math.min(...costs);
+    }
+    return context.cpu.fillerPoints - card.cost >= requiredFp;
+}
+
+function preservesPendingNarrativeCards(card: CardData, context: CpuContext): boolean {
+    const discardCount = (card.requirements || [])
+        .filter(requirement => requirement.type === 'DISCARD_FROM_HAND')
+        .reduce((total, requirement) => total + (requirement.value || 1), 0);
+    if (discardCount === 0) return true;
+
+    const pendingRouteCards = new Set<string>();
+    const selectedRoute = selectedNarrativeRoute(context.cpu);
+    Object.values(CARDS)
+        .filter(candidate =>
+            candidate.protagonistId === context.cpu.protagonistId
+            && (candidate.type === CardType.EVENT || candidate.type === CardType.CLIMAX_EVENT)
+            && !context.cpu.completedEvents.includes(candidate.id)
+            && (!selectedRoute || cardRouteId(candidate) === selectedRoute)
+        )
+        .forEach(candidate => {
+            pendingRouteCards.add(candidate.id);
+            (candidate.requirements || []).forEach(requirement => {
+                (requirement.cardIds || []).forEach(cardId => pendingRouteCards.add(cardId));
+            });
+        });
+
+    let playedCardSkipped = false;
+    const payableCards = context.cpu.hand.filter(cardId => {
+        if (!playedCardSkipped && cardId === card.id) {
+            playedCardSkipped = true;
+            return false;
+        }
+        return true;
+    });
+    const copies = payableCards.reduce<Record<string, number>>((counts, cardId) => {
+        counts[cardId] = (counts[cardId] || 0) + 1;
+        return counts;
+    }, {});
+    const safeDiscardCount = payableCards.reduce((total, cardId) => {
+        if (!pendingRouteCards.has(cardId)) return total + 1;
+        if (copies[cardId] > 1) {
+            copies[cardId] -= 1;
+            return total + 1;
+        }
+        return total;
+    }, 0);
+    return safeDiscardCount >= discardCount;
+}
+
 function buildBoardPlans(context: CpuContext): CpuPlayPlan[] {
     const block = context.cpu.board.blocks[context.blockIndex];
     const emptySlots = block.slots.filter(slot => !slot.cardId);
     if (emptySlots.length === 0) return [];
+    const targetEvent = getTargetEvent(context);
+    const missingMaterialRequirements = (targetEvent?.requirements || []).filter(requirement =>
+        requirement.type === 'CARD_ON_BOARD'
+        && !requirementSatisfiedInCurrentBlock(requirement, context)
+    );
 
     const plans: CpuPlayPlan[] = [];
     for (const cardId of context.cpu.hand) {
         const card = CARDS[cardId];
-        if (!card || isEventCard(card)) continue;
+        if (!card || isEventCard(card) || card.type === CardType.QUICK_EVENT) continue;
+        if (targetEvent && (
+            missingMaterialRequirements.length === 0
+            || !missingMaterialRequirements.some(requirement => scoreCardAgainstRequirements(card, [requirement]) > 0)
+        )) continue;
 
         for (const slot of emptySlots) {
             const validation = canPlayCard(context.match, context.cpuIndex, cardId, {
@@ -198,8 +313,9 @@ function buildBoardPlans(context: CpuContext): CpuPlayPlan[] {
                 isEventOrb: false,
             });
             if (!validation.ok) continue;
+            if (!preservesArcFuel(card, context)) continue;
 
-            const score = scoreBoardCard(card, context, slot.position);
+            const score = scoreBoardCard(card, context, slot.position) + (targetEvent ? 140 : 0);
             plans.push({
                 cardId,
                 isEventActivation: false,
@@ -213,10 +329,53 @@ function buildBoardPlans(context: CpuContext): CpuPlayPlan[] {
     return plans;
 }
 
+function getTargetEvent(context: CpuContext): CardData | undefined {
+    const prepared = context.cpu.board.blocks[context.blockIndex]?.eventSlot;
+    if (prepared) return CARDS[prepared];
+    const selectedRoute = selectedNarrativeRoute(context.cpu);
+    return Object.values(CARDS)
+        .filter(card => card.protagonistId === context.cpu.protagonistId && (card.type === CardType.EVENT || card.type === CardType.CLIMAX_EVENT))
+        .filter(card => !context.cpu.completedEvents.includes(card.id))
+        .filter(card => !selectedRoute || cardRouteId(card) === selectedRoute)
+        .filter(card => evaluateEventPrerequisites(context.cpu, card).ok)
+        .sort((left, right) => {
+            const leftOrder = left.type === CardType.CLIMAX_EVENT ? 99 : Number(left.tags?.find(tag => tag.startsWith('order:'))?.slice(6) || 0);
+            const rightOrder = right.type === CardType.CLIMAX_EVENT ? 99 : Number(right.tags?.find(tag => tag.startsWith('order:'))?.slice(6) || 0);
+            return leftOrder - rightOrder;
+        })[0];
+}
+
+function cardRouteId(card?: CardData): string | undefined {
+    return card?.tags?.find(tag => tag.startsWith('route:'))?.slice('route:'.length);
+}
+
+function selectedNarrativeRoute(player: PlayerState): string | undefined {
+    const prepared = player.board.blocks[player.board.currentBlockIndex]?.eventSlot;
+    return [...player.completedEvents, ...(prepared ? [prepared] : []), ...player.hand, ...player.deck]
+        .map(id => CARDS[id])
+        .filter(card => card?.type === CardType.EVENT || card?.type === CardType.CLIMAX_EVENT)
+        .map(card => cardRouteId(card))
+        .find((route): route is string => Boolean(route));
+}
+
+function requirementSatisfiedInCurrentBlock(requirement: NonNullable<CardData['requirements']>[number], context: CpuContext): boolean {
+    const block = context.cpu.board.blocks[context.blockIndex];
+    const matches = block.slots.filter(slot => {
+        if (!slot.cardId) return false;
+        const card = CARDS[slot.cardId];
+        if (!card) return false;
+        if (requirement.cardIds && !requirement.cardIds.includes(card.id)) return false;
+        if (requirement.cardType && requirement.cardType !== card.type) return false;
+        if (requirement.tag && !card.tags?.includes(requirement.tag)) return false;
+        return true;
+    });
+    return matches.length >= (requirement.value || 1);
+}
+
 function scoreEventCard(card: CardData, context: CpuContext): number {
     let score = scoreByArchetype(card, context) + scoreEffects(card.effects, context);
 
-    if (card.type === CardType.EVENT_FINAL) {
+    if (card.type === CardType.CLIMAX_EVENT || card.type === CardType.PLOT_TWIST_EVENT || card.type === CardType.EVENT_FINAL) {
         score += 100;
         if (context.opponentThreat >= 80) score += 25;
     }
@@ -317,6 +476,17 @@ function scoreEffects(effects: CardEffect[], context: CpuContext): number {
                 return total + (effect.target === 'OPPONENT' ? 26 : 0);
             case 'NEXT_EVENT_REDUCE_REQUIREMENT':
                 return total + 18;
+            case 'MODIFY_CLIMAX_LEVEL':
+                return total + Math.max(1, value) * 45;
+            case 'SEARCH_CLIMAX':
+            case 'SEARCH_CARD_TYPE':
+            case 'RECOVER_FROM_CEMETERY':
+            case 'RECOVER_FROM_COMPLETED_ARC':
+                return total + 25;
+            case 'PROTECT_PROTAGONIST':
+                return total + 28;
+            case 'SILENCE_PROTAGONIST_NEXT_EVENT':
+                return total + (effect.target === 'OPPONENT' ? 32 : 0);
             case 'VICTORY':
                 return total + 120;
             default:
@@ -381,7 +551,10 @@ function estimateOpponentThreat(opponent: PlayerState, match: MatchState): numbe
 }
 
 function matchCpuArchetype(context: CpuContext): string {
-    return String(context.match.cpuOpponent?.archetypeId || CARDS[context.cpu.hand[0]]?.archetype || '');
+    return String((context.cpu.protagonistId && CARDS[context.cpu.protagonistId]?.archetype)
+        || context.match.cpuOpponent?.archetypeId
+        || CARDS[context.cpu.hand[0]]?.archetype
+        || '');
 }
 
 function applyDifficultyNoise(score: number, difficulty: CpuDifficulty): number {
@@ -391,5 +564,5 @@ function applyDifficultyNoise(score: number, difficulty: CpuDifficulty): number 
 }
 
 function isEventCard(card: CardData): boolean {
-    return card.type === CardType.EVENT || card.type === CardType.EVENT_FINAL || card.type === CardType.EVENT_KEY;
+    return card.type === CardType.EVENT || card.type === CardType.CLIMAX_EVENT || card.type === CardType.PLOT_TWIST_EVENT || card.type === CardType.EVENT_FINAL || card.type === CardType.EVENT_KEY;
 }

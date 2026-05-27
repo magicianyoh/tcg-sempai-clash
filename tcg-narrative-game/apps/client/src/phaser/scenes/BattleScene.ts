@@ -9,7 +9,6 @@ import type {
     LogEntry,
     MatchState,
     PlayerState,
-    StatusEffect,
     TimelineBlock as TimelineBlockData,
 } from '@tcg/shared/types';
 
@@ -18,6 +17,7 @@ interface CardDisplayData {
     name: string;
     type: string;
     cost: number;
+    costResource?: 'SP' | 'FP';
     description: string;
     backstory?: string;
     image?: string;
@@ -50,6 +50,11 @@ interface CardDisplayData {
 
 type BoardView = 'self' | 'opponent';
 type BannerTone = 'turn' | 'event' | 'danger' | 'final' | 'neutral';
+type QuickEventPresentation = {
+    card: CardDisplayData;
+    playerName: string;
+    isOpponent: boolean;
+};
 type FieldTheme = {
     id: string;
     name: string;
@@ -79,7 +84,7 @@ type UiSettings = {
 };
 
 const CARD_DB: Record<string, CardDisplayData> = {};
-const API_URL = window.location.origin;
+const API_URL = String((import.meta as any).env?.VITE_API_URL || window.location.origin).replace(/\/$/, '');
 
 function displayEnum(value?: string): string {
     const map: Record<string, string> = {
@@ -87,13 +92,16 @@ function displayEnum(value?: string): string {
         SURVIVAL_GAME: 'Survival Game',
         HAREM_INVERSO: 'Harem Inverso',
         EVENT_FINAL: 'Final Event',
+        CLIMAX_EVENT: 'Evento Climax',
+        PLOT_TWIST_EVENT: 'Plot-Twist',
         EVENT_KEY: 'Key Event',
         PROTAGONIST: 'Protagonista',
         PERSONAJE: 'Personaje',
         CHARACTER: 'Personaje',
         LOCATION: 'Locacion',
         ITEM: 'Item',
-        TOKEN: 'Token',
+        TOKEN: 'Quick Event',
+        QUICK_EVENT: 'Quick Event',
         EVENT: 'Evento',
         FILLER: 'Filler',
         ISEKAI: 'Isekai',
@@ -108,6 +116,11 @@ function displayEnum(value?: string): string {
 }
 
 function getWebSocketUrl(token?: string): string {
+    const configuredUrl = String((import.meta as any).env?.VITE_WS_URL || '').trim().replace(/\/$/, '');
+    if (configuredUrl) {
+        const query = token ? `?token=${encodeURIComponent(token)}` : '';
+        return `${configuredUrl}${query}`;
+    }
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const query = token ? `?token=${encodeURIComponent(token)}` : '';
     return `${protocol}//${window.location.host}/ws${query}`;
@@ -123,6 +136,7 @@ const FIELD_THEMES: Record<string, FieldTheme> = {
 export class BattleScene extends Phaser.Scene {
     private ws: WebSocket | null = null;
     private matchState: MatchState | null = null;
+    private readonly isSpectator = new URLSearchParams(window.location.search).get('spectator') === '1';
     private myUsername = '';
     private myPlayerIndex = 0;
     private currentView: BoardView = 'self';
@@ -135,6 +149,10 @@ export class BattleScene extends Phaser.Scene {
 
     private currentBlocks: TimelineBlock[] = [];
     private handCards: CardSprite[] = [];
+    private arcNavigation!: Phaser.GameObjects.Container;
+    private arcUpButton!: Phaser.GameObjects.Container;
+    private arcDownButton!: Phaser.GameObjects.Container;
+    private arcNavigationText!: Phaser.GameObjects.Text;
 
     private endTurnBtn!: Phaser.GameObjects.Container;
     private forfeitBtn!: Phaser.GameObjects.Container;
@@ -161,14 +179,28 @@ export class BattleScene extends Phaser.Scene {
     private bannerQueue: Array<{ title: string; subtitle?: string; tone: BannerTone }> = [];
     private bannerActive = false;
     private narrativeEntries: string[] = [];
-    private effectEntries: string[] = [];
     private localTimerEvent: Phaser.Time.TimerEvent | null = null;
     private timerExpiredSentForTurn = '';
     private narrativePanel: HTMLElement | null = null;
     private narrativeContent: HTMLDivElement | null = null;
-    private narrativeEffectsContent: HTMLDivElement | null = null;
+    private chatInput: HTMLInputElement | null = null;
     private narrativeToggle: HTMLButtonElement | null = null;
     private narrativeDrawerOpen = false;
+    private visibleBlockByPlayer: Record<string, number> = {};
+    private observedActiveBlockByPlayer: Record<string, number> = {};
+    private transitioningBoardUser = '';
+    private transitioningToBlock: number | null = null;
+    private arcTransitionTimer: Phaser.Time.TimerEvent | null = null;
+    private swipeStart: { x: number; y: number } | null = null;
+    private handSwipeStart: { x: number; y: number; offset: number } | null = null;
+    private handSwipeActive = false;
+    private handScrollOffset = 0;
+    private handScrollMax = 0;
+    private pendingLocalHandEntries = 0;
+    private cardDragActive = false;
+    private quickEventQueue: QuickEventPresentation[] = [];
+    private quickEventPresentationActive = false;
+    private lastTurnBannerKey = '';
     private uiSettings: UiSettings = {
         victoryImage: '',
         victorySound: '',
@@ -202,6 +234,7 @@ export class BattleScene extends Phaser.Scene {
         this.createLayout();
         this.createHUD();
         this.createNarrativeLog();
+        this.createArcNavigation();
         this.createViewToggleButton();
         this.createEndTurnButton();
         this.createForfeitButton();
@@ -219,6 +252,35 @@ export class BattleScene extends Phaser.Scene {
         this.boardContainer = this.add.container(this.getBoardX(), this.getBoardY());
         this.handContainer = this.add.container(0, height - 108);
         this.bannerLayer = this.add.container(0, 0).setDepth(2500);
+    }
+
+    private createArcNavigation(): void {
+        this.arcNavigation = this.add.container(0, 0).setDepth(1300).setVisible(false);
+        this.arcUpButton = this.createArcNavigationButton(-54, '\u25b2', 1);
+        this.arcDownButton = this.createArcNavigationButton(54, '\u25bc', -1);
+        this.arcNavigationText = this.add.text(0, 0, '1 / 1', {
+            fontSize: '11px',
+            color: '#ffffff',
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontStyle: 'bold',
+            align: 'center',
+        }).setOrigin(0.5);
+        this.arcNavigation.add([this.arcUpButton, this.arcNavigationText, this.arcDownButton]);
+    }
+
+    private createArcNavigationButton(y: number, label: string, delta: -1 | 1): Phaser.GameObjects.Container {
+        const button = this.add.container(0, y);
+        const bg = this.add.circle(0, 0, 22, 0x020609, 0.94)
+            .setStrokeStyle(2, 0x4ecdc4, 0.95);
+        const text = this.add.text(0, -1, label, {
+            fontSize: '18px',
+            color: '#ffffff',
+            fontStyle: 'bold',
+        }).setOrigin(0.5);
+        button.add([bg, text]);
+        button.setSize(46, 46).setInteractive({ useHandCursor: true });
+        button.on('pointerdown', () => this.navigateArc(delta));
+        return button;
     }
 
     private ensureEffectTexture(): void {
@@ -261,7 +323,7 @@ export class BattleScene extends Phaser.Scene {
             fontFamily: 'Arial, Helvetica, sans-serif',
             fontStyle: 'bold',
             lineSpacing: 7,
-        });
+        }).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.showCemetery());
         this.timerText = this.add.text(26, 108, '', {
             fontSize: '16px',
             color: '#ffd166',
@@ -307,12 +369,11 @@ export class BattleScene extends Phaser.Scene {
         panel.className = 'anime-log-panel';
         panel.innerHTML = `
             <div class="anime-log-title">Capitulo en curso</div>
-            <div class="anime-log-tabs">
-                <button class="anime-log-tab active" data-log-tab="story" type="button">Narracion</button>
-                <button class="anime-log-tab" data-log-tab="effects" type="button">Efectos</button>
-            </div>
             <div class="anime-log-content"></div>
-            <div class="anime-log-content hidden" data-effects-content></div>
+            <form class="anime-chat-form">
+                <input class="anime-chat-input" maxlength="240" placeholder="Escribir mensaje..." ${this.isSpectator ? 'disabled' : ''}>
+                <button type="submit" ${this.isSpectator ? 'disabled' : ''}>Enviar</button>
+            </form>
         `;
 
         const toggle = document.createElement('button');
@@ -339,17 +400,17 @@ export class BattleScene extends Phaser.Scene {
         document.body.appendChild(toggle);
         this.narrativePanel = panel;
         this.narrativeContent = panel.querySelector('.anime-log-content') as HTMLDivElement | null;
-        this.narrativeEffectsContent = panel.querySelector('[data-effects-content]') as HTMLDivElement | null;
+        this.chatInput = panel.querySelector('.anime-chat-input') as HTMLInputElement | null;
         this.narrativeToggle = toggle;
-        panel.querySelectorAll<HTMLButtonElement>('[data-log-tab]').forEach(button => {
-            button.addEventListener('click', () => {
-                const showEffects = button.dataset.logTab === 'effects';
-                panel.querySelectorAll('.anime-log-tab').forEach(tab => tab.classList.remove('active'));
-                button.classList.add('active');
-                this.narrativeContent?.classList.toggle('hidden', showEffects);
-                this.narrativeEffectsContent?.classList.toggle('hidden', !showEffects);
-                this.renderActiveEffects();
-            });
+        panel.querySelector('form')?.addEventListener('submit', event => {
+            event.preventDefault();
+            const text = this.chatInput?.value.trim() || '';
+            if (!text || !this.matchState || this.isSpectator || this.ws?.readyState !== WebSocket.OPEN) return;
+            this.ws.send(JSON.stringify({
+                type: 'MATCH_CHAT',
+                payload: { matchId: this.matchState.matchId, message: text },
+            }));
+            if (this.chatInput) this.chatInput.value = '';
         });
 
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyNarrativeLog());
@@ -363,7 +424,7 @@ export class BattleScene extends Phaser.Scene {
         this.narrativeToggle?.remove();
         this.narrativePanel = null;
         this.narrativeContent = null;
-        this.narrativeEffectsContent = null;
+        this.chatInput = null;
         this.narrativeToggle = null;
     }
 
@@ -418,8 +479,19 @@ export class BattleScene extends Phaser.Scene {
     }
 
     private setupDragAndDrop(): void {
-        this.input.on('drag', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dragX: number, dragY: number) => {
+        this.input.on('drag', (pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dragX: number, dragY: number) => {
             if (gameObject instanceof CardSprite) {
+                if (this.handSwipeStart && this.scale.width < 920) {
+                    const dx = pointer.x - this.handSwipeStart.x;
+                    const dy = pointer.y - this.handSwipeStart.y;
+                    if (this.handSwipeActive || (Math.abs(dx) >= 14 && Math.abs(dx) > Math.abs(dy) * 1.15)) {
+                        this.handSwipeActive = true;
+                        this.clearDropHighlights();
+                        gameObject.resetPosition();
+                        this.setHandScrollOffset(this.handSwipeStart.offset - dx);
+                        return;
+                    }
+                }
                 gameObject.x = dragX;
                 gameObject.y = dragY;
             }
@@ -439,6 +511,11 @@ export class BattleScene extends Phaser.Scene {
 
         this.input.on('drop', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropZone: Phaser.GameObjects.GameObject) => {
             if (gameObject instanceof CardSprite) {
+                if (this.handSwipeActive) {
+                    gameObject.resetPosition();
+                    this.clearDropHighlights();
+                    return;
+                }
                 this.handleCardDrop(gameObject, dropZone);
                 this.clearDropHighlights();
             }
@@ -447,6 +524,11 @@ export class BattleScene extends Phaser.Scene {
         this.input.on('dragend', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject, dropped: boolean) => {
             if (gameObject instanceof CardSprite) {
                 this.clearDropHighlights();
+                if (this.handSwipeActive) {
+                    gameObject.resetPosition();
+                    this.handSwipeActive = false;
+                    return;
+                }
                 if (!dropped) {
                     this.tweens.add({
                         targets: gameObject,
@@ -463,18 +545,115 @@ export class BattleScene extends Phaser.Scene {
 
     private setupGlobalEvents(): void {
         this.events.on('card-clicked', this.handleFieldCardClick, this);
-        this.events.on('hand-card-drag-start', this.highlightDropTargets, this);
-        this.events.on('hand-card-drag-end', this.clearDropHighlights, this);
+        this.events.on('hand-card-drag-start', (card: CardSprite) => {
+            this.cardDragActive = true;
+            this.highlightDropTargets(card);
+        });
+        this.events.on('hand-card-drag-end', () => {
+            this.clearDropHighlights();
+            this.time.delayedCall(0, () => {
+                this.cardDragActive = false;
+            });
+        });
+        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            if (this.data.get('card-detail-open') === true) return;
+            if (this.scale.width >= 920) return;
+            if (pointer.y >= this.getHandSwipeTop()) {
+                this.handSwipeStart = { x: pointer.x, y: pointer.y, offset: this.handScrollOffset };
+                this.handSwipeActive = false;
+                this.swipeStart = null;
+                return;
+            }
+            this.swipeStart = { x: pointer.x, y: pointer.y };
+        });
+        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+            if (!this.handSwipeStart || this.cardDragActive || this.scale.width >= 920 || this.data.get('card-detail-open') === true) return;
+            const dx = pointer.x - this.handSwipeStart.x;
+            const dy = pointer.y - this.handSwipeStart.y;
+            if (Math.abs(dx) >= 14 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+                this.handSwipeActive = true;
+                this.setHandScrollOffset(this.handSwipeStart.offset - dx);
+            }
+        });
+        this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+            if (this.data.get('card-detail-open') === true) {
+                this.swipeStart = null;
+                this.handSwipeStart = null;
+                this.handSwipeActive = false;
+                return;
+            }
+            if (this.handSwipeStart) {
+                const dx = pointer.x - this.handSwipeStart.x;
+                const dy = pointer.y - this.handSwipeStart.y;
+                const dragIsFinishingSwipe = this.cardDragActive && this.handSwipeActive;
+                if (!this.cardDragActive && Math.abs(dx) >= 14 && Math.abs(dx) > Math.abs(dy)) {
+                    this.setHandScrollOffset(this.handSwipeStart.offset - dx);
+                }
+                this.handSwipeStart = null;
+                if (!dragIsFinishingSwipe) this.handSwipeActive = false;
+                this.swipeStart = null;
+                return;
+            }
+            if (!this.swipeStart || this.cardDragActive || this.scale.width >= 920) {
+                this.swipeStart = null;
+                return;
+            }
+            const dx = pointer.x - this.swipeStart.x;
+            const dy = pointer.y - this.swipeStart.y;
+            this.swipeStart = null;
+            if (Math.abs(dy) < 54 || Math.abs(dy) <= Math.abs(dx)) return;
+            this.navigateArc(dy < 0 ? 1 : -1);
+        });
     }
 
     private toggleBoardView(): void {
-        if (!this.matchState || this.matchState.activePlayerId !== this.myUsername) return;
+        if (!this.matchState || this.matchState.activePlayerId !== this.myUsername || this.transitioningBoardUser) return;
         this.currentView = this.currentView === 'self' ? 'opponent' : 'self';
         this.updateDisplay();
     }
 
+    private navigateArc(delta: -1 | 1): void {
+        if (!this.matchState || this.transitioningBoardUser) return;
+        const viewed = this.getViewedPlayer();
+        const currentIndex = this.getVisibleBlockIndex(viewed);
+        const target = Phaser.Math.Clamp(currentIndex + delta, 0, viewed.board.currentBlockIndex);
+        if (target === currentIndex) return;
+        this.visibleBlockByPlayer[viewed.username] = target;
+        this.animateArcNavigation(viewed, target, delta);
+        this.renderHand(
+            this.isSpectator ? [] : this.matchState.players[this.myPlayerIndex].hand,
+            this.canInteractWithCurrentArc()
+        );
+        this.updateTurnActionState();
+    }
+
+    private animateArcNavigation(player: PlayerState, targetIndex: number, delta: -1 | 1): void {
+        const homeY = this.getBoardY();
+        const exitY = homeY + (delta > 0 ? 118 : -118);
+        const enterY = homeY + (delta > 0 ? -118 : 118);
+        this.tweens.killTweensOf(this.boardContainer);
+        this.tweens.add({
+            targets: this.boardContainer,
+            y: exitY,
+            alpha: 0,
+            duration: 180,
+            ease: 'Sine.In',
+            onComplete: () => {
+                this.renderViewedBoard(player, targetIndex);
+                this.boardContainer.setPosition(this.getBoardX(), enterY).setAlpha(0);
+                this.tweens.add({
+                    targets: this.boardContainer,
+                    y: homeY,
+                    alpha: 1,
+                    duration: 230,
+                    ease: 'Cubic.Out',
+                });
+            },
+        });
+    }
+
     private handleCardDrop(card: CardSprite, dropZone: Phaser.GameObjects.GameObject): void {
-        if (!this.matchState || this.matchState.activePlayerId !== this.myUsername || this.currentView !== 'self') {
+        if (!this.matchState || this.matchState.activePlayerId !== this.myUsername || this.currentView !== 'self' || !this.canInteractWithCurrentArc()) {
             card.resetPosition();
             return;
         }
@@ -521,7 +700,7 @@ export class BattleScene extends Phaser.Scene {
 
     private highlightDropTargets(card: CardSprite): void {
         this.clearDropHighlights();
-        if (!this.matchState || this.currentView !== 'self' || this.matchState.activePlayerId !== this.myUsername) return;
+        if (!this.matchState || this.currentView !== 'self' || this.matchState.activePlayerId !== this.myUsername || !this.canInteractWithCurrentArc()) return;
 
         const block = this.currentBlocks[0];
         if (!block) return;
@@ -607,6 +786,9 @@ export class BattleScene extends Phaser.Scene {
                 case 'FILLER_MAX':
                     if (me.fillerPoints > (requirement.value || 99)) return false;
                     break;
+                case 'FILLER_MIN':
+                    if (me.fillerPoints < (requirement.value || 0)) return false;
+                    break;
                 case 'EVENT_COMPLETED': {
                     const required = requirement.cardIds || [];
                     if (required.some(requiredId => !me.completedEvents.includes(requiredId))) return false;
@@ -625,7 +807,7 @@ export class BattleScene extends Phaser.Scene {
         cardId: string,
         pointer?: Phaser.Input.Pointer,
         blockIndex?: number,
-        position?: SlotPosition | 'event',
+        position?: SlotPosition | 'event' | 'protagonist',
     ): void {
         const sourceEvent = pointer?.event as (MouseEvent & PointerEvent & { ctrlKey?: boolean; metaKey?: boolean; pointerType?: string }) | undefined;
         const wantsDetail = sourceEvent?.ctrlKey === true
@@ -636,11 +818,6 @@ export class BattleScene extends Phaser.Scene {
         if (wantsDetail || this.currentView === 'opponent' || position === 'event') {
             this.playFieldCardDetailEffect(blockIndex, position);
             this.time.delayedCall(120, () => this.showCardDetail(cardId));
-            return;
-        }
-
-        if (this.matchState?.activePlayerId === this.myUsername && blockIndex !== undefined && position) {
-            this.sendReturnToHand(blockIndex, position);
             return;
         }
 
@@ -673,7 +850,8 @@ export class BattleScene extends Phaser.Scene {
         const ghost = this.add.container(handMatrix.tx, handMatrix.ty).setDepth(2300);
         const width = Math.max(52, card.width * card.scaleX);
         const height = Math.max(74, card.height * card.scaleY);
-        const bg = this.add.rectangle(0, 0, width, height, this.getBannerColor(this.isEventType(cardData.type) ? 'event' : 'neutral'), 0.92)
+        const dynamicAction = cardData.type === 'QUICK_EVENT';
+        const bg = this.add.rectangle(0, 0, width, height, this.getBannerColor(this.isEventType(cardData.type) || dynamicAction ? 'event' : 'neutral'), 0.92)
             .setStrokeStyle(3, 0xffffff);
         const label = this.add.text(0, 0, cardData.name, {
             fontSize: '11px',
@@ -688,12 +866,88 @@ export class BattleScene extends Phaser.Scene {
             x: targetMatrix.tx,
             y: targetMatrix.ty,
             scale: { from: 1, to: 0.78 },
-            angle: { from: 0, to: this.isEventType(cardData.type) ? 360 : 0 },
+            angle: { from: 0, to: this.isEventType(cardData.type) || dynamicAction ? 360 : 0 },
             duration: 360,
             ease: 'Cubic.Out',
             onComplete: () => {
-                this.emitParticleBurst(targetMatrix.tx, targetMatrix.ty, this.getBannerColor(this.isEventType(cardData.type) ? 'event' : 'neutral'), 16);
+                this.emitParticleBurst(targetMatrix.tx, targetMatrix.ty, this.getBannerColor(this.isEventType(cardData.type) || dynamicAction ? 'event' : 'neutral'), 16);
                 ghost.destroy();
+            },
+        });
+    }
+
+    private enqueueQuickEventPresentation(card: CardDisplayData, playerName: string): void {
+        this.quickEventQueue.push({
+            card,
+            playerName,
+            isOpponent: playerName !== this.myUsername,
+        });
+        if (!this.quickEventPresentationActive) this.showNextQuickEventPresentation();
+    }
+
+    private showNextQuickEventPresentation(): void {
+        const presentation = this.quickEventQueue.shift();
+        if (!presentation) {
+            this.quickEventPresentationActive = false;
+            return;
+        }
+        this.quickEventPresentationActive = true;
+        if (presentation.isOpponent) {
+            const queuedBanners = this.bannerQueue.length + (this.bannerActive ? 1 : 0);
+            this.enqueueBanner(
+                `${presentation.playerName.toUpperCase()} JUGO`,
+                `la carta ${presentation.card.name}`,
+                'danger',
+            );
+            this.time.delayedCall((queuedBanners + 1) * 1450, () => this.revealQuickEventPresentation(presentation));
+            return;
+        }
+        this.revealQuickEventPresentation(presentation);
+    }
+
+    private revealQuickEventPresentation(presentation: QuickEventPresentation): void {
+        const { card } = presentation;
+        const { width, height } = this.scale;
+        const veil = this.add.rectangle(width / 2, height / 2, width, height, 0x020609, 0.42).setDepth(2740);
+        const reveal = new CardSprite(this, {
+            cardId: card.id,
+            name: card.name,
+            type: card.type,
+            cost: card.cost,
+            description: card.description,
+            backstory: card.backstory,
+            x: this.getBoardX(),
+            y: this.getBoardY(),
+            width: 124,
+            height: 176,
+            interactive: false,
+        }).setDepth(2745);
+        reveal.setScale(0.02, 1).setAngle(-16);
+        this.tweens.add({
+            targets: reveal,
+            x: width / 2,
+            y: height / 2 - 20,
+            scaleX: 1.18,
+            scaleY: 1.18,
+            angle: 360,
+            duration: 620,
+            ease: 'Cubic.Out',
+            onComplete: () => {
+                this.emitParticleBurst(reveal.x, reveal.y, 0x22c55e, 24);
+                this.time.delayedCall(100, () => {
+                    reveal.destroy();
+                    veil.destroy();
+                    new CardDetailOverlay(this, {
+                        cards: [this.getCardDetailData(card.id)],
+                        startIndex: 0,
+                        confirmLabel: 'OK',
+                        dismissOnCardTap: presentation.isOpponent,
+                        onClose: () => {
+                            this.quickEventPresentationActive = false;
+                            this.showNextQuickEventPresentation();
+                        },
+                    });
+                });
             },
         });
     }
@@ -732,10 +986,10 @@ export class BattleScene extends Phaser.Scene {
         }
     }
 
-    private playFieldCardDetailEffect(blockIndex?: number, position?: SlotPosition | 'event'): void {
+    private playFieldCardDetailEffect(blockIndex?: number, position?: SlotPosition | 'event' | 'protagonist'): void {
         if (blockIndex === undefined || !position) return;
         const block = this.currentBlocks.find(item => item.getData('blockIndex') === blockIndex) || this.currentBlocks[0];
-        const target = position === 'event' ? block?.getEventOrbWorldPosition() : block?.getSlotWorldPosition(position);
+        const target = position === 'event' || position === 'protagonist' ? block?.getEventOrbWorldPosition() : block?.getSlotWorldPosition(position);
         if (!target) return;
 
         const focus = this.add.rectangle(target.x, target.y, 88, 126, 0xffffff, 0.12)
@@ -757,27 +1011,39 @@ export class BattleScene extends Phaser.Scene {
         if (!this.matchState) return;
         const allCards: CardInfo[] = [];
         const viewed = this.getViewedPlayer();
-        const blockData = this.getCurrentBlockData(viewed);
 
         if (this.currentView === 'self') {
             this.handCards.forEach(card => allCards.push(this.getCardDetailData(card.getCardId())));
         }
 
-        blockData?.slots.forEach(slot => {
-            if (slot.cardId) {
-                allCards.push(this.getCardDetailData(slot.cardId));
-            }
+        viewed.board.blocks.forEach(blockData => {
+            if (blockData.protagonistCardId) allCards.push(this.getCardDetailData(blockData.protagonistCardId));
+            blockData.slots.forEach(slot => {
+                if (slot.cardId) allCards.push(this.getCardDetailData(slot.cardId));
+            });
+            if (blockData.eventSlot) allCards.push(this.getCardDetailData(blockData.eventSlot));
         });
-        if (blockData?.eventSlot) {
-            allCards.push(this.getCardDetailData(blockData.eventSlot));
-        }
 
         const index = allCards.findIndex(card => card.id === startCardId);
         new CardDetailOverlay(this, {
             cards: allCards,
             startIndex: index !== -1 ? index : 0,
-            onClose: () => undefined,
+            onClose: () => {
+                if (!this.matchState || this.currentView !== 'self') return;
+                const me = this.matchState.players[this.myPlayerIndex];
+                this.renderHand(this.isSpectator ? [] : me.hand, !this.isSpectator && this.canInteractWithCurrentArc());
+            },
         });
+    }
+
+    private showCemetery(): void {
+        if (!this.matchState) return;
+        const cards = (this.getViewedPlayer().discard || []).map(id => this.getCardDetailData(id));
+        if (cards.length === 0) {
+            this.showFeedback(130, 118, 'El Cementerio esta vacio');
+            return;
+        }
+        new CardDetailOverlay(this, { cards, startIndex: 0, onClose: () => undefined });
     }
 
     private async loadCardCatalog(): Promise<void> {
@@ -790,6 +1056,7 @@ export class BattleScene extends Phaser.Scene {
                     name: card.name,
                     type: card.type,
                     cost: card.cost ?? 0,
+                    costResource: card.costResource ?? 'SP',
                     description: card.description ?? card.desc ?? '',
                     backstory: card.extendedLore ?? card.backstory,
                     image: card.image,
@@ -856,7 +1123,7 @@ export class BattleScene extends Phaser.Scene {
     private requestMatchState(): void {
         if (this.ws?.readyState !== WebSocket.OPEN) return;
         const matchId = (window as any).matchId;
-        this.ws.send(JSON.stringify({ type: 'MATCH_REJOIN', payload: { matchId } }));
+        this.ws.send(JSON.stringify({ type: this.isSpectator ? 'MATCH_SPECTATE' : 'MATCH_REJOIN', payload: { matchId } }));
     }
 
     private sendPlayCard(cardId: string, slotPosition?: string): void {
@@ -885,6 +1152,10 @@ export class BattleScene extends Phaser.Scene {
 
     private sendEndTurn(): void {
         if (!this.matchState || this.matchState.activePlayerId !== this.myUsername) return;
+        if (!this.canInteractWithCurrentArc()) {
+            this.showFeedback(this.scale.width / 2, this.getBoardY(), 'Volve al arco actual para continuar.');
+            return;
+        }
         this.ws?.send(JSON.stringify({
             type: 'MATCH_ACTION',
             payload: { matchId: this.matchState.matchId, action: { type: 'END_TURN' } },
@@ -928,8 +1199,7 @@ export class BattleScene extends Phaser.Scene {
         this.turnIndicator.setColor(isMyTurn ? '#4ecdc4' : '#aab2c2');
         this.turnCountText.setText(`Turno ${this.matchState.turnNumber}`);
 
-        const viewedLabel = this.currentView === 'self' ? 'PLAYER 1' : 'PLAYER 2';
-        this.playerTitleText.setText(`${viewedLabel}\n${viewed.username}`);
+        this.playerTitleText.setText(this.currentView === 'self' ? viewed.username.toUpperCase() : `${viewed.username.toUpperCase()} (RIVAL)`);
         this.updateHudLayout();
 
         const summaryPlayer = this.currentView === 'self' ? opp : me;
@@ -947,11 +1217,13 @@ export class BattleScene extends Phaser.Scene {
         this.updateViewToggleLabel();
 
         this.endTurnBtn.setPosition(this.getActionButtonX(), this.getActionButtonY(1));
-        this.forfeitBtn.setPosition(Math.max(70, this.scale.width - 74), 214);
-        this.endTurnBtn.setAlpha(isMyTurn && this.currentView === 'self' ? 1 : 0.45);
-        this.updateEndTurnLabel();
-        this.renderViewedBoard(viewed);
-        this.renderHand(me.hand, isMyTurn && this.currentView === 'self');
+        this.forfeitBtn.setPosition(
+            this.scale.width < 560 ? this.scale.width - 58 : Math.max(70, this.scale.width - 74),
+            this.scale.width < 560 ? 250 : 214
+        );
+        this.refreshViewedBoard(viewed);
+        this.updateTurnActionState();
+        this.renderHand(this.isSpectator ? [] : me.hand, !this.isSpectator && this.canInteractWithCurrentArc());
     }
 
     private updateViewToggleLabel(): void {
@@ -962,6 +1234,12 @@ export class BattleScene extends Phaser.Scene {
     private updateEndTurnLabel(): void {
         const label = this.endTurnBtn.getAll().find(child => child.getData('label') === true) as Phaser.GameObjects.Text | undefined;
         label?.setText(this.isPreparedEventReady(this.myPlayerIndex) ? 'SIGUIENTE ARCO' : 'PASAR TURNO');
+    }
+
+    private updateTurnActionState(): void {
+        const canAct = this.canInteractWithCurrentArc();
+        this.endTurnBtn.setAlpha(canAct ? 1 : 0.45);
+        this.updateEndTurnLabel();
     }
 
     private updateTimerText(): void {
@@ -998,14 +1276,16 @@ export class BattleScene extends Phaser.Scene {
 
         this.playerTitleText
             .setPosition(width / 2, compact ? 42 : 20)
-            .setFontSize(titleSize)
-            .setLineSpacing(compact ? -8 : 0);
+            .setFontSize(compact ? 21 : Math.min(32, titleSize))
+            .setVisible(!compact);
         this.turnIndicator
-            .setPosition(width / 2, compact ? 116 : 78)
-            .setFontSize(compact ? 14 : 18);
+            .setPosition(width / 2, compact ? 78 : 62)
+            .setFontSize(compact ? 14 : 18)
+            .setVisible(!compact);
         this.turnCountText
-            .setPosition(width / 2, compact ? 136 : 102)
-            .setFontSize(compact ? 11 : 12);
+            .setPosition(width / 2, compact ? 98 : 86)
+            .setFontSize(compact ? 11 : 12)
+            .setVisible(!compact);
         this.statText
             .setPosition(compact ? 20 : 26, compact ? 18 : 22)
             .setFontSize(compact ? 16 : 22);
@@ -1019,12 +1299,14 @@ export class BattleScene extends Phaser.Scene {
 
     private getPlayerScore(player: PlayerState): number {
         const story = player.storyPoints ?? player.historyPoints ?? 0;
-        const completed = player.completedEvents?.length || 0;
-        return story + completed * 4 - player.fillerPoints;
+        return story - player.fillerPoints;
     }
 
     private updateObjectivePanel(me: PlayerState, viewed: PlayerState, isMyTurn: boolean): void {
         const { width } = this.scale;
+        const compact = width < 560;
+        this.objectivePanel.setVisible(!compact);
+        if (compact) return;
         const panelWidth = width < 720 ? Math.max(220, width - 36) : 292;
         this.objectivePanel.setPosition(18, width < 560 ? 252 : width < 720 ? 148 : 142);
         this.objectivePanelBg.setSize(panelWidth, 116);
@@ -1096,6 +1378,9 @@ export class BattleScene extends Phaser.Scene {
                 case 'FILLER_MAX':
                     if (player.fillerPoints > (requirement.value || 99)) missing.push(`FP max ${requirement.value}`);
                     break;
+                case 'FILLER_MIN':
+                    if (player.fillerPoints < (requirement.value || 0)) missing.push(`FP ${player.fillerPoints}/${requirement.value || 0}`);
+                    break;
                 case 'EVENT_COMPLETED': {
                     const required = requirement.cardIds || [];
                     const pending = required.filter(cardId => !player.completedEvents.includes(cardId));
@@ -1133,12 +1418,13 @@ export class BattleScene extends Phaser.Scene {
     }
 
     private describeBoardRequirement(requirement: NonNullable<CardDisplayData['requirements']>[number]): string {
-        if (requirement.cardIds?.length) return requirement.cardIds.map(id => this.getCardDisplayData(id).name).join(', ');
+        const count = requirement.value || 1;
+        if (requirement.cardIds?.length) return `${count} en campo: ${requirement.cardIds.map(id => this.getCardDisplayData(id).name).join(', ')}`;
         if (requirement.description) return requirement.description;
-        if (requirement.cardType) return `cartas ${requirement.cardType}`;
-        if (requirement.tag) return `tag ${requirement.tag}`;
-        if (requirement.archetype) return `cartas ${requirement.archetype}`;
-        return 'cartas en campo';
+        if (requirement.cardType) return `${count} cartas ${requirement.cardType} en campo`;
+        if (requirement.tag) return `${count} cartas con tag ${requirement.tag} en campo`;
+        if (requirement.archetype) return `${count} cartas ${requirement.archetype} en campo`;
+        return `${count} cartas en campo`;
     }
 
     private getCardHandDescription(card: CardDisplayData): string {
@@ -1152,6 +1438,7 @@ export class BattleScene extends Phaser.Scene {
             description: this.getCardHandDescription(card),
             typeLabel: displayEnum(card.type),
             archetypeLabel: displayEnum(card.archetype),
+            costResource: card.costResource,
             likes: (card.likes || []).map(id => this.getCardDisplayData(id).name),
             dislikes: (card.dislikes || []).map(id => this.getCardDisplayData(id).name),
             requirementsText: [
@@ -1165,8 +1452,12 @@ export class BattleScene extends Phaser.Scene {
     private describeRequirement(requirement: NonNullable<CardDisplayData['requirements']>[number]): string {
         if (requirement.type === 'STORY_MIN') return `${requirement.value || 0} SP (Story Points)`;
         if (requirement.type === 'FILLER_MAX') return `FP (Filler Points) <= ${requirement.value || 0}`;
+        if (requirement.type === 'FILLER_MIN') return `${requirement.value || 0} FP (Filler Points)`;
+        if (requirement.type === 'DISCARD_FROM_HAND') return `Descartar ${requirement.value || 1} carta(s) de la mano`;
         if (requirement.type === 'EVENT_COMPLETED') return `Completar evento: ${requirement.cardIds?.map(id => this.getCardDisplayData(id).name).join(', ') || 'previo'}`;
+        if (requirement.type === 'EVENT_COUNT_MIN') return `Completar ${requirement.value || 1} Evento(s) previamente`;
         if (requirement.type === 'CARD_ON_BOARD') return this.describeBoardRequirement(requirement);
+        if (requirement.type === 'CARD_IN_COMPLETED_ARC') return `Arco previo revelado: ${displayEnum(requirement.cardType || 'carta compatible')}`;
         return requirement.type;
     }
 
@@ -1182,8 +1473,16 @@ export class BattleScene extends Phaser.Scene {
         if (effect.type === 'REMOVE_OPPONENT_BOARD_CARD') return 'Remueve 1 carta del campo rival.';
         if (effect.type === 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN') return 'Impide que el rival use 1 carta al azar de su mano durante el proximo turno.';
         if (effect.type === 'NEXT_EVENT_REDUCE_REQUIREMENT') return 'Tu proximo evento ignora 1 requisito para poder jugarse.';
-        if (effect.type === 'INVOKE_CARD_TO_OPPONENT_HAND') return `Invoca ${this.getCardDisplayData(effect.cardId || 'isekai-char-demon-lord-gouki').name} en la mano del rival.`;
+        if (effect.type === 'INVOKE_CARD_TO_OPPONENT_HAND') return `Invoca ${this.getCardDisplayData(effect.cardId || 'isekai-external-demon-lord-gouki').name} en la mano del rival.`;
         if (effect.type === 'HAND_SP_DECAY_PERCENT') return `Mientras esta carta este en tu mano, pierdes ${effect.value || 5}% de tus SP (Story Points) al inicio de cada turno.`;
+        if (effect.type === 'HAND_RANDOM_FILLER_THEN_DISCARD') return 'Mientras esta carta este en tu mano, recibes 1 FP (50%), 2 FP (30%) o 3 FP (20%) al inicio de tu turno. Tras 3 activaciones, va al Cementerio.';
+        if (effect.type === 'SEARCH_CLIMAX') return 'Busca el Evento Climax en tu deck y lo agrega a la mano.';
+        if (effect.type === 'SEARCH_CARD_TYPE') return `Busca 1 carta de tipo ${displayEnum(effect.cardType || 'ITEM')} en tu deck y la agrega a la mano.`;
+        if (effect.type === 'RECOVER_FROM_CEMETERY') return 'Recupera una carta permitida del Cementerio a tu mano.';
+        if (effect.type === 'RECOVER_FROM_COMPLETED_ARC') return `Devuelve hasta ${effect.value || 1} carta(s) de un arco resuelto a tu mano.`;
+        if (effect.type === 'MODIFY_CLIMAX_LEVEL') return `Reduce ${effect.value || 1} nivel(es) del Climax pendiente.`;
+        if (effect.type === 'PROTECT_PROTAGONIST') return 'Tu Protagonista ignora el proximo efecto que intente silenciarlo.';
+        if (effect.type === 'SILENCE_PROTAGONIST_NEXT_EVENT') return 'El Protagonista rival no activa sus efectos en su proximo Evento.';
         if (effect.type === 'VICTORY') return 'Ganas la partida al concretar este Evento Final.';
         return effect.type;
     }
@@ -1231,6 +1530,9 @@ export class BattleScene extends Phaser.Scene {
                 }
                 case 'FILLER_MAX':
                     if (player.fillerPoints > (requirement.value || 99)) return false;
+                    break;
+                case 'FILLER_MIN':
+                    if (player.fillerPoints < (requirement.value || 0)) return false;
                     break;
                 case 'EVENT_COMPLETED': {
                     const required = requirement.cardIds || [];
@@ -1298,28 +1600,103 @@ export class BattleScene extends Phaser.Scene {
         }
     }
 
-    private renderViewedBoard(player: PlayerState): void {
+    private refreshViewedBoard(player: PlayerState): void {
+        const activeIndex = player.board.currentBlockIndex;
+        const previousActive = this.observedActiveBlockByPlayer[player.username];
+        const rememberedIndex = this.visibleBlockByPlayer[player.username];
+        const selectedIndex = rememberedIndex === undefined && previousActive !== undefined
+            ? previousActive
+            : this.getVisibleBlockIndex(player);
+        const advanced = previousActive !== undefined && activeIndex > previousActive;
+        const wasFollowingCurrent = previousActive === undefined || selectedIndex === previousActive;
+        this.observedActiveBlockByPlayer[player.username] = activeIndex;
+        if (previousActive === undefined && rememberedIndex === undefined) {
+            this.visibleBlockByPlayer[player.username] = activeIndex;
+        }
+
+        if (advanced && wasFollowingCurrent && this.transitioningBoardUser !== player.username) {
+            this.visibleBlockByPlayer[player.username] = previousActive;
+            this.startNewArcTransition(player, activeIndex);
+            return;
+        }
+        if (this.transitioningBoardUser === player.username) {
+            this.updateArcNavigation(player, this.getVisibleBlockIndex(player));
+            return;
+        }
+        this.renderViewedBoard(player, selectedIndex);
+    }
+
+    private startNewArcTransition(player: PlayerState, targetIndex: number): void {
+        const sourceIndex = Math.max(0, targetIndex - 1);
+        this.transitioningBoardUser = player.username;
+        this.transitioningToBlock = targetIndex;
+        this.visibleBlockByPlayer[player.username] = sourceIndex;
+        this.renderViewedBoard(player, sourceIndex);
+        this.updateTurnActionState();
+        this.arcTransitionTimer?.remove(false);
+        this.arcTransitionTimer = this.time.delayedCall(640, () => {
+            if (this.transitioningBoardUser !== player.username || this.transitioningToBlock !== targetIndex) return;
+            this.visibleBlockByPlayer[player.username] = targetIndex;
+            this.animateArcNavigation(player, targetIndex, 1);
+            this.time.delayedCall(430, () => {
+                if (this.transitioningBoardUser !== player.username || this.transitioningToBlock !== targetIndex) return;
+                this.transitioningBoardUser = '';
+                this.transitioningToBlock = null;
+                this.updateTurnActionState();
+                if (this.matchState) {
+                    const me = this.matchState.players[this.myPlayerIndex];
+                    this.renderHand(this.isSpectator ? [] : me.hand, !this.isSpectator && this.canInteractWithCurrentArc());
+                }
+            });
+        });
+    }
+
+    private getVisibleBlockIndex(player: PlayerState): number {
+        const remembered = this.visibleBlockByPlayer[player.username];
+        const index = remembered === undefined ? player.board.currentBlockIndex : remembered;
+        return Phaser.Math.Clamp(index, 0, player.board.currentBlockIndex);
+    }
+
+    private canInteractWithCurrentArc(): boolean {
+        if (!this.matchState || this.currentView !== 'self' || this.matchState.activePlayerId !== this.myUsername) return false;
+        const me = this.matchState.players[this.myPlayerIndex];
+        return !this.transitioningBoardUser && this.getVisibleBlockIndex(me) === me.board.currentBlockIndex;
+    }
+
+    private renderViewedBoard(player: PlayerState, blockIndex = this.getVisibleBlockIndex(player)): void {
         this.boardContainer.removeAll(true);
         this.currentBlocks = [];
-        this.boardContainer.setPosition(this.getBoardX(), this.getBoardY());
+        this.boardContainer.setPosition(this.getBoardX(), this.getBoardY()).setAlpha(1);
 
-        const blockData = this.getCurrentBlockData(player);
-        const scale = this.getBoardScale();
+        const blockData = player.board.blocks[blockIndex];
+        if (!blockData) return;
         const block = new TimelineBlock(this, {
             x: 0,
             y: 0,
-            blockIndex: blockData?.blockIndex ?? 0,
-            scale,
+            blockIndex: blockData.blockIndex,
+            scale: this.getBoardScale(),
             isPlayerBlock: this.currentView === 'self',
         });
-
+        block.setData('blockIndex', blockData.blockIndex);
         this.boardContainer.add(block);
         this.currentBlocks.push(block);
+        this.syncBlockWithState(block, blockData);
+        if (blockIndex === player.board.currentBlockIndex) this.updateRequirementGlow(block, player, blockData);
+        this.updateArcNavigation(player, blockIndex);
+    }
 
-        if (blockData) {
-            this.syncBlockWithState(block, blockData);
-            this.updateRequirementGlow(block, player, blockData);
-        }
+    private updateArcNavigation(player: PlayerState, blockIndex: number): void {
+        const hasHistory = player.board.currentBlockIndex > 0;
+        this.arcNavigation.setVisible(hasHistory);
+        if (!hasHistory) return;
+        const maxIndex = player.board.currentBlockIndex;
+        const active = blockIndex === maxIndex;
+        this.arcNavigation
+            .setPosition(this.getArcNavigationX(), this.getBoardY())
+            .setScale(this.scale.width < 560 ? 0.82 : 1);
+        this.arcNavigationText.setText(active ? `ACTUAL\n${blockIndex + 1} / ${maxIndex + 1}` : `ARCO\n${blockIndex + 1} / ${maxIndex + 1}`);
+        this.arcUpButton.setAlpha(blockIndex < maxIndex ? 1 : 0.28);
+        this.arcDownButton.setAlpha(blockIndex > 0 ? 1 : 0.28);
     }
 
     private updateRequirementGlow(block: TimelineBlock, player: PlayerState, blockData: TimelineBlockData): void {
@@ -1341,19 +1718,31 @@ export class BattleScene extends Phaser.Scene {
     private renderHand(hand: string[], interactive: boolean): void {
         this.handContainer.removeAll(true);
         this.handCards = [];
-        this.handContainer.setPosition(0, this.scale.height - 108);
+        this.handContainer.setPosition(-this.handScrollOffset, this.scale.height - (this.scale.width < 560 ? 145 : 108));
 
         if (this.currentView === 'opponent') {
+            this.handScrollMax = 0;
+            this.handScrollOffset = 0;
             return;
         }
 
         const playWidth = this.scale.width >= 920 ? this.scale.width - 350 : this.scale.width;
-        const minCardWidth = this.scale.width < 560 ? 54 : 70;
-        const cardWidth = Math.min(CardSprite.DEFAULT_WIDTH, Math.max(minCardWidth, (playWidth - 36) / Math.max(hand.length, 1) - 8));
+        const mobileScrollable = this.scale.width < 920;
+        const sidePadding = mobileScrollable ? (this.scale.width < 560 ? 18 : 26) : 18;
+        const minCardWidth = this.scale.width < 560 ? 72 : 70;
+        const fittedWidth = (playWidth - sidePadding * 2) / Math.max(hand.length, 1) - 8;
+        const cardWidth = mobileScrollable
+            ? Math.min(CardSprite.DEFAULT_WIDTH, Math.max(minCardWidth, playWidth / 5.4))
+            : Math.min(CardSprite.DEFAULT_WIDTH, Math.max(minCardWidth, fittedWidth));
         const cardHeight = cardWidth * 1.4;
         const spacing = Math.max(4, Math.min(10, cardWidth * 0.09));
         const totalWidth = hand.length * cardWidth + Math.max(0, hand.length - 1) * spacing;
-        const startX = (playWidth - totalWidth) / 2;
+        const startX = mobileScrollable ? sidePadding : (playWidth - totalWidth) / 2;
+        this.handScrollMax = mobileScrollable ? Math.max(0, totalWidth - (playWidth - sidePadding * 2)) : 0;
+        if (this.pendingLocalHandEntries > 0) {
+            this.handScrollOffset = this.handScrollMax;
+        }
+        this.setHandScrollOffset(this.handScrollOffset);
 
         hand.forEach((cardId, index) => {
             const x = startX + index * (cardWidth + spacing) + cardWidth / 2;
@@ -1387,9 +1776,70 @@ export class BattleScene extends Phaser.Scene {
             this.handContainer.add(card);
             this.handCards.push(card);
         });
+
+        if (this.pendingLocalHandEntries > 0) {
+            this.animateHandEntries(Math.min(this.pendingLocalHandEntries, this.handCards.length));
+            this.pendingLocalHandEntries = 0;
+        }
+    }
+
+    private getHandSwipeTop(): number {
+        return this.scale.height - (this.scale.width < 560 ? 176 : 142);
+    }
+
+    private setHandScrollOffset(offset: number): void {
+        this.handScrollOffset = Phaser.Math.Clamp(offset, 0, this.handScrollMax);
+        this.handContainer.x = -this.handScrollOffset;
+    }
+
+    private animateHandEntries(count: number): void {
+        const arriving = this.handCards.slice(-count);
+        const handY = this.handContainer.y;
+        const deckEntryWorldX = this.scale.width >= 920
+            ? this.scale.width - 390
+            : this.scale.width - 36;
+        arriving.forEach((card, index) => {
+            const destination = { x: card.x, y: card.y };
+            card.setPosition(deckEntryWorldX - this.handContainer.x, -handY + this.scale.height - 250)
+                .setAlpha(0.18)
+                .setScale(0.72);
+            this.tweens.add({
+                targets: card,
+                x: destination.x,
+                y: destination.y,
+                alpha: 1,
+                scaleX: 1,
+                scaleY: 1,
+                delay: index * 75,
+                duration: 390,
+                ease: 'Cubic.Out',
+                onComplete: () => {
+                    const marker = this.add.rectangle(
+                        this.handContainer.x + destination.x,
+                        this.handContainer.y + destination.y,
+                        card.width + 8,
+                        card.height + 8,
+                        0x4ecdc4,
+                        0.08,
+                    ).setStrokeStyle(2, 0x4ecdc4, 0.95).setDepth(2250);
+                    this.tweens.add({
+                        targets: marker,
+                        alpha: 0,
+                        scaleX: 1.08,
+                        scaleY: 1.08,
+                        duration: 280,
+                        onComplete: () => marker.destroy(),
+                    });
+                },
+            });
+        });
     }
 
     private syncBlockWithState(block: TimelineBlock, data: TimelineBlockData): void {
+        if (data.protagonistCardId) {
+            const protagonist = this.getCardDisplayData(data.protagonistCardId);
+            block.placeProtagonist(data.protagonistCardId, protagonist.name);
+        }
         for (const slotData of data.slots) {
             if (slotData.cardId) {
                 const cardData = this.getCardDisplayData(slotData.cardId);
@@ -1432,7 +1882,7 @@ export class BattleScene extends Phaser.Scene {
     private getBoardY(): number {
         const { width, height } = this.scale;
         if (width < 560) {
-            return Phaser.Math.Clamp(height * 0.62, 510, Math.max(510, height - 210));
+            return Phaser.Math.Clamp(height * 0.54, 420, Math.max(420, height - 275));
         }
         return Phaser.Math.Clamp(height * 0.48, 275, Math.max(275, height - 235));
     }
@@ -1440,6 +1890,10 @@ export class BattleScene extends Phaser.Scene {
     private getBoardX(): number {
         const { width } = this.scale;
         return width >= 920 ? (width - 330) / 2 : width / 2;
+    }
+
+    private getArcNavigationX(): number {
+        return this.scale.width < 560 ? 22 : 44;
     }
 
     private getActionButtonX(): number {
@@ -1478,7 +1932,7 @@ export class BattleScene extends Phaser.Scene {
                 this.previousFillerByPlayer[player.username] = player.fillerPoints;
                 this.previousHandCountByPlayer[player.username] = player.hand.length;
             });
-            this.renderActiveEffects();
+            this.announceTurn(next.activePlayerId, next.turnNumber);
             return;
         }
 
@@ -1493,11 +1947,14 @@ export class BattleScene extends Phaser.Scene {
             next.players.forEach(player => {
                 const prevFiller = this.previousFillerByPlayer[player.username] ?? previous.players.find(p => p.username === player.username)?.fillerPoints ?? 0;
                 this.previousFillerByPlayer[player.username] = player.fillerPoints;
-                const prevHandCount = this.previousHandCountByPlayer[player.username]
-                    ?? previous.players.find(p => p.username === player.username)?.hand.length
-                    ?? player.hand.length;
-                if (player.hand.length > prevHandCount) {
-                    this.time.delayedCall(90, () => this.playDrawCardEffect(player.username, player.hand.length - prevHandCount));
+                const previousHand = previous.players.find(p => p.username === player.username)?.hand ?? [];
+                const entries = this.countNewHandEntries(previousHand, player.hand);
+                if (entries > 0) {
+                    if (player.username === this.myUsername) {
+                        this.pendingLocalHandEntries += entries;
+                    } else {
+                        this.time.delayedCall(90, () => this.playDrawCardEffect(player.username, entries));
+                    }
                 }
                 this.previousHandCountByPlayer[player.username] = player.hand.length;
             });
@@ -1505,14 +1962,30 @@ export class BattleScene extends Phaser.Scene {
 
         const hasTurnLog = newEntries.some(entry => entry.action === 'turn_start');
         if (!hasTurnLog && this.lastActivePlayerId !== next.activePlayerId) {
+            this.announceTurn(next.activePlayerId, next.turnNumber);
         }
         this.lastActivePlayerId = next.activePlayerId;
-        this.renderActiveEffects();
+    }
+
+    private countNewHandEntries(previousHand: string[], currentHand: string[]): number {
+        const previousCopies = new Map<string, number>();
+        previousHand.forEach(cardId => previousCopies.set(cardId, (previousCopies.get(cardId) ?? 0) + 1));
+        let additions = 0;
+        currentHand.forEach(cardId => {
+            const copies = previousCopies.get(cardId) ?? 0;
+            if (copies > 0) {
+                previousCopies.set(cardId, copies - 1);
+            } else {
+                additions += 1;
+            }
+        });
+        return additions;
     }
 
     private announceLogEntry(entry: LogEntry): void {
         switch (entry.action) {
             case 'turn_start':
+                this.announceTurn(entry.player, entry.turn);
                 break;
             case 'play_card': {
                 const card = this.findCardFromLog(entry.details);
@@ -1524,6 +1997,14 @@ export class BattleScene extends Phaser.Scene {
                 const card = this.findCardFromLog(entry.details);
                 this.playConfiguredSound(card?.sound || this.uiSettings.playCardSound);
                 this.playConfiguredEffect(this.uiSettings.eventReadyEffect, 'event');
+                break;
+            }
+            case 'quick_event_resolved': {
+                const card = this.findCardFromLog(entry.details);
+                if (!card) break;
+                this.playConfiguredSound(card.sound || this.uiSettings.playCardSound);
+                this.playConfiguredEffect(this.uiSettings.playCardEffect, 'event');
+                this.enqueueQuickEventPresentation(card, entry.player);
                 break;
             }
             case 'event_complete': {
@@ -1541,19 +2022,39 @@ export class BattleScene extends Phaser.Scene {
                 });
                 break;
             }
+            case 'climax_revealed':
+                this.playLocationChangeEffect('final');
+                this.enqueueBanner('CLIMAX', `${entry.player} desata ${entry.details ?? 'su desenlace'}`, 'final');
+                break;
+            case 'climax_pending':
+                this.enqueueBanner('CLIMAX PENDIENTE', 'El rival puede responder con Plot-Twist', 'danger');
+                break;
+            case 'plot_twist_offered':
+                this.enqueueBanner('PLOT-TWIST', `${entry.player} tiene una ultima respuesta`, 'danger');
+                break;
+            case 'plot_twist_complete':
+                this.playLocationChangeEffect('danger');
+                this.enqueueBanner('PLOT-TWIST', `${entry.player} altera el desenlace`, 'danger');
+                break;
             case 'act_checkpoint':
                 this.playConfiguredEffect(this.uiSettings.phaseAdvanceEffect, 'turn');
-                break;
-            case 'effect_resolved':
-                this.effectEntries.push(`<strong>${this.escapeHtml(entry.player)}</strong>: ${this.escapeHtml(entry.details ?? 'Efecto resuelto')}`);
-                this.effectEntries = this.effectEntries.slice(-18);
-                this.renderActiveEffects();
                 break;
             case 'victory':
                 this.playConfiguredEffect(this.uiSettings.victoryEffect, 'final');
                 this.enqueueBanner('VICTORIA', `${entry.player} gana la partida`, 'final');
                 break;
         }
+    }
+
+    private announceTurn(playerName: string, turnNumber: number): void {
+        const key = `${turnNumber}:${playerName}`;
+        if (this.lastTurnBannerKey === key) return;
+        this.lastTurnBannerKey = key;
+        if (playerName === this.myUsername) {
+            this.enqueueBanner('TU TURNO', `Turno ${turnNumber}`, 'turn');
+            return;
+        }
+        this.enqueueBanner(`TURNO DE ${playerName.toUpperCase()}`, `Turno ${turnNumber}`, 'neutral');
     }
 
     private appendNarrativeEntry(entry: LogEntry): void {
@@ -1589,6 +2090,10 @@ export class BattleScene extends Phaser.Scene {
                     `Cambio de plano: ${player} entra en accion.`,
                     `${player} escucha el tema principal subir de volumen.`,
                 ]);
+            case 'turn_income':
+                return `${player} recibe <strong>+1 SP</strong> al comenzar el turno.`;
+            case 'chat':
+                return `<strong>(${player})</strong> ${this.escapeHtml(entry.details ?? '')}`;
             case 'play_card':
                 return this.pickNarrative(entry, [
                     `${player} pone en escena ${cardName}.`,
@@ -1601,6 +2106,12 @@ export class BattleScene extends Phaser.Scene {
                     `${player} deja listo ${cardName}; el arco espera el cierre del turno.`,
                     `${cardName} queda cargado en el centro, a punto de disparar la siguiente fase.`,
                     `${player} reune las piezas para ${cardName}, pero la resolucion espera.`,
+                ]);
+            case 'quick_event_resolved':
+                return this.pickNarrative(entry, [
+                    `${player} acelera la escena con ${cardName}.`,
+                    `${cardName} irrumpe como Quick Event de ${player}.`,
+                    `${player} responde al instante con ${cardName}.`,
                 ]);
             case 'event_waiting':
                 return this.pickNarrative(entry, [
@@ -1620,6 +2131,16 @@ export class BattleScene extends Phaser.Scene {
                         `${cardName} se resuelve al cierre del turno y abre un nuevo arco.`,
                         `Los requisitos encajan; ${player} hace avanzar la historia con ${cardName}.`,
                     ]);
+            case 'protagonist_enter':
+                return `${player} comienza su historia como ${cardName}.`;
+            case 'climax_revealed':
+                return `${player} alcanza su Climax con ${cardName}.`;
+            case 'climax_pending':
+                return `El Climax de ${player} queda pendiente: el rival busca un Plot-Twist.`;
+            case 'plot_twist_offered':
+                return `${player} recibe la oportunidad de activar ${cardName}.`;
+            case 'plot_twist_complete':
+                return `${player} activa ${cardName} y modifica el desenlace.`;
             case 'act_checkpoint':
                 return this.pickNarrative(entry, [
                     `La serie entra en punto de acto: ${this.escapeHtml(entry.details ?? 'el tempo cambia de manos')}.`,
@@ -1634,9 +2155,9 @@ export class BattleScene extends Phaser.Scene {
                 ]);
             case 'cards_to_cemetery':
                 return this.pickNarrative(entry, [
-                    `${player} envia sus materiales al Cementerio: ${this.escapeHtml(entry.details ?? '')}`,
-                    `El arco se cierra y el Cementerio recibe la escena: ${this.escapeHtml(entry.details ?? '')}`,
-                    `Las cartas usadas abandonan el campo de ${player}: ${this.escapeHtml(entry.details ?? '')}`,
+                    `${player} envia al Cementerio: ${this.escapeHtml(entry.details ?? '')}`,
+                    `El Cementerio recibe la carta descartada: ${this.escapeHtml(entry.details ?? '')}`,
+                    `${this.escapeHtml(entry.details ?? '')} abandona la escena de ${player}.`,
                 ]);
             case 'return_to_hand':
                 return this.pickNarrative(entry, [
@@ -1664,38 +2185,6 @@ export class BattleScene extends Phaser.Scene {
     private pickNarrative(entry: LogEntry, variants: string[]): string {
         const seed = (entry.timestamp || 0) + entry.turn * 17 + entry.action.length * 31 + (entry.details?.length || 0);
         return variants[Math.abs(seed) % variants.length];
-    }
-
-    private renderActiveEffects(): void {
-        if (!this.narrativeEffectsContent || !this.matchState) return;
-
-        const rows = this.matchState.players.flatMap(player =>
-            (player.statusEffects || []).map(effect => this.formatStatusEffect(player.username, effect))
-        );
-        const allRows = [...rows, ...this.effectEntries];
-
-        this.narrativeEffectsContent.innerHTML = allRows.length
-            ? allRows.map(row => `<p>${row}</p>`).join('')
-            : '<p>No hay efectos persistentes activos.</p>';
-    }
-
-    private formatStatusEffect(username: string, effect: StatusEffect): string {
-        const owner = this.escapeHtml(username);
-        const source = this.escapeHtml(effect.sourceName || effect.sourceCardId);
-        if (effect.type === 'BLOCK_CARD_TYPE') {
-            return `<strong>${owner}</strong>: No puedes jugar cartas de <strong>${this.escapeHtml(String(effect.cardType || 'ese tipo'))}</strong> por ${source}. Restan ${effect.turnsRemaining} turno(s).`;
-        }
-        if (effect.type === 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN') {
-            const card = effect.cardId ? this.getCardDisplayData(effect.cardId).name : 'una carta';
-            return `<strong>${owner}</strong>: <strong>${this.escapeHtml(card)}</strong> esta silenciada por ${source}. Restan ${effect.turnsRemaining} turno(s).`;
-        }
-        if (effect.type === 'NEXT_EVENT_REDUCE_REQUIREMENT') {
-            return `<strong>${owner}</strong>: el proximo Evento requiere 1 condicion menos por ${source}.`;
-        }
-        if (effect.type === 'EXTRA_DRAW_NEXT_TURN') {
-            return `<strong>${owner}</strong>: Robara ${effect.value || 1} carta extra por ${source}.`;
-        }
-        return `<strong>${owner}</strong>: ${this.escapeHtml(effect.message || effect.type)}.`;
     }
 
     private escapeHtml(value: string): string {
@@ -2071,14 +2560,14 @@ export class BattleScene extends Phaser.Scene {
         if (cardId.includes('final')) return 'EVENT_FINAL';
         if (cardId.includes('event') || cardId.includes('training') || cardId.includes('tournament') || cardId.includes('arc')) return 'EVENT';
         if (cardId.includes('filler')) return 'FILLER';
-        if (cardId.includes('token')) return 'TOKEN';
+        if (cardId.includes('token')) return 'QUICK_EVENT';
         if (cardId.includes('dojo') || cardId.includes('school') || cardId.includes('arena')) return 'LOCATION';
         if (cardId.includes('item')) return 'ITEM';
         return 'PERSONAJE';
     }
 
     private isEventType(type: string): boolean {
-        return type === 'EVENT' || type === 'EVENT_KEY' || type === 'EVENT_FINAL';
+        return type === 'EVENT' || type === 'EVENT_KEY' || type === 'EVENT_FINAL' || type === 'CLIMAX_EVENT' || type === 'PLOT_TWIST_EVENT';
     }
 
     private showGameOver(payload: { winner: string; reason: string }): void {

@@ -8,6 +8,10 @@ import {
     LobbyCreatePayload,
     LobbyJoinPayload,
     LobbyReadyPayload,
+    LobbyChallengePayload,
+    LobbyChallengeResponsePayload,
+    MatchSpectatePayload,
+    MatchChatPayload,
     MatchActionPayload,
     ServerMessage,
     ErrorPayload,
@@ -31,6 +35,7 @@ interface AuthenticatedClient extends WebSocket {
     username?: string;
     matchId?: string;
     lobbyId?: string;
+    spectatingMatchId?: string;
     isAlive: boolean;
 }
 
@@ -178,10 +183,34 @@ function handleMessage(
             break;
         }
 
+        case ClientMessageType.LOBBY_CHALLENGE: {
+            const { lobbyId, targetUsername, deckId, timerEnabled, privateMatch } = payload as LobbyChallengePayload;
+            handleLobbyChallenge(client, lobbyId, targetUsername, deckId, timerEnabled === true, privateMatch === true, connections);
+            break;
+        }
+
+        case ClientMessageType.LOBBY_CHALLENGE_RESPONSE: {
+            const { challengeId, accepted, deckId } = payload as LobbyChallengeResponsePayload;
+            handleLobbyChallengeResponse(client, challengeId, accepted, deckId, connections);
+            break;
+        }
+
         // ========== Match Actions ==========
         case ClientMessageType.MATCH_ACTION: {
             const { matchId, action } = payload as MatchActionPayload;
             handleMatchAction(client, matchId, action, connections);
+            break;
+        }
+
+        case ClientMessageType.MATCH_SPECTATE: {
+            const { matchId } = payload as MatchSpectatePayload;
+            handleMatchSpectate(client, matchId);
+            break;
+        }
+
+        case ClientMessageType.MATCH_CHAT: {
+            const { matchId, message: chatMessage } = payload as MatchChatPayload;
+            handleMatchChat(client, matchId, chatMessage, connections);
             break;
         }
 
@@ -317,14 +346,7 @@ function handleLobbyJoin(
     const result = lobbyService.joinLobby(code, client.username);
     if (result.success && result.lobby) {
         client.lobbyId = result.lobby.lobbyId;
-
-        // Notify all players in lobby
-        result.lobby.players.forEach(p => {
-            const playerClient = connections.get(p.username);
-            if (playerClient) {
-                sendMessage(playerClient, ServerMessageType.LOBBY_STATE, { lobby: result.lobby! });
-            }
-        });
+        broadcastLobby(result.lobby, connections);
 
         console.log(`WS: ${client.username} joined lobby ${code}`);
     } else {
@@ -349,13 +371,7 @@ function handleLobbyReady(
 
     const lobby = result.lobby!;
 
-    // Notify all players
-    lobby.players.forEach(p => {
-        const playerClient = connections.get(p.username);
-        if (playerClient) {
-            sendMessage(playerClient, ServerMessageType.LOBBY_STATE, { lobby });
-        }
-    });
+    broadcastLobby(lobby, connections);
 
     // Check if match should start
     if (lobbyService.isLobbyReady(lobbyId)) {
@@ -395,15 +411,95 @@ function handleLobbyLeave(client: AuthenticatedClient, connections: Map<string, 
 
     // Notify remaining players
     if (result.lobby) {
-        result.lobby.players.forEach(p => {
-            const playerClient = connections.get(p.username);
-            if (playerClient) {
-                sendMessage(playerClient, ServerMessageType.LOBBY_STATE, { lobby: result.lobby! });
-            }
-        });
+        broadcastLobby(result.lobby, connections);
     }
 
     console.log(`WS: ${client.username} left lobby`);
+}
+
+function handleLobbyChallenge(
+    client: AuthenticatedClient,
+    lobbyId: string,
+    targetUsername: string,
+    deckId: string,
+    timerEnabled: boolean,
+    privateMatch: boolean,
+    connections: Map<string, AuthenticatedClient>,
+) {
+    if (!client.username) return;
+    const result = lobbyService.createChallenge(lobbyId, client.username, targetUsername, deckId, timerEnabled, privateMatch);
+    if (!result.success || !result.challenge) {
+        sendError(client, ErrorCode.INVALID_ACTION, result.error || 'No se pudo enviar el reto');
+        return;
+    }
+    const target = connections.get(targetUsername);
+    if (!target) {
+        sendError(client, ErrorCode.INVALID_ACTION, 'El usuario no esta conectado');
+        return;
+    }
+    sendMessage(target, ServerMessageType.LOBBY_INVITE, {
+        challengeId: result.challenge.challengeId,
+        lobbyId,
+        fromUsername: client.username,
+        timerEnabled,
+        privateMatch,
+    });
+    sendMessage(client, ServerMessageType.LOBBY_INVITE_RESULT, {
+        message: `Invitacion enviada a ${targetUsername}.`,
+    });
+}
+
+function handleLobbyChallengeResponse(
+    client: AuthenticatedClient,
+    challengeId: string,
+    accepted: boolean,
+    deckId: string | undefined,
+    connections: Map<string, AuthenticatedClient>,
+) {
+    if (!client.username) return;
+    const result = lobbyService.answerChallenge(challengeId, client.username, accepted, deckId);
+    if (!result.success || !result.challenge || !result.lobby) {
+        sendError(client, ErrorCode.INVALID_ACTION, result.error || 'No se pudo responder la invitacion');
+        return;
+    }
+    const challenger = connections.get(result.challenge.fromUsername);
+    if (!accepted) {
+        if (challenger) {
+            sendMessage(challenger, ServerMessageType.LOBBY_INVITE_RESULT, {
+                message: `${client.username} rechazo la invitacion.`,
+            });
+        }
+        return;
+    }
+    const match = matchService.createMatch(
+        result.challenge.fromUsername,
+        result.challenge.fromDeckId,
+        client.username,
+        deckId!,
+        result.lobby.formatId,
+        result.challenge.timerEnabled,
+    );
+    const lobby = lobbyService.recordMatch(result.lobby.lobbyId, {
+        matchId: match.matchId,
+        players: [result.challenge.fromUsername, client.username],
+        timerEnabled: result.challenge.timerEnabled,
+        privateMatch: result.challenge.privateMatch,
+        status: 'active',
+    });
+    if (lobby) broadcastLobby(lobby, connections);
+    [result.challenge.fromUsername, client.username].forEach(playerUsername => {
+        const playerClient = connections.get(playerUsername);
+        if (!playerClient) return;
+        playerClient.matchId = match.matchId;
+        playerClient.lobbyId = undefined;
+        sendMessage(playerClient, ServerMessageType.MATCH_FOUND, { matchId: match.matchId });
+        sendMessage(playerClient, ServerMessageType.MATCH_STATE, { matchState: match });
+    });
+    if (challenger) {
+        sendMessage(challenger, ServerMessageType.LOBBY_INVITE_RESULT, {
+            message: `${client.username} acepto la invitacion.`,
+        });
+    }
 }
 
 // ============================================
@@ -434,23 +530,21 @@ function handleMatchAction(
     try {
         const updatedMatch = matchService.processAction(matchId, client.username, action);
 
-        // Broadcast to both players
-        match.playerOrder.forEach(username => {
-            const playerClient = connections.get(username);
-            if (playerClient) {
-                sendMessage(playerClient, ServerMessageType.MATCH_STATE, { matchState: updatedMatch });
-
-                // Check for game end
-                if (updatedMatch.winner) {
-                    sendMessage(playerClient, ServerMessageType.MATCH_ENDED, {
-                        matchId: updatedMatch.matchId,
-                        winner: updatedMatch.winner,
-                        reason: updatedMatch.winReason || 'victory',
-                    });
-                    playerClient.matchId = undefined;
-                }
-            }
-        });
+        broadcastMatchState(updatedMatch.matchId, updatedMatch, connections);
+        if (updatedMatch.winner) {
+            match.playerOrder.forEach(username => {
+                const playerClient = connections.get(username);
+                if (!playerClient) return;
+                sendMessage(playerClient, ServerMessageType.MATCH_ENDED, {
+                    matchId: updatedMatch.matchId,
+                    winner: updatedMatch.winner!,
+                    reason: updatedMatch.winReason || 'victory',
+                });
+                playerClient.matchId = undefined;
+            });
+            const lobby = lobbyService.completeMatch(updatedMatch.matchId, updatedMatch.winner);
+            if (lobby) broadcastLobby(lobby, connections);
+        }
 
     } catch (err: any) {
         sendError(client, ErrorCode.INVALID_ACTION, err.message || 'Invalid action');
@@ -489,6 +583,48 @@ function handleMatchRejoin(
     sendMessage(client, ServerMessageType.MATCH_STATE, { matchState: match });
 }
 
+function handleMatchSpectate(client: AuthenticatedClient, matchId: string) {
+    if (!client.username) return;
+    const match = store.getMatch(matchId);
+    if (!match) {
+        sendError(client, ErrorCode.MATCH_NOT_FOUND, 'Match not found');
+        return;
+    }
+    if (!lobbyService.authorizeSpectator(matchId, client.username, client.lobbyId)) {
+        sendError(client, ErrorCode.INVALID_ACTION, 'No podes espectar esta partida');
+        return;
+    }
+    client.spectatingMatchId = matchId;
+    client.lobbyId = undefined;
+    sendMessage(client, ServerMessageType.MATCH_FOUND, { matchId, spectator: true });
+    sendMessage(client, ServerMessageType.MATCH_STATE, { matchState: match });
+}
+
+function handleMatchChat(
+    client: AuthenticatedClient,
+    matchId: string,
+    content: string,
+    connections: Map<string, AuthenticatedClient>,
+) {
+    if (!client.username) return;
+    const match = store.getMatch(matchId);
+    if (!match || !match.playerOrder.includes(client.username)) {
+        sendError(client, ErrorCode.INVALID_ACTION, 'Solo los jugadores pueden enviar mensajes');
+        return;
+    }
+    const text = String(content || '').trim().slice(0, 240);
+    if (!text) return;
+    match.log.push({
+        turn: match.turnNumber,
+        player: client.username,
+        action: 'chat',
+        details: text,
+        timestamp: Date.now(),
+    });
+    store.saveMatch(matchId, match);
+    broadcastMatchState(matchId, match, connections);
+}
+
 // ============================================
 // Disconnect Handler
 // ============================================
@@ -524,4 +660,19 @@ function sendMessage<T>(client: WebSocket, type: ServerMessageType, payload: T) 
 
 function sendError(client: WebSocket, code: ErrorCode | string, message: string) {
     sendMessage(client, ServerMessageType.ERROR, { code, message });
+}
+
+function broadcastLobby(lobby: NonNullable<ReturnType<typeof lobbyService.getLobby>>, connections: Map<string, AuthenticatedClient>) {
+    lobby.players.forEach(player => {
+        const playerClient = connections.get(player.username);
+        if (playerClient) sendMessage(playerClient, ServerMessageType.LOBBY_STATE, { lobby });
+    });
+}
+
+function broadcastMatchState(matchId: string, match: NonNullable<ReturnType<typeof store.getMatch>>, connections: Map<string, AuthenticatedClient>) {
+    connections.forEach(client => {
+        if (client.matchId === matchId || client.spectatingMatchId === matchId) {
+            sendMessage(client, ServerMessageType.MATCH_STATE, { matchState: match });
+        }
+    });
 }

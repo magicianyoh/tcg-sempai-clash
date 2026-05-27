@@ -271,15 +271,13 @@
         }
 
         .lobby-players {
-            display: flex;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
             gap: 20px;
-            justify-content: center;
             margin-bottom: 20px;
         }
 
         .player-slot {
-            flex: 1;
-            max-width: 200px;
             padding: 20px;
             background: rgba(255, 255, 255, 0.05);
             border: 2px solid rgba(255, 255, 255, 0.1);
@@ -305,6 +303,71 @@
         .player-status {
             font-size: 0.85rem;
             color: rgba(255, 255, 255, 0.6);
+        }
+
+        .lobby-settings {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            margin: 0 0 20px;
+            flex-wrap: wrap;
+        }
+
+        .lobby-settings label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 12px;
+            border: 1px solid rgba(255,255,255,.16);
+            border-radius: 8px;
+            color: rgba(255,255,255,.8);
+        }
+
+        .challenge-btn,
+        .spectate-btn {
+            margin-top: 12px;
+            padding: 8px 13px;
+            border: 1px solid #4ecdc4;
+            border-radius: 7px;
+            background: rgba(78,205,196,.13);
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .active-match-list {
+            display: grid;
+            gap: 8px;
+            margin: 12px 0 20px;
+        }
+
+        .active-match {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 8px;
+            color: rgba(255,255,255,.82);
+        }
+
+        .invite-panel {
+            margin-bottom: 20px;
+            padding: 18px;
+            border: 1px solid #4ecdc4;
+            border-radius: 10px;
+            background: rgba(78,205,196,.1);
+            text-align: center;
+        }
+
+        .invite-panel p {
+            margin-bottom: 12px;
+        }
+
+        .invite-actions {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
         }
 
         .lobby-actions {
@@ -432,7 +495,7 @@
                 <button class="match-btn cpu" id="cpu-match-btn">
                     <div class="icon">CPU</div>
                     <div class="title">Vs CPU</div>
-                    <div class="desc">Pick archetype and difficulty</div>
+                    <div class="desc">Elegir protagonista y dificultad</div>
                 </button>
             </div>
             <label class="timer-option">
@@ -450,22 +513,20 @@
                     <select class="select-input" id="cpu-archetype">
                         <option value="SHONEN">Shonen</option>
                         <option value="MECHA">Mecha</option>
-                        <option value="HAREM_INVERSO">Harem Inverso</option>
-                        <option value="SLICE_OF_LIFE">Slice of Life</option>
                         <option value="SHOJO">Shojo</option>
-                        <option value="HAREM">Harem</option>
                         <option value="ISEKAI">Isekai</option>
-                        <option value="SURVIVAL_GAME">Survival Game</option>
-                        <option value="SPOKON">Spokon</option>
-                        <option value="KAIJU">Kaiju</option>
                     </select>
+                </div>
+                <div>
+                    <label class="field-label" for="cpu-deck">Protagonista / Deck</label>
+                    <select class="select-input" id="cpu-deck"></select>
                 </div>
                 <div>
                     <label class="field-label" for="cpu-difficulty">Difficulty</label>
                     <select class="select-input" id="cpu-difficulty">
-                        <option value="easy">Easy - 1 play per turn</option>
-                        <option value="normal" selected>Normal - 2 plays per turn</option>
-                        <option value="hard">Hard - 3 plays per turn</option>
+                        <option value="easy">Facil - toma riesgos y comete errores</option>
+                        <option value="normal" selected>Normal - planifica su arco</option>
+                        <option value="hard">Dificil - optimiza Climax y respuesta</option>
                     </select>
                 </div>
             </div>
@@ -505,6 +566,17 @@
             <h2>Lobby</h2>
             <div class="lobby-info">
                 <div class="lobby-code" id="lobby-display-code">------</div>
+                <div class="invite-panel hidden" id="invite-panel">
+                    <p id="invite-copy"></p>
+                    <div class="invite-actions">
+                        <button class="ready-btn" id="accept-invite-btn">Aceptar</button>
+                        <button class="leave-btn" id="reject-invite-btn">Rechazar</button>
+                    </div>
+                </div>
+                <div class="lobby-settings">
+                    <label><input id="invite-timer-enabled" type="checkbox"> Timer 1 minuto</label>
+                    <label><input id="invite-private-enabled" type="checkbox"> Partida privada</label>
+                </div>
                 <div class="lobby-players" id="lobby-players">
                     <div class="player-slot empty">
                         <div class="player-name">Waiting...</div>
@@ -515,8 +587,11 @@
                         <div class="player-status">-</div>
                     </div>
                 </div>
+                <h2>Partidas activas</h2>
+                <div class="active-match-list" id="active-match-list">
+                    <p class="player-status">Todavia no hay partidas activas.</p>
+                </div>
                 <div class="lobby-actions">
-                    <button class="ready-btn" id="ready-btn">Ready</button>
                     <button class="leave-btn" id="leave-btn">Leave</button>
                 </div>
             </div>
@@ -525,16 +600,23 @@
     </div>
 
     <script>
-        const API_URL = window.location.origin;
+        const DEPLOY_API_URL = '%VITE_API_URL%';
+        const API_URL = DEPLOY_API_URL && !DEPLOY_API_URL.startsWith('%')
+            ? DEPLOY_API_URL.replace(/\/$/, '')
+            : window.location.origin;
         const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const WS_URL = `${WS_PROTOCOL}//${window.location.host}/ws`;
+        const DEPLOY_WS_URL = '%VITE_WS_URL%';
+        const WS_URL = DEPLOY_WS_URL && !DEPLOY_WS_URL.startsWith('%')
+            ? DEPLOY_WS_URL.replace(/\/$/, '')
+            : `${WS_PROTOCOL}//${window.location.host}/ws`;
 
         // State
         let ws = null;
         let currentLobby = null;
         let queueStartTime = null;
         let queueTimer = null;
-        let isReady = false;
+        let pendingInvite = null;
+        let cpuDecks = [];
 
         // Auth check
         const token = localStorage.getItem('token');
@@ -607,6 +689,12 @@
             return deckId;
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[char]));
+        }
+
         // Navigation
         document.getElementById('deck-btn').addEventListener('click', () => {
             window.location.href = '/build.html';
@@ -663,15 +751,26 @@
                     showLobby();
                     break;
 
+                case 'LOBBY_INVITE':
+                    pendingInvite = msg.payload;
+                    document.getElementById('invite-copy').textContent =
+                        `${pendingInvite.fromUsername} te invito a una partida${pendingInvite.privateMatch ? ' privada' : ''}${pendingInvite.timerEnabled ? ' con timer' : ''}.`;
+                    document.getElementById('invite-panel').classList.remove('hidden');
+                    break;
+
+                case 'LOBBY_INVITE_RESULT':
+                    document.getElementById('lobby-message').textContent = msg.payload.message;
+                    document.getElementById('lobby-message').className = 'message success';
+                    break;
+
                 case 'MATCH_FOUND':
                     console.log('Match found!', msg.payload.matchId);
                     localStorage.setItem('currentMatchId', msg.payload.matchId);
-                    window.location.href = `/battle.html?matchId=${msg.payload.matchId}`;
+                    window.location.href = `/battle.html?matchId=${msg.payload.matchId}${msg.payload.spectator ? '&spectator=1' : ''}`;
                     break;
 
                 case 'MATCH_STATE':
-                    // Initial state, redirect to battle
-                    if (msg.payload.matchState?.matchId) {
+                    if (msg.payload.matchState?.matchId && !window.location.pathname.endsWith('/battle.html')) {
                         localStorage.setItem('currentMatchId', msg.payload.matchState.matchId);
                         window.location.href = `/battle.html?matchId=${msg.payload.matchState.matchId}`;
                     }
@@ -719,10 +818,35 @@
         });
 
         // CPU Match
-        document.getElementById('cpu-match-btn').addEventListener('click', () => {
+        async function loadCpuDecks() {
+            const res = await fetch(`${API_URL}/prebuilt-decks`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await readJsonResponse(res);
+            if (!res.ok) throw new Error(data.error || 'No se pudieron cargar los decks CPU');
+            cpuDecks = data.decks || [];
+            renderCpuDecks();
+        }
+
+        function renderCpuDecks() {
+            const archetype = document.getElementById('cpu-archetype').value;
+            const decks = cpuDecks.filter(deck => deck.archetypeId === archetype);
+            document.getElementById('cpu-deck').innerHTML = decks.map(deck =>
+                `<option value="${deck.id}">${deck.protagonistName || deck.name}</option>`
+            ).join('');
+        }
+
+        document.getElementById('cpu-archetype').addEventListener('change', renderCpuDecks);
+        document.getElementById('cpu-match-btn').addEventListener('click', async () => {
             document.getElementById('main-options').classList.add('hidden');
             document.getElementById('join-section').classList.add('hidden');
             document.getElementById('cpu-panel').classList.remove('hidden');
+            try {
+                await loadCpuDecks();
+            } catch (err) {
+                document.getElementById('cpu-message').textContent = err.message;
+                document.getElementById('cpu-message').className = 'message error';
+            }
         });
 
         document.getElementById('cpu-back-btn').addEventListener('click', () => {
@@ -736,6 +860,7 @@
             const btn = document.getElementById('start-cpu-btn');
             const messageEl = document.getElementById('cpu-message');
             const cpuArchetypeId = document.getElementById('cpu-archetype').value;
+            const cpuDeckId = document.getElementById('cpu-deck').value;
             const difficulty = document.getElementById('cpu-difficulty').value;
 
             btn.disabled = true;
@@ -755,6 +880,7 @@
                     body: JSON.stringify({
                         deckId,
                         cpuArchetypeId,
+                        cpuDeckId,
                         difficulty,
                         formatId: 'standard',
                         timerEnabled: document.getElementById('cpu-timer-enabled').checked
@@ -824,65 +950,90 @@
             }));
         });
 
-        // Show Lobby
         function showLobby() {
             document.getElementById('main-options').classList.add('hidden');
             document.getElementById('join-section').classList.add('hidden');
             document.getElementById('queue-panel').classList.add('hidden');
             document.getElementById('lobby-panel').classList.remove('hidden');
-
             document.getElementById('lobby-display-code').textContent = currentLobby.code;
 
+            const matches = (currentLobby.activeMatches || []).filter(match => match.status === 'active');
+            const matchById = new Map(matches.map(match => [match.matchId, match]));
             const playersEl = document.getElementById('lobby-players');
-            playersEl.innerHTML = '';
-
-            for (let i = 0; i < 2; i++) {
-                const player = currentLobby.players[i];
-                if (player) {
-                    const slot = document.createElement('div');
-                    slot.className = 'player-slot' + (player.ready ? ' ready' : '');
-                    slot.innerHTML = `
-                        <div class="player-name">${player.username}</div>
-                        <div class="player-status">${player.ready ? '✓ Ready' : 'Waiting...'}</div>
-                    `;
-                    playersEl.appendChild(slot);
-
-                    if (player.username === username) {
-                        isReady = player.ready;
-                        updateReadyButton();
-                    }
-                } else {
-                    const slot = document.createElement('div');
-                    slot.className = 'player-slot empty';
-                    slot.innerHTML = `
-                        <div class="player-name">Waiting...</div>
-                        <div class="player-status">-</div>
-                    `;
-                    playersEl.appendChild(slot);
-                }
-            }
+            playersEl.innerHTML = currentLobby.players.map(player => `
+                <div class="player-slot ${player.activeMatchId ? 'ready' : ''}">
+                    <div class="player-name">${escapeHtml(player.username)}</div>
+                    <div class="player-status">${player.activeMatchId ? 'En partida' : 'Disponible'}</div>
+                    ${player.username !== username && !player.activeMatchId
+                        ? `<button class="challenge-btn" data-challenge="${escapeHtml(player.username)}">Retar</button>`
+                        : ''}
+                    ${player.username !== username && player.activeMatchId && !matchById.get(player.activeMatchId)?.privateMatch
+                        ? `<button class="spectate-btn" data-spectate="${escapeHtml(player.activeMatchId)}">Espectar</button>`
+                        : ''}
+                </div>
+            `).join('');
+            playersEl.querySelectorAll('[data-challenge]').forEach(button => {
+                button.addEventListener('click', () => invitePlayer(button.dataset.challenge));
+            });
+            playersEl.querySelectorAll('[data-spectate]').forEach(button => {
+                button.addEventListener('click', () => {
+                    ws.send(JSON.stringify({ type: 'MATCH_SPECTATE', payload: { matchId: button.dataset.spectate } }));
+                });
+            });
+            const matchesEl = document.getElementById('active-match-list');
+            matchesEl.innerHTML = matches.length
+                ? matches.map(match => `
+                    <div class="active-match">
+                        <span>${escapeHtml(match.players.join(' vs '))}${match.privateMatch ? ' / Privada' : ''}</span>
+                        ${!match.privateMatch && !match.players.includes(username)
+                            ? `<button class="spectate-btn" data-spectate="${escapeHtml(match.matchId)}">Espectar</button>`
+                            : ''}
+                    </div>
+                `).join('')
+                : '<p class="player-status">Todavia no hay partidas activas.</p>';
+            matchesEl.querySelectorAll('[data-spectate]').forEach(button => {
+                button.addEventListener('click', () => {
+                    ws.send(JSON.stringify({ type: 'MATCH_SPECTATE', payload: { matchId: button.dataset.spectate } }));
+                });
+            });
         }
 
-        function updateReadyButton() {
-            const btn = document.getElementById('ready-btn');
-            btn.textContent = isReady ? '✓ Ready!' : 'Ready';
-            btn.classList.toggle('is-ready', isReady);
-        }
-
-        // Ready Button
-        document.getElementById('ready-btn').addEventListener('click', async () => {
+        async function invitePlayer(targetUsername) {
             if (!currentLobby) return;
             const deckId = await ensureActiveDeck();
             if (!deckId) return;
-
             ws.send(JSON.stringify({
-                type: 'LOBBY_READY',
+                type: 'LOBBY_CHALLENGE',
                 payload: {
                     lobbyId: currentLobby.lobbyId,
+                    targetUsername,
                     deckId,
-                    timerEnabled: document.getElementById('match-timer-enabled').checked
+                    timerEnabled: document.getElementById('invite-timer-enabled').checked,
+                    privateMatch: document.getElementById('invite-private-enabled').checked
                 }
             }));
+        }
+
+        document.getElementById('accept-invite-btn').addEventListener('click', async () => {
+            if (!pendingInvite) return;
+            const deckId = await ensureActiveDeck();
+            if (!deckId) return;
+            ws.send(JSON.stringify({
+                type: 'LOBBY_CHALLENGE_RESPONSE',
+                payload: { challengeId: pendingInvite.challengeId, accepted: true, deckId }
+            }));
+            pendingInvite = null;
+            document.getElementById('invite-panel').classList.add('hidden');
+        });
+
+        document.getElementById('reject-invite-btn').addEventListener('click', () => {
+            if (!pendingInvite) return;
+            ws.send(JSON.stringify({
+                type: 'LOBBY_CHALLENGE_RESPONSE',
+                payload: { challengeId: pendingInvite.challengeId, accepted: false }
+            }));
+            pendingInvite = null;
+            document.getElementById('invite-panel').classList.add('hidden');
         });
 
         // Leave Lobby
@@ -891,7 +1042,8 @@
                 ws.send(JSON.stringify({ type: 'LOBBY_LEAVE', payload: {} }));
             }
             currentLobby = null;
-            isReady = false;
+            pendingInvite = null;
+            document.getElementById('invite-panel').classList.add('hidden');
             document.getElementById('lobby-panel').classList.add('hidden');
             document.getElementById('main-options').classList.remove('hidden');
             document.getElementById('join-section').classList.remove('hidden');

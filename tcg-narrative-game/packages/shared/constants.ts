@@ -10,8 +10,12 @@ export const WS_EVENTS = {
     LOBBY_JOIN: 'LOBBY_JOIN',
     LOBBY_READY: 'LOBBY_READY',
     LOBBY_LEAVE: 'LOBBY_LEAVE',
+    LOBBY_CHALLENGE: 'LOBBY_CHALLENGE',
+    LOBBY_CHALLENGE_RESPONSE: 'LOBBY_CHALLENGE_RESPONSE',
     MATCH_ACTION: 'MATCH_ACTION',
     MATCH_REJOIN: 'MATCH_REJOIN',
+    MATCH_SPECTATE: 'MATCH_SPECTATE',
+    MATCH_CHAT: 'MATCH_CHAT',
 
     // Legacy (keep for compatibility)
     JOIN_LOBBY: 'JOIN_LOBBY',
@@ -24,6 +28,8 @@ export const WS_EVENTS = {
     AUTH_OK: 'AUTH_OK',
     ERROR: 'ERROR',
     LOBBY_STATE: 'LOBBY_STATE',
+    LOBBY_INVITE: 'LOBBY_INVITE',
+    LOBBY_INVITE_RESULT: 'LOBBY_INVITE_RESULT',
     MATCH_FOUND: 'MATCH_FOUND',
     MATCH_STATE: 'MATCH_STATE',
     MATCH_ENDED: 'MATCH_ENDED',
@@ -48,16 +54,17 @@ export const GAME_CONSTANTS = {
     // Hand
     INITIAL_HAND_SIZE: 5,
     CARDS_DRAWN_PER_TURN: 2,
-    MAX_HAND_SIZE: 10,
+    MAX_HAND_SIZE: 20,
 
-    // Protagonist draw probability
-    PROTAGONIST_DRAW_CHANCE_INITIAL: 0.7,  // 70% in initial hand
-    PROTAGONIST_DRAW_CHANCE_EARLY: 0.5,    // 50% turns 2-3
-    PROTAGONIST_DRAW_CHANCE_LATE: 0.4,     // 40% later turns
+    // Opening arc accessibility. These are balance hypotheses for playtesting.
+    OPENING_ARC_CHANCE_INITIAL_HAND: 0.65,
+    OPENING_ARC_CHANCE_FIRST_DRAW: 0.65,
+    OPENING_ARC_CHANCE_SECOND_DRAW: 0.5,
+    OPENING_ARC_CHANCE_LATER_DRAW: 0.4,
 
     // Timeline
     SLOTS_PER_BLOCK: 4,
-    MAX_BLOCKS: 5,
+    MAX_BLOCKS: 7,
 
     // Points
     STORY_POINTS_PER_TURN: 2,
@@ -101,6 +108,13 @@ export const ARCHETYPES = {
 } as const;
 
 export type ArchetypeId = typeof ARCHETYPES[keyof typeof ARCHETYPES];
+
+export const V2_ARCHETYPES = [
+    ARCHETYPES.SHONEN,
+    ARCHETYPES.MECHA,
+    ARCHETYPES.SHOJO,
+    ARCHETYPES.ISEKAI,
+] as const;
 
 // ============================================
 // Archetype Metadata
@@ -204,6 +218,10 @@ export const CARD_TYPE_NAMES = {
     LOCATION: 'Locación',
     EVENT: 'Evento',
     EVENT_FINAL: 'Evento Final',
+    CLIMAX_EVENT: 'Evento Climax',
+    PLOT_TWIST_EVENT: 'Plot-Twist',
+    TOKEN: 'Quick Event',
+    QUICK_EVENT: 'Quick Event',
     // Legacy
     CHARACTER: 'Personaje',
     EVENT_KEY: 'Evento Clave',

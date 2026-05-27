@@ -141,3 +141,57 @@ Para exponer en red local:
 - WebSocket: usar `ws(s)://window.location.host/ws`.
 
 El proxy de Vite ya enruta `/auth`, `/decks`, `/cards`, `/admin`, `/cpu-match`, `/ui-settings`, `/wiki-content`, `/prebuilt-decks`, `/health` y `/ws`.
+
+### Panel de servidor Windows
+
+Desde la carpeta raiz `C:\sempai-clash`, abrir:
+
+```text
+SempaiClash-Servidor.cmd
+```
+
+El panel permite:
+
+- Encender, apagar o reiniciar backend y cliente.
+- Abrir el juego o el admin panel.
+- Copiar el enlace de juego accesible en la red local.
+- Revisar logs y generar un backup de `data/db.json`.
+
+El enlace copiado sirve para registro/login, builder, partidas online por lobby o matchmaking y partidas contra CPU, siempre que los jugadores esten en la misma red y Windows Firewall permita el puerto `8080`.
+
+Para compartir el juego fuera de la red local se necesita publicar la aplicacion o utilizar un tunel HTTPS/WebSocket seguro; el panel no abre puertos del router ni crea exposicion publica por si solo.
+
+## Android APK
+
+La app Android vive en `apps/android` y abre Senpai Clash dentro de un WebView con soporte para sesion local, JavaScript y WebSocket. Como el juego depende del backend, la APK necesita una URL accesible que sirva el cliente web y sus rutas proxy.
+
+Para probar desde un telefono en la misma red:
+
+```bash
+cd apps/server
+npm run dev
+
+cd ../client
+npm run dev
+```
+
+Instalar el APK y, en `Servidor`, ingresar la IP de la computadora:
+
+```text
+http://192.168.1.20:8080/auth.html
+```
+
+Reemplazar `192.168.1.20` por la IP local real. En el emulador Android, la URL predeterminada es `http://10.0.2.2:8080/auth.html`. Para un despliegue fuera de la red local, configurar una URL `https://` que exponga tambien el WebSocket seguro (`wss://`).
+
+Build debug instalable:
+
+```powershell
+cd apps/android
+.\gradlew.bat assembleDebug
+```
+
+Salida:
+
+```text
+apps/android/app/build/outputs/apk/debug/app-debug.apk
+```

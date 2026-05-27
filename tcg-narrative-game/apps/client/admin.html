@@ -419,10 +419,10 @@
                             <option value="PERSONAJE">Personaje</option>
                             <option value="ITEM">Item</option>
                             <option value="LOCATION">Locacion</option>
-                            <option value="TOKEN">Token</option>
+                            <option value="QUICK_EVENT">Quick Event</option>
                             <option value="EVENT">Evento</option>
-                            <option value="EVENT_FINAL">Evento final</option>
-                            <option value="FILLER">Filler</option>
+                            <option value="CLIMAX_EVENT">Evento Climax</option>
+                            <option value="PLOT_TWIST_EVENT">Plot-Twist</option>
                         </select>
                     </label>
                     <label>Arquetipo
@@ -430,6 +430,12 @@
                     </label>
                     <label>Costo
                         <input id="card-cost" type="number">
+                    </label>
+                    <label>Recurso del costo
+                        <select id="card-cost-resource">
+                            <option value="SP">SP (Story Points)</option>
+                            <option value="FP">FP (Filler Points)</option>
+                        </select>
                     </label>
                     <label>Imagen
                         <input id="card-image" placeholder="url o asset id">
@@ -455,7 +461,7 @@
                     <label style="grid-column: 1 / -1;">Requisitos de activaciÃ³n
                         <textarea id="card-requirements" placeholder="Escribe : para buscar cartas del mismo arquetipo. TambiÃ©n puedes usar SP>=12 o FP<=6."></textarea>
                     </label>
-                    <label>Efectos JSON
+                    <label style="display:none;">Efectos JSON
                         <textarea id="card-effects"></textarea>
                     </label>
                     <div style="grid-column: 1 / -1;">
@@ -473,9 +479,16 @@
                                     <option value="NEXT_EVENT_REDUCE_REQUIREMENT">Reducir requisito del proximo evento</option>
                                     <option value="INVOKE_CARD_TO_OPPONENT_HAND">Invocar carta a mano rival</option>
                                     <option value="HAND_SP_DECAY_PERCENT">Perdida de SP en mano</option>
+                                    <option value="HAND_RANDOM_FILLER_THEN_DISCARD">FP aleatorio en mano y descarte</option>
                                     <option value="EXTRA_DRAW_NEXT_TURN">Robo extra proximo turno</option>
                                     <option value="REMOVE_OPPONENT_BOARD_CARD">Remover carta rival del campo</option>
-                                    <option value="VICTORY">Victoria</option>
+                                    <option value="SEARCH_CLIMAX">Buscar Climax en el deck</option>
+                                    <option value="SEARCH_CARD_TYPE">Buscar tipo de carta en el deck</option>
+                                    <option value="RECOVER_FROM_CEMETERY">Recuperar del Cementerio</option>
+                                    <option value="RECOVER_FROM_COMPLETED_ARC">Recuperar de arco completado</option>
+                                    <option value="MODIFY_CLIMAX_LEVEL">Reducir nivel Climax</option>
+                                    <option value="PROTECT_PROTAGONIST">Proteger protagonista</option>
+                                    <option value="SILENCE_PROTAGONIST_NEXT_EVENT">Silenciar protagonista rival</option>
                                 </select>
                             </label>
                             <label>Objetivo
@@ -493,13 +506,14 @@
                                     <option value="PERSONAJE">Personaje</option>
                                     <option value="ITEM">Item</option>
                                     <option value="LOCATION">Locacion</option>
-                                    <option value="TOKEN">Token</option>
+                                    <option value="QUICK_EVENT">Quick Event</option>
                                     <option value="EVENT">Evento</option>
-                                    <option value="EVENT_FINAL">Evento final</option>
+                                    <option value="CLIMAX_EVENT">Evento Climax</option>
+                                    <option value="PLOT_TWIST_EVENT">Plot-Twist</option>
                                 </select>
                             </label>
                             <label>Carta objetivo/invocada
-                                <input id="effect-card-id" placeholder="id de carta">
+                                <input id="effect-card-id" placeholder="Escribe : para seleccionar carta">
                             </label>
                             <label>Turnos
                                 <input id="effect-turns" type="number" value="1">

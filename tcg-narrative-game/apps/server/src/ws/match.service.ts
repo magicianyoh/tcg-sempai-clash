@@ -1,139 +1,111 @@
-import { MatchState, PlayerState, BoardState, LogEntry, DeckData, CardData, CardType, TimelineBlock, TimelineSlot } from '@tcg/shared/types';
-import { ARCHETYPES, GAME_CONSTANTS, SLOT_POSITIONS } from '@tcg/shared/constants';
+import { BoardState, CardData, CardType, DeckData, EffectType, MatchState, PlayerState, TimelineBlock, TimelineSlot } from '@tcg/shared/types';
+import { GAME_CONSTANTS, SLOT_POSITIONS, V2_ARCHETYPES } from '@tcg/shared/constants';
 import { MatchActionType } from '@tcg/shared/protocol';
-import { store } from '../store/memory.store';
 import { CARDS } from '@tcg/game-engine/content/cards';
-import { canPlayCard, canReturnToHand, evaluateEventPrerequisites, evaluateRequirements, getEffectiveRequirements } from '@tcg/game-engine/rules/validation';
+import { canPlayCard, canReturnToHand, evaluateEventPrerequisites, evaluateRequirements } from '@tcg/game-engine/rules/validation';
 import { resolveEffects } from '@tcg/game-engine/rules/effect';
+import { store } from '../store/memory.store';
 import { chooseCpuPlay } from './cpu.strategy';
+import { getPrebuiltDecks } from '../decks/prebuilt-decks';
 
-// ============================================
-// Match Service
-// ============================================
+export type CpuDifficulty = 'easy' | 'normal' | 'hard';
+const MATCH_TIMER_SECONDS = 60;
+export const TURN_STORY_INCOME = 1;
+export const TURN_FILLER_INCOME = 2;
+
+export function grantTurnStoryIncome(match: MatchState): void {
+    match.players.forEach(player => {
+        player.storyPoints += TURN_STORY_INCOME;
+        player.historyPoints = player.storyPoints;
+        const fillerEconomy = Boolean(player.protagonistId && CARDS[player.protagonistId]?.costResource === 'FP');
+        if (fillerEconomy) player.fillerPoints += TURN_FILLER_INCOME;
+        match.log.push({
+            turn: match.turnNumber,
+            player: player.username,
+            action: 'turn_income',
+            details: fillerEconomy
+                ? `+${TURN_STORY_INCOME} SP y +${TURN_FILLER_INCOME} FP por inicio del turno ${match.turnNumber}.`
+                : `+${TURN_STORY_INCOME} SP por inicio del turno ${match.turnNumber}.`,
+            timestamp: Date.now(),
+        });
+    });
+}
 
 function generateMatchId(): string {
-    return 'match_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    return `match_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-const MATCH_TIMER_SECONDS = 60;
+type RandomSource = () => number;
 
-function shuffle<T>(array: T[]): T[] {
-    const result = [...array];
-    for (let i = result.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [result[i], result[j]] = [result[j], result[i]];
+function shuffle<T>(source: T[], random: RandomSource = Math.random): T[] {
+    const value = [...source];
+    for (let index = value.length - 1; index > 0; index--) {
+        const next = Math.floor(random() * (index + 1));
+        [value[index], value[next]] = [value[next], value[index]];
     }
-    return result;
+    return value;
 }
 
-function getStoryRequirement(card: CardData): number {
-    return Math.max(
-        0,
-        ...(card.requirements || [])
-            .filter(req => req.type === 'STORY_MIN')
-            .map(req => req.value || 0)
+function findInitialProtagonist(deck: DeckData): CardData {
+    const explicit = deck.protagonistId ? CARDS[deck.protagonistId] : undefined;
+    if (explicit?.type === CardType.PROTAGONIST && explicit.formIndex === 0) return explicit;
+    const fallback = Object.values(CARDS).find(card =>
+        card.archetype === deck.archetypeId && card.type === CardType.PROTAGONIST && card.formIndex === 0
     );
+    if (!fallback) throw new Error(`Deck ${deck.id} does not define a valid V2 protagonist`);
+    return fallback;
 }
 
-function getActBucket(cardId: string): 1 | 2 | 3 {
-    const card = CARDS[cardId];
-    if (!card) return 2;
-    const storyRequirement = getStoryRequirement(card);
-
-    if (card.type === CardType.EVENT_FINAL || storyRequirement >= 20 || card.cost >= 5) return 3;
-    if (storyRequirement > 10 || card.cost >= 3) return 2;
-    return 1;
-}
-
-function arrangeDeckForActs(cards: string[]): string[] {
-    const buckets: Record<1 | 2 | 3, string[]> = { 1: [], 2: [], 3: [] };
-    for (const cardId of cards) {
-        buckets[getActBucket(cardId)].push(cardId);
-    }
-    return [...buckets[1], ...buckets[2], ...buckets[3]];
-}
-
-/**
- * Apply protagonist draw probability.
- * Returns a shuffled deck with protagonist weighted toward early positions.
- */
-function shuffleWithProtagonistBias(cards: string[], turnNumber: number = 0): string[] {
-    const protagonists: string[] = [];
-    const others: string[] = [];
-
-    for (const cardId of cards) {
-        const card = CARDS[cardId];
-        if (card?.type === CardType.PROTAGONIST || card?.tags?.includes('protagonist')) {
-            protagonists.push(cardId);
-        } else {
-            others.push(cardId);
-        }
-    }
-
-    // Shuffle non-protagonist cards
-    const shuffledOthers = shuffle(others);
-
-    // Determine protagonist position based on probability
-    let probability = GAME_CONSTANTS.PROTAGONIST_DRAW_CHANCE_INITIAL;
-    if (turnNumber >= 2 && turnNumber <= 3) {
-        probability = GAME_CONSTANTS.PROTAGONIST_DRAW_CHANCE_EARLY;
-    } else if (turnNumber > 3) {
-        probability = GAME_CONSTANTS.PROTAGONIST_DRAW_CHANCE_LATE;
-    }
-
-    // Insert protagonist near the top with given probability
-    const result: string[] = [];
-    let protagonistPlaced = false;
-
-    for (let i = 0; i < shuffledOthers.length; i++) {
-        // Try to place protagonist in first few positions
-        if (!protagonistPlaced && protagonists.length > 0 && i < 5) {
-            if (Math.random() < probability) {
-                result.push(...protagonists);
-                protagonists.length = 0;
-                protagonistPlaced = true;
-            }
-        }
-        result.push(shuffledOthers[i]);
-    }
-
-    // If protagonist wasn't placed yet, append at end
-    if (!protagonistPlaced && protagonists.length > 0) {
-        result.push(...protagonists);
-    }
-
-    return arrangeDeckForActs(result);
-}
-
-/**
- * Create initial empty board state with Phase 2 timeline blocks.
- */
-function createInitialBoard(): BoardState {
-    const slots: TimelineSlot[] = SLOT_POSITIONS.map(pos => ({
-        position: pos as any,
-        cardId: undefined,
-    }));
-
+function createBlock(index: number, protagonistCardId: string): TimelineBlock {
     return {
-        // Phase 2: Timeline blocks
-        blocks: [{
-            blockIndex: 0,
-            slots: [...slots],
-            eventSlot: undefined,
-            eventCompleted: false,
-        }],
-        currentBlockIndex: 0,
-
-        // Legacy compatibility
-        characters: [],
-        location: undefined,
+        blockIndex: index,
+        slots: SLOT_POSITIONS.map(position => ({ position: position as TimelineSlot['position'] })),
+        eventCompleted: false,
+        protagonistCardId,
     };
 }
 
-function createPlayerState(username: string, deck: DeckData): PlayerState {
-    const shuffledDeck = shuffleWithProtagonistBias([...deck.cards], 0);
-    const hand = shuffledDeck.splice(0, GAME_CONSTANTS.INITIAL_HAND_SIZE);
+function cardRouteId(card?: CardData): string | undefined {
+    return card?.tags?.find(tag => tag.startsWith('route:'))?.slice('route:'.length);
+}
 
+function findOpeningEvent(protagonistId: string, deckCardIds?: string[]): CardData | undefined {
+    const available = deckCardIds ? new Set(deckCardIds) : undefined;
+    return Object.values(CARDS)
+        .filter(card => card.protagonistId === protagonistId && card.type === CardType.EVENT && (!available || available.has(card.id)))
+        .sort((left, right) => String(left.tags?.find(tag => tag.startsWith('order:')) || '').localeCompare(String(right.tags?.find(tag => tag.startsWith('order:')) || '')))[0];
+}
+
+function getOpeningSetupCardIds(protagonistId: string, deckCardIds?: string[]): string[] {
+    const openingEvent = findOpeningEvent(protagonistId, deckCardIds);
+    if (!openingEvent) return [];
+    const requirementIds = (openingEvent.requirements || [])
+        .filter(requirement => requirement.type === 'CARD_ON_BOARD')
+        .flatMap(requirement => requirement.cardIds || []);
+    return Array.from(new Set([openingEvent.id, ...requirementIds]));
+}
+
+function removeOne(cards: string[], cardId: string): boolean {
+    const index = cards.indexOf(cardId);
+    if (index < 0) return false;
+    cards.splice(index, 1);
+    return true;
+}
+
+export function createPlayerState(username: string, deck: DeckData, random: RandomSource = Math.random): PlayerState {
+    const protagonist = findInitialProtagonist(deck);
+    const remainingCards = [...deck.cards];
+    const guidedOpening = random() < GAME_CONSTANTS.OPENING_ARC_CHANCE_INITIAL_HAND;
+    const seededOpening = guidedOpening
+        ? getOpeningSetupCardIds(protagonist.id, deck.cards).filter(cardId => removeOne(remainingCards, cardId))
+        : [];
+    const shuffledDeck = shuffle(remainingCards, random);
+    const hand = [...seededOpening, ...shuffledDeck.splice(0, GAME_CONSTANTS.INITIAL_HAND_SIZE - seededOpening.length)];
+    const board: BoardState = {
+        blocks: [createBlock(0, protagonist.id)],
+        currentBlockIndex: 0,
+        characters: [],
+    };
     return {
         id: username,
         username,
@@ -141,21 +113,20 @@ function createPlayerState(username: string, deck: DeckData): PlayerState {
         deck: shuffledDeck,
         hand,
         discard: [],
-        board: createInitialBoard(),
+        protagonistId: protagonist.id,
+        protagonistFormId: protagonist.id,
+        protagonistFormIndex: 0,
+        protagonistTotalEvents: protagonist.totalForms || 1,
+        openingSetupDraws: 0,
+        board,
         timeline: [],
         completedEvents: [],
-
-        // Phase 2 points
         storyPoints: 0,
         fillerPoints: 0,
-
-        // Flags
         finalEventPlayed: false,
         canPlayEvents: true,
         eventsBlockedTurns: 0,
         statusEffects: [],
-
-        // Legacy compatibility
         historyPoints: 0,
         finalLockTurns: 0,
         isEventsBlocked: false,
@@ -164,103 +135,133 @@ function createPlayerState(username: string, deck: DeckData): PlayerState {
     };
 }
 
-function createCpuDeck(archetypeId: string, difficulty: CpuDifficulty): DeckData {
-    const allCards = Object.values(CARDS).filter(card => card.archetype === archetypeId);
-
-    if (allCards.length === 0) {
-        throw new Error(`No cards found for CPU archetype: ${archetypeId}`);
-    }
-
-    const cards: string[] = [];
-    const counts: Record<string, number> = {};
-    const addCard = (card: CardData, copies = 1): boolean => {
-        let added = false;
-        const maxCopies = card.maxCopies ?? (card.type === CardType.PROTAGONIST ? GAME_CONSTANTS.PROTAGONIST_MAX_COPIES : GAME_CONSTANTS.MAX_COPIES_PER_CARD);
-
-        for (let i = 0; i < copies && cards.length < GAME_CONSTANTS.DECK_SIZE; i++) {
-            if ((counts[card.id] || 0) >= maxCopies) break;
-            cards.push(card.id);
-            counts[card.id] = (counts[card.id] || 0) + 1;
-            added = true;
-        }
-
-        return added;
-    };
-
-    const byType = (type: CardType) => allCards
-        .filter(card => card.type === type)
-        .sort((a, b) => scoreCpuDeckCard(b, difficulty) - scoreCpuDeckCard(a, difficulty) || a.cost - b.cost || a.id.localeCompare(b.id));
-
-    const protagonist = byType(CardType.PROTAGONIST)[0];
-    if (protagonist) addCard(protagonist);
-
-    const finalEvent = byType(CardType.EVENT_FINAL)[0];
-    if (finalEvent) addCard(finalEvent);
-
-    const targetComposition: Array<[CardType, number]> = [
-        [CardType.EVENT, difficulty === 'easy' ? 4 : 6],
-        [CardType.PERSONAJE, 5],
-        [CardType.ITEM, 4],
-        [CardType.LOCATION, 3],
-    ];
-
-    for (const [type, targetCount] of targetComposition) {
-        let addedForType = 0;
-        for (const card of byType(type)) {
-            while (addedForType < targetCount && addCard(card)) {
-                addedForType++;
-            }
-            if (addedForType >= targetCount) break;
-        }
-    }
-
-    const fallbackPool = [
-        ...byType(CardType.EVENT),
-        ...byType(CardType.PERSONAJE),
-        ...byType(CardType.ITEM),
-        ...byType(CardType.LOCATION),
-        ...byType(CardType.EVENT_FINAL),
-        ...byType(CardType.PROTAGONIST),
-    ];
-
-    while (cards.length < GAME_CONSTANTS.DECK_SIZE) {
-        const added = fallbackPool.some(card => addCard(card));
-        if (!added) break;
-    }
-
-    if (cards.length !== GAME_CONSTANTS.DECK_SIZE) {
-        throw new Error(`CPU could not build a valid ${GAME_CONSTANTS.DECK_SIZE}-card deck for ${archetypeId}`);
-    }
-
-    const now = Date.now();
-    return {
-        id: `cpu_deck_${archetypeId.toLowerCase()}_${difficulty}_${now}`,
-        name: `CPU ${archetypeId} ${difficulty}`,
-        archetypeId,
-        cards,
-        createdAt: now,
-        updatedAt: now,
-    };
+function getOpeningDrawChance(player: PlayerState): number {
+    const assistedDraws = player.openingSetupDraws || 0;
+    if (assistedDraws === 0) return GAME_CONSTANTS.OPENING_ARC_CHANCE_FIRST_DRAW;
+    if (assistedDraws === 1) return GAME_CONSTANTS.OPENING_ARC_CHANCE_SECOND_DRAW;
+    return GAME_CONSTANTS.OPENING_ARC_CHANCE_LATER_DRAW;
 }
 
-function scoreCpuDeckCard(card: CardData, difficulty: CpuDifficulty): number {
-    let score = 0;
-    if (card.type === CardType.EVENT_FINAL) score += 100;
-    if (card.type === CardType.PROTAGONIST) score += 80;
-    if (card.effects.some(effect => effect.type === 'VICTORY')) score += 100;
-    if (card.effects.some(effect => effect.type === 'STORY')) score += 25;
-    if (card.effects.some(effect => effect.type === 'FILLER' && effect.target === 'OPPONENT')) score += difficulty === 'hard' ? 35 : 20;
-    if (card.effects.some(effect => effect.type === 'DRAW')) score += 18;
-    if (card.affinity?.compatibleWith?.length) score += 12;
-    if (card.likesData?.likes?.length) score += 8;
-    score += Math.max(0, 5 - card.cost);
-    return score;
+function missingOpeningSetupCards(player: PlayerState): string[] {
+    const currentBlock = player.board.blocks[player.board.currentBlockIndex];
+    const availableNarrativeCards = [
+        ...player.deck,
+        ...player.hand,
+        ...(currentBlock?.eventSlot ? [currentBlock.eventSlot] : []),
+        ...player.completedEvents,
+    ];
+    const openingEvent = player.protagonistId ? findOpeningEvent(player.protagonistId, availableNarrativeCards) : undefined;
+    if (!openingEvent || player.completedEvents.includes(openingEvent.id)) return [];
+    const staged = new Set([
+        ...player.hand,
+        ...(currentBlock?.eventSlot ? [currentBlock.eventSlot] : []),
+        ...(currentBlock?.slots.flatMap(slot => slot.cardId ? [slot.cardId] : []) || []),
+    ]);
+    return getOpeningSetupCardIds(player.protagonistId!, availableNarrativeCards)
+        .filter(cardId => !staged.has(cardId) && player.deck.includes(cardId));
 }
 
-export type CpuDifficulty = 'easy' | 'normal' | 'hard';
+export function drawTurnCards(player: PlayerState, count: number, random: RandomSource = Math.random): string[] {
+    const drawn: string[] = [];
+    const mayAssistOpening = player.completedEvents.length === 0
+        && count > 0
+        && player.hand.length < GAME_CONSTANTS.MAX_HAND_SIZE
+        && random() < getOpeningDrawChance(player);
+    if (mayAssistOpening) {
+        const priorityCard = missingOpeningSetupCards(player)[0];
+        if (priorityCard && removeOne(player.deck, priorityCard)) {
+            player.hand.push(priorityCard);
+            drawn.push(priorityCard);
+        }
+    }
+    while (drawn.length < count && player.deck.length > 0 && player.hand.length < GAME_CONSTANTS.MAX_HAND_SIZE) {
+        const next = player.deck.shift();
+        if (next) {
+            player.hand.push(next);
+            drawn.push(next);
+        }
+    }
+    player.openingSetupDraws = (player.openingSetupDraws || 0) + 1;
+    return drawn;
+}
+
+function isEventCard(card?: CardData): boolean {
+    return Boolean(card && (
+        card.type === CardType.EVENT
+        || card.type === CardType.CLIMAX_EVENT
+        || card.type === CardType.PLOT_TWIST_EVENT
+        || card.type === CardType.EVENT_FINAL
+        || card.type === CardType.EVENT_KEY
+    ));
+}
+
+export function rollHandFillerPenalty(random: RandomSource = Math.random): number {
+    const roll = random();
+    if (roll < 0.5) return 1;
+    if (roll < 0.8) return 2;
+    return 3;
+}
+
+export function applyHandOngoingEffects(match: MatchState, playerIndex: number, random: RandomSource = Math.random): void {
+    const player = match.players[playerIndex];
+    player.handEffectTurns ||= {};
+    const cardsInHand = new Set(player.hand);
+
+    Object.keys(player.handEffectTurns).forEach(cardId => {
+        if (!cardsInHand.has(cardId)) delete player.handEffectTurns![cardId];
+    });
+
+    [...cardsInHand].forEach(cardId => {
+        const card = CARDS[cardId];
+        const decay = card?.effects.find(effect => effect.type === EffectType.HAND_SP_DECAY_PERCENT || effect.type === 'HAND_SP_DECAY_PERCENT');
+        if (decay && player.storyPoints > 0) {
+            const loss = Math.max(0.1, Number((player.storyPoints * ((decay.value || 5) / 100)).toFixed(1)));
+            player.storyPoints = Math.max(0, player.storyPoints - loss);
+            player.historyPoints = player.storyPoints;
+            match.log.push({
+                turn: match.turnNumber,
+                player: player.username,
+                action: 'effect_resolved',
+                details: `${card.name} consume ${loss} SP (Story Points) mientras permanece en su mano.`,
+                timestamp: Date.now(),
+            });
+        }
+
+        const fillerCurse = card?.effects.find(effect =>
+            effect.type === EffectType.HAND_RANDOM_FILLER_THEN_DISCARD || effect.type === 'HAND_RANDOM_FILLER_THEN_DISCARD'
+        );
+        if (!fillerCurse) return;
+
+        const resolvedTurns = (player.handEffectTurns![cardId] || 0) + 1;
+        const penalty = rollHandFillerPenalty(random);
+        const maximumTurns = Math.max(1, fillerCurse.turns || fillerCurse.value || 3);
+        player.fillerPoints += penalty;
+        player.handEffectTurns![cardId] = resolvedTurns;
+        match.log.push({
+            turn: match.turnNumber,
+            player: player.username,
+            action: 'effect_resolved',
+            details: `${card.name} incomoda la historia de ${player.username}: recibe ${penalty} FP (Filler Points). Activacion ${resolvedTurns}/${maximumTurns}.`,
+            timestamp: Date.now(),
+        });
+
+        if (resolvedTurns < maximumTurns) return;
+        const discardIndex = player.hand.indexOf(cardId);
+        if (discardIndex >= 0) {
+            player.discard.push(player.hand.splice(discardIndex, 1)[0]);
+        }
+        delete player.handEffectTurns![cardId];
+        match.log.push({
+            turn: match.turnNumber,
+            player: player.username,
+            action: 'effect_resolved',
+            details: `${card.name} completa su visita y va al Cementerio de ${player.username}.`,
+            timestamp: Date.now(),
+        });
+    });
+}
 
 export class MatchService {
-    // Create a new match
     createMatch(
         p1Username: string,
         p1DeckId: string,
@@ -269,44 +270,14 @@ export class MatchService {
         formatId: string,
         timerEnabled = false
     ): MatchState {
-        const matchId = generateMatchId();
-
-        const deck1 = store.getDeck(p1DeckId);
-        const deck2 = store.getDeck(p2DeckId);
-
-        if (!deck1 || !deck2) {
-            throw new Error('Deck not found');
-        }
-
-        const player1 = createPlayerState(p1Username, deck1);
-        const player2 = createPlayerState(p2Username, deck2);
-
-        // Randomly decide who goes first
-        const firstPlayer = Math.random() < 0.5 ? 0 : 1;
-
-        const match: MatchState = {
-            matchId,
-            formatId,
-            turnNumber: 1,
-            currentTurn: firstPlayer as 0 | 1,
-            phase: 'main',
-            players: [player1, player2],
-            playerOrder: [p1Username, p2Username],
-            activePlayerId: firstPlayer === 0 ? p1Username : p2Username,
-            timerEnabled,
-            turnStartedAt: Date.now(),
-            playerTimers: timerEnabled ? { [p1Username]: MATCH_TIMER_SECONDS, [p2Username]: MATCH_TIMER_SECONDS } : undefined,
-            actCheckpointsResolved: [],
-            log: [{
-                turn: 1,
-                player: 'system',
-                action: 'match_started',
-                details: `${firstPlayer === 0 ? p1Username : p2Username} goes first`,
-                timestamp: Date.now(),
-            }],
-        };
-
-        store.saveMatch(matchId, match);
+        const firstDeck = store.getDeck(p1DeckId);
+        const secondDeck = store.getDeck(p2DeckId);
+        if (!firstDeck || !secondDeck) throw new Error('Deck not found');
+        const players = [createPlayerState(p1Username, firstDeck), createPlayerState(p2Username, secondDeck)] as [PlayerState, PlayerState];
+        const first = (Math.random() < 0.5 ? 0 : 1) as 0 | 1;
+        const match = this.createState(formatId, players, first, timerEnabled);
+        this.activateInitialProtagonists(match);
+        store.saveMatch(match.matchId, match);
         return match;
     }
 
@@ -316,445 +287,435 @@ export class MatchService {
         cpuArchetypeId: string,
         difficulty: CpuDifficulty,
         formatId: string,
-        timerEnabled = false
+        timerEnabled = false,
+        cpuDeckId?: string
     ): MatchState {
-        if (!Object.values(ARCHETYPES).includes(cpuArchetypeId as any)) {
-            throw new Error(`Invalid CPU archetype: ${cpuArchetypeId}`);
-        }
-
+        if (!V2_ARCHETYPES.includes(cpuArchetypeId as any)) throw new Error(`Invalid CPU archetype: ${cpuArchetypeId}`);
         const humanDeck = store.getDeck(humanDeckId);
-        if (!humanDeck || !store.isUserDeck(humanUsername, humanDeckId)) {
-            throw new Error('Invalid human deck');
-        }
-
-        const matchId = generateMatchId();
-        const cpuUsername = `CPU ${difficulty.toUpperCase()}`;
-        const humanPlayer = createPlayerState(humanUsername, humanDeck);
-        const cpuPlayer = createPlayerState(cpuUsername, createCpuDeck(cpuArchetypeId, difficulty));
-
-        const match: MatchState = {
-            matchId,
-            formatId,
-            turnNumber: 1,
-            currentTurn: 0,
-            phase: 'main',
-            players: [humanPlayer, cpuPlayer],
-            playerOrder: [humanUsername, cpuUsername],
-            activePlayerId: humanUsername,
-            timerEnabled,
-            turnStartedAt: Date.now(),
-            playerTimers: timerEnabled ? { [humanUsername]: MATCH_TIMER_SECONDS, [cpuUsername]: MATCH_TIMER_SECONDS } : undefined,
-            actCheckpointsResolved: [],
-            cpuOpponent: {
-                username: cpuUsername,
-                archetypeId: cpuArchetypeId,
-                difficulty,
-            },
-            log: [{
-                turn: 1,
-                player: 'system',
-                action: 'cpu_match_started',
-                details: `${humanUsername} versus ${cpuUsername} (${cpuArchetypeId})`,
-                timestamp: Date.now(),
-            }],
+        if (!humanDeck || !store.isUserDeck(humanUsername, humanDeckId)) throw new Error('Invalid human deck');
+        const templates = getPrebuiltDecks({ enabled: true, archetypes: {} }).filter(deck => deck.archetypeId === cpuArchetypeId);
+        const template = (cpuDeckId ? templates.find(deck => deck.id === cpuDeckId) : undefined) || templates[0];
+        if (!template) throw new Error(`No V2 CPU deck available for ${cpuArchetypeId}`);
+        const now = Date.now();
+        const cpuDeck: DeckData = {
+            id: `cpu_${template.id}_${now}`,
+            name: template.name,
+            archetypeId: template.archetypeId,
+            protagonistId: template.protagonistId,
+            cards: [...template.cards],
+            backgroundId: template.backgroundId,
+            createdAt: now,
+            updatedAt: now,
         };
-
-        store.saveMatch(matchId, match);
+        const cpuUsername = `CPU ${difficulty.toUpperCase()}`;
+        const players = [createPlayerState(humanUsername, humanDeck), createPlayerState(cpuUsername, cpuDeck)] as [PlayerState, PlayerState];
+        const match = this.createState(formatId, players, 0, timerEnabled);
+        match.cpuOpponent = {
+            username: cpuUsername,
+            archetypeId: template.archetypeId,
+            difficulty,
+            deckId: template.id,
+            protagonistId: template.protagonistId,
+        };
+        match.log.push({ turn: 1, player: 'system', action: 'cpu_match_started', details: `${humanUsername} versus ${template.protagonistName}`, timestamp: Date.now() });
+        this.activateInitialProtagonists(match);
+        store.saveMatch(match.matchId, match);
         return match;
     }
 
-    // Process a player action
+    createSimulationMatch(firstDeck: DeckData, secondDeck: DeckData): MatchState {
+        const players = [
+            createPlayerState(`CPU A - ${firstDeck.name}`, firstDeck),
+            createPlayerState(`CPU B - ${secondDeck.name}`, secondDeck),
+        ] as [PlayerState, PlayerState];
+        const first = (Math.random() < 0.5 ? 0 : 1) as 0 | 1;
+        const match = this.createState(GAME_CONSTANTS.DEFAULT_FORMAT, players, first, false);
+        this.activateInitialProtagonists(match);
+        return match;
+    }
+
+    processSimulationTurn(match: MatchState, difficulty: CpuDifficulty): MatchState {
+        if (match.phase === 'ended' || match.winner) return match;
+        const playerIndex = match.currentTurn;
+        const username = match.players[playerIndex].username;
+        for (let guard = 0; guard < 20 && !match.winner && match.activePlayerId === username; guard++) {
+            const plan = chooseCpuPlay(match, playerIndex, difficulty);
+            if (!plan) break;
+            this.handlePlayCard(match, playerIndex, plan.cardId, plan.slotPosition, plan.isEventActivation);
+            this.addLog(match, username, 'cpu_decision', `${CARDS[plan.cardId]?.name || plan.cardId} (${plan.reason})`);
+        }
+        if (!match.winner && match.activePlayerId === username) {
+            this.handleEndTurn(match, playerIndex, true);
+        }
+        return match;
+    }
+
+    private createState(formatId: string, players: [PlayerState, PlayerState], first: 0 | 1, timerEnabled: boolean): MatchState {
+        const match: MatchState = {
+            matchId: generateMatchId(),
+            formatId,
+            turnNumber: 1,
+            currentTurn: first,
+            phase: 'main',
+            players,
+            playerOrder: [players[0].username, players[1].username],
+            activePlayerId: players[first].username,
+            timerEnabled,
+            turnStartedAt: Date.now(),
+            playerTimers: timerEnabled ? { [players[0].username]: MATCH_TIMER_SECONDS, [players[1].username]: MATCH_TIMER_SECONDS } : undefined,
+            actCheckpointsResolved: [],
+            log: [{ turn: 1, player: 'system', action: 'match_started', details: `${players[first].username} comienza`, timestamp: Date.now() }],
+        };
+        grantTurnStoryIncome(match);
+        return match;
+    }
+
+    private activateInitialProtagonists(match: MatchState): void {
+        match.players.forEach((player, index) => {
+            const formId = player.protagonistFormId;
+            if (!formId) return;
+            this.addLog(match, player.username, 'protagonist_enter', CARDS[formId]?.name || formId);
+            resolveEffects(match, index, formId, { entryOnly: true })
+                .forEach(message => this.addLog(match, player.username, 'effect_resolved', message));
+        });
+    }
+
     processAction(matchId: string, playerId: string, action: any): MatchState {
         const match = store.getMatch(matchId);
         if (!match) throw new Error('Match not found');
-
-        if (match.phase === 'ended') {
-            throw new Error('Match has ended');
-        }
-
-        if (action.type === 'FORFEIT' || action.type === MatchActionType.FORFEIT) {
-            const playerIndex = match.playerOrder.indexOf(playerId);
-            if (playerIndex === -1) throw new Error('Player not in match');
+        if (match.phase === 'ended') throw new Error('Match has ended');
+        const playerIndex = match.playerOrder.indexOf(playerId);
+        if (playerIndex === -1) throw new Error('Player not in match');
+        if (action.type === MatchActionType.FORFEIT || action.type === 'FORFEIT') {
             this.handleForfeit(match, playerIndex);
             store.saveMatch(matchId, match);
             return match;
         }
-
-        if (match.activePlayerId !== playerId) {
-            throw new Error('Not your turn');
-        }
-
+        if (match.activePlayerId !== playerId) throw new Error('Not your turn');
         this.applyTimerElapsed(match);
-        const playerIndex = match.playerOrder.indexOf(playerId);
-        if (playerIndex === -1) throw new Error('Player not in match');
-
-        const player = match.players[playerIndex];
-
         switch (action.type) {
             case MatchActionType.PLAY_CARD:
             case 'PLAY_CARD':
-                this.handlePlayCard(match, playerIndex, action.cardId, action.slotPosition);
+                this.handlePlayCard(match, playerIndex, action.cardId, action.slotPosition, false);
                 break;
-
-            case 'ACTIVATE_EVENT':
             case MatchActionType.ACTIVATE_EVENT:
+            case 'ACTIVATE_EVENT':
                 this.handlePlayCard(match, playerIndex, action.cardId, undefined, true);
                 break;
-
-            case 'RETURN_TO_HAND':
             case MatchActionType.RETURN_TO_HAND:
+            case 'RETURN_TO_HAND':
                 this.handleReturnToHand(match, playerIndex, action.blockIndex, action.position);
                 break;
-
             case MatchActionType.END_TURN:
             case 'END_TURN':
-                this.handleEndTurn(match, playerIndex);
+                this.handleEndTurn(match, playerIndex, true);
                 break;
-
             case MatchActionType.TIMER_EXPIRED:
             case 'TIMER_EXPIRED':
                 this.handleEndTurn(match, playerIndex, false);
                 break;
-
             default:
                 throw new Error(`Unknown action type: ${action.type}`);
         }
-
-        // Check victory conditions
-        this.checkVictory(match);
         this.processCpuTurnIfNeeded(match);
-
         store.saveMatch(matchId, match);
         return match;
     }
 
-    private processCpuTurnIfNeeded(match: MatchState): void {
-        if (!match.cpuOpponent || match.phase === 'ended' || match.winner) return;
-        if (match.activePlayerId !== match.cpuOpponent.username) return;
-
-        const cpuIndex = match.playerOrder.indexOf(match.cpuOpponent.username);
-        if (cpuIndex === -1) return;
-
-        const cpu = match.players[cpuIndex];
-        const safetyLimit = 16;
-
-        for (let i = 0; i < safetyLimit; i++) {
-            if (match.winner) break;
-
-            const plan = chooseCpuPlay(match, cpuIndex);
-            if (!plan) break;
-
-            this.handlePlayCard(match, cpuIndex, plan.cardId, plan.slotPosition, plan.isEventActivation);
-            this.addLog(match, cpu.username, 'cpu_decision', `${CARDS[plan.cardId]?.name || plan.cardId} (${plan.reason})`);
-
-            this.checkVictory(match);
-        }
-
-        if (!match.winner && match.activePlayerId === cpu.username) {
-            this.handleEndTurn(match, cpuIndex);
-            this.checkVictory(match);
-        }
-    }
-
-    // ============================================
-    // Action Logic
-    // ============================================
-
-    private handlePlayCard(
-        match: MatchState,
-        playerIndex: number,
-        cardId: string,
-        slotPosition?: string,
-        isEventActivation: boolean = false
-    ) {
+    private handlePlayCard(match: MatchState, playerIndex: number, cardId: string, slotPosition?: string, isEventActivation = false): void {
         const player = match.players[playerIndex];
-        // Find card
         const handIndex = player.hand.indexOf(cardId);
-        if (handIndex === -1) throw new Error('Card not in hand');
-
-        // Target Context
-        const targetBlockIndex = player.board.currentBlockIndex;
-        // Validation Call
-        const validation = canPlayCard(match, playerIndex, cardId, {
-            blockIndex: targetBlockIndex,
-            position: slotPosition,
-            isEventOrb: isEventActivation
-        });
-
-        if (!validation.ok) {
-            throw new Error(validation.reasons?.join(', ') || 'Unknown validation error');
-        }
-
-        // Remove from hand
-        player.hand.splice(handIndex, 1);
-
-        // Place Visually on Board logic
-        // If event activation -> place in event slot
-        // If normal card -> place in slot
-
+        if (handIndex < 0) throw new Error('Card not in hand');
+        const blockIndex = player.board.currentBlockIndex;
+        const validation = canPlayCard(match, playerIndex, cardId, { blockIndex, position: slotPosition, isEventOrb: isEventActivation });
+        if (!validation.ok) throw new Error(validation.reasons?.join(' ') || 'Invalid card play');
         const card = CARDS[cardId];
-
-        if (isEventActivation) {
-            const block = player.board.blocks[targetBlockIndex];
-            if (block) {
-                block.eventSlot = cardId;
-                block.eventSubmitted = true;
-                block.eventCompleted = false;
-                this.addLog(match, player.username, 'event_prepared', `${card.name}`);
-            }
-        } else if (slotPosition) {
-            const block = player.board.blocks[targetBlockIndex];
-            const slot = block.slots.find(s => s.position === slotPosition);
-            if (slot) {
-                slot.cardId = cardId;
-                slot.cardType = card.type;
-                slot.placedTurn = match.turnNumber;
-                this.addLog(match, player.username, 'play_card', `${card.name} @ ${slotPosition}`);
-            }
+        this.payCost(player, card);
+        player.hand.splice(handIndex, 1);
+        if (card.type === CardType.QUICK_EVENT || card.type === CardType.TOKEN) {
+            this.consumeQuickEventDiscards(match, player, card);
+            this.addLog(match, player.username, 'quick_event_resolved', card.name);
+            resolveEffects(match, playerIndex, card.id)
+                .forEach(message => this.addLog(match, player.username, 'effect_resolved', message));
+            player.discard.push(card.id);
+            this.addLog(match, player.username, 'cards_to_cemetery', card.name);
+            return;
         }
-
-        // Legacy Sync
-        player.historyPoints = player.storyPoints;
-    }
-
-    private handleReturnToHand(match: MatchState, playerIndex: number, blockIndex: number, position: string) {
-        const validation = canReturnToHand(match, playerIndex, blockIndex, position);
-        if (!validation.ok) {
-            throw new Error(validation.reasons?.join(', ') || 'Unknown validation error');
-        }
-
-        const player = match.players[playerIndex];
         const block = player.board.blocks[blockIndex];
-        const slot = block.slots.find(s => s.position === position);
-
-        if (slot && slot.cardId) {
-            const cardId = slot.cardId;
-            // Remove from board
-            slot.cardId = undefined;
-            slot.cardType = undefined;
-            slot.placedTurn = undefined;
-
-            // Add to hand
-            player.hand.push(cardId);
-
-            this.addLog(match, player.username, 'return_to_hand', cardId);
-        }
-    }
-
-    // End turn
-    private handleEndTurn(match: MatchState, currentPlayerIndex: number, resolveEvent = true): void {
-        const player = match.players[currentPlayerIndex];
-        if (resolveEvent) {
-            this.resolvePreparedEvent(match, currentPlayerIndex);
+        if (isEventActivation) {
+            block.eventSlot = cardId;
+            block.eventSubmitted = true;
+            this.addLog(match, player.username, 'event_prepared', card.name);
         } else {
-            this.addLog(match, player.username, 'timer_expired', `${player.username} se queda sin tiempo; el turno pasa sin activar evento.`);
+            const slot = block.slots.find(item => item.position === slotPosition);
+            if (!slot) throw new Error('Slot not found');
+            slot.cardId = cardId;
+            slot.cardType = card.type;
+            slot.placedTurn = match.turnNumber;
+            this.addLog(match, player.username, 'play_card', `${card.name} @ ${slotPosition}`);
         }
-
-        this.checkVictory(match);
-        if (match.winner) return;
-
-        // Decrement blocked turns
-        if (player.eventsBlockedTurns > 0) {
-            player.eventsBlockedTurns--;
-            if (player.eventsBlockedTurns === 0) {
-                player.isEventsBlocked = false;
-                player.canPlayEvents = true;
-            }
-        }
-
-        // Switch
-        const nextPlayerIndex = (1 - currentPlayerIndex) as 0 | 1;
-        match.currentTurn = nextPlayerIndex;
-        match.activePlayerId = match.playerOrder[nextPlayerIndex];
-        match.turnNumber++;
-        match.turnStartedAt = Date.now();
-
-        const nextPlayer = match.players[nextPlayerIndex];
-
-        const extraDraw = this.consumeExtraDraw(nextPlayer);
-        this.drawCards(nextPlayer, GAME_CONSTANTS.CARDS_DRAWN_PER_TURN + extraDraw);
-        this.applyHandStartEffects(match, nextPlayer);
-        if (extraDraw > 0) {
-            this.addLog(match, nextPlayer.username, 'effect_resolved', `${nextPlayer.username} roba ${extraDraw} carta extra por un efecto activo.`);
-        }
-        this.tickStatusEffects(player);
-
-        this.addLog(match, match.activePlayerId, 'turn_start', `Turn ${match.turnNumber}`);
     }
 
-    private handleForfeit(match: MatchState, playerIndex: number): void {
-        const loser = match.players[playerIndex];
-        const winner = match.players[1 - playerIndex];
-        match.winner = winner.username;
-        match.winReason = 'surrender';
-        match.phase = 'ended';
-        this.addLog(match, loser.username, 'forfeit', `${loser.username} abandono la partida. ${winner.username} gana.`);
+    private consumeQuickEventDiscards(match: MatchState, player: PlayerState, card: CardData): void {
+        const count = (card.requirements || [])
+            .filter(requirement => requirement.type === 'DISCARD_FROM_HAND')
+            .reduce((total, requirement) => total + (requirement.value || 1), 0);
+        if (count <= 0) return;
+        const discarded: string[] = [];
+        for (let index = 0; index < count && player.hand.length; index++) {
+            const externalIndex = player.hand.findIndex(cardId => CARDS[cardId]?.tags?.includes('external-only'));
+            const discardIndex = externalIndex >= 0 ? externalIndex : this.findSafeQuickEventDiscardIndex(player);
+            discarded.push(player.hand.splice(discardIndex, 1)[0]);
+        }
+        if (discarded.length) {
+            player.discard.push(...discarded);
+            const names = discarded.map(id => CARDS[id]?.name || id).join(', ');
+            this.addLog(match, player.username, 'cards_to_cemetery', `${names} (costo de ${card.name})`);
+        }
     }
 
-    private applyTimerElapsed(match: MatchState): void {
-        if (!match.timerEnabled || !match.playerTimers || !match.turnStartedAt) return;
-        const active = match.activePlayerId;
-        const elapsed = Math.max(0, Math.floor((Date.now() - match.turnStartedAt) / 1000));
-        match.playerTimers[active] = Math.max(0, (match.playerTimers[active] ?? MATCH_TIMER_SECONDS) - elapsed);
-        match.turnStartedAt = Date.now();
+    private findSafeQuickEventDiscardIndex(player: PlayerState): number {
+        const pendingRouteCards = new Set<string>();
+        Object.values(CARDS)
+            .filter(candidate =>
+                candidate.protagonistId === player.protagonistId
+                && (candidate.type === CardType.EVENT || candidate.type === CardType.CLIMAX_EVENT)
+                && !player.completedEvents.includes(candidate.id)
+            )
+            .forEach(candidate => {
+                pendingRouteCards.add(candidate.id);
+                (candidate.requirements || []).forEach(requirement => {
+                    (requirement.cardIds || []).forEach(cardId => pendingRouteCards.add(cardId));
+                });
+            });
+
+        const inHandCounts = player.hand.reduce<Record<string, number>>((counts, cardId) => {
+            counts[cardId] = (counts[cardId] || 0) + 1;
+            return counts;
+        }, {});
+        for (let index = player.hand.length - 1; index >= 0; index--) {
+            const cardId = player.hand[index];
+            if (!pendingRouteCards.has(cardId) || inHandCounts[cardId] > 1) return index;
+        }
+        return player.hand.length - 1;
+    }
+
+    private payCost(player: PlayerState, card: CardData): void {
+        if (card.cost <= 0) return;
+        if ((card.costResource || 'SP') === 'FP') {
+            player.fillerPoints -= card.cost;
+        } else {
+            player.storyPoints -= card.cost;
+            player.historyPoints = player.storyPoints;
+        }
+    }
+
+    private handleReturnToHand(match: MatchState, playerIndex: number, blockIndex: number, position: string): void {
+        const validation = canReturnToHand(match, playerIndex, blockIndex, position);
+        if (!validation.ok) throw new Error(validation.reasons?.join(' ') || 'Invalid return');
+        const slot = match.players[playerIndex].board.blocks[blockIndex].slots.find(item => item.position === position);
+        if (!slot?.cardId) return;
+        match.players[playerIndex].hand.push(slot.cardId);
+        slot.cardId = undefined;
+        slot.cardType = undefined;
+        slot.placedTurn = undefined;
+        this.addLog(match, match.players[playerIndex].username, 'return_to_hand', 'Carta retirada durante el mismo turno.');
+    }
+
+    private handleEndTurn(match: MatchState, playerIndex: number, resolveEvent: boolean): void {
+        const player = match.players[playerIndex];
+        if (match.phase === 'climax_response') {
+            if (resolveEvent) this.resolvePlotTwistIfPrepared(match, playerIndex);
+            if (match.pendingClimax) this.finalizeClimax(match);
+            return;
+        }
+        if (resolveEvent) this.resolvePreparedEvent(match, playerIndex);
+        if (match.pendingClimax || match.winner) return;
+        if (!resolveEvent) this.addLog(match, player.username, 'timer_expired', 'El tiempo termino; el turno pasa.');
+        this.passTurn(match, playerIndex);
     }
 
     private resolvePreparedEvent(match: MatchState, playerIndex: number): void {
         const player = match.players[playerIndex];
-        const opponent = match.players[1 - playerIndex];
         const block = player.board.blocks[player.board.currentBlockIndex];
-        const cardId = block?.eventSlot;
-        if (!block || !cardId || block.eventCompleted) return;
+        const card = block.eventSlot ? CARDS[block.eventSlot] : undefined;
+        if (!card || block.eventCompleted) return;
+        const validPrereq = evaluateEventPrerequisites(player, card);
+        if (!validPrereq.ok) return;
+        if (card.type === CardType.CLIMAX_EVENT) {
+            const multiplier = this.getClimaxMultiplier(match, playerIndex, card);
+            const opponentIndex = (1 - playerIndex) as 0 | 1;
+            if (this.canOpenPlotTwist(match, opponentIndex)) {
+                match.pendingClimax = { attackerIndex: playerIndex as 0 | 1, responderIndex: opponentIndex, cardId: card.id, multiplier, responseOpen: true };
+                match.phase = 'climax_response';
+                match.currentTurn = opponentIndex;
+                match.activePlayerId = match.players[opponentIndex].username;
+                this.offerPlotTwist(match, opponentIndex);
+                this.addLog(match, player.username, 'climax_pending', `${card.name} x${multiplier}; el rival puede intentar Plot-Twist.`);
+                return;
+            }
+            match.pendingClimax = { attackerIndex: playerIndex as 0 | 1, responderIndex: opponentIndex, cardId: card.id, multiplier, responseOpen: false };
+            this.finalizeClimax(match);
+            return;
+        }
+        this.resolveArc(match, playerIndex, card, 1, true);
+    }
 
-        const card = CARDS[cardId];
+    private getClimaxMultiplier(match: MatchState, playerIndex: number, card: CardData): 2 | 4 | 10 {
+        let achieved: 2 | 4 | 10 = 2;
+        for (const tier of card.climaxTiers || []) {
+            if (evaluateRequirements(match, playerIndex, tier.requirements).ok) achieved = tier.multiplier;
+        }
+        return achieved;
+    }
+
+    private canOpenPlotTwist(match: MatchState, responderIndex: 0 | 1): boolean {
+        const responder = match.players[responderIndex];
+        const attacker = match.players[1 - responderIndex];
+        const total = Math.max(1, responder.protagonistTotalEvents || 1);
+        return responder.storyPoints < attacker.storyPoints && responder.completedEvents.length / total >= 0.7;
+    }
+
+    private offerPlotTwist(match: MatchState, responderIndex: 0 | 1): void {
+        const responder = match.players[responderIndex];
+        const selectedRoute = [...responder.completedEvents, ...responder.hand, ...responder.deck]
+            .map(id => cardRouteId(CARDS[id]))
+            .find((route): route is string => Boolean(route));
+        const plot = Object.values(CARDS).find(card =>
+            card.type === CardType.PLOT_TWIST_EVENT && card.protagonistId === responder.protagonistId
+            && (!selectedRoute || cardRouteId(card) === selectedRoute)
+        );
+        if (plot && !responder.hand.includes(plot.id)) responder.hand.push(plot.id);
+        if (plot) this.addLog(match, responder.username, 'plot_twist_offered', plot.name);
+    }
+
+    private resolvePlotTwistIfPrepared(match: MatchState, responderIndex: number): void {
+        const player = match.players[responderIndex];
+        const block = player.board.blocks[player.board.currentBlockIndex];
+        const card = block.eventSlot ? CARDS[block.eventSlot] : undefined;
+        if (!card || card.type !== CardType.PLOT_TWIST_EVENT) return;
+        this.resolveArc(match, responderIndex, card, 1, false);
+        this.addLog(match, player.username, 'plot_twist_complete', card.name);
+    }
+
+    private finalizeClimax(match: MatchState): void {
+        const pending = match.pendingClimax;
+        if (!pending) return;
+        const card = CARDS[pending.cardId];
         if (!card) return;
-
-        const prereqValidation = evaluateEventPrerequisites(player, card);
-        if (!prereqValidation.ok) {
-            this.addLog(match, player.username, 'event_waiting', `${card.name}: ${prereqValidation.reasons?.[0] || 'missing prerequisites'}`);
-            return;
+        this.resolveArc(match, pending.attackerIndex, card, pending.multiplier, false);
+        this.addLog(match, match.players[pending.attackerIndex].username, 'climax_complete', `${card.name} x${pending.multiplier}`);
+        match.pendingClimax = undefined;
+        const [first, second] = match.players;
+        const firstNet = first.storyPoints - first.fillerPoints;
+        const secondNet = second.storyPoints - second.fillerPoints;
+        if (firstNet === secondNet && first.fillerPoints === second.fillerPoints) {
+            match.winner = 'Empate';
+            match.winReason = 'draw';
+        } else if (firstNet > secondNet || (firstNet === secondNet && first.fillerPoints < second.fillerPoints)) {
+            match.winner = first.username;
+            match.winReason = 'climax';
+        } else {
+            match.winner = second.username;
+            match.winReason = 'climax';
         }
+        match.phase = 'ended';
+        this.addLog(match, 'system', 'victory', `${match.winner} cierra la partida. SP - FP: ${first.username} ${firstNet}, ${second.username} ${secondNet}.`);
+    }
 
-        const validation = card.requirements?.length
-            ? evaluateRequirements(match, playerIndex, getEffectiveRequirements(match, playerIndex, card.requirements))
-            : { ok: true, reasons: [] };
-
-        if (!validation.ok) {
-            this.addLog(match, player.username, 'event_waiting', `${card.name}: ${validation.reasons?.[0] || 'missing requirements'}`);
-            return;
+    private resolveArc(match: MatchState, playerIndex: number, card: CardData, eventMultiplier: number, openNextArc: boolean): void {
+        const player = match.players[playerIndex];
+        const block = player.board.blocks[player.board.currentBlockIndex];
+        const sceneCards = block.slots.map(slot => slot.cardId).filter((id): id is string => Boolean(id));
+        resolveEffects(match, playerIndex, card.id, { multiplier: eventMultiplier })
+            .forEach(message => this.addLog(match, player.username, 'effect_resolved', message));
+        sceneCards.forEach(cardId => resolveEffects(match, playerIndex, cardId)
+            .forEach(message => this.addLog(match, player.username, 'effect_resolved', message)));
+        if (player.protagonistFormId) {
+            const silence = player.statusEffects?.find(effect => effect.type === 'SILENCE_PROTAGONIST_NEXT_EVENT');
+            const protection = player.statusEffects?.find(effect => effect.type === 'PROTECT_PROTAGONIST');
+            if (silence && protection) {
+                player.statusEffects = (player.statusEffects || []).filter(effect => effect.id !== silence.id && effect.id !== protection.id);
+                this.addLog(match, player.username, 'effect_resolved', `${CARDS[player.protagonistFormId]?.name || 'El Protagonista'} resiste el silencio gracias a ${protection.sourceName}.`);
+                resolveEffects(match, playerIndex, player.protagonistFormId)
+                    .forEach(message => this.addLog(match, player.username, 'effect_resolved', message));
+            } else if (silence) {
+                player.statusEffects = (player.statusEffects || []).filter(effect => effect.id !== silence.id);
+                this.addLog(match, player.username, 'effect_resolved', `${CARDS[player.protagonistFormId]?.name || 'El Protagonista'} queda silenciado y no activa efectos en este Evento.`);
+            } else {
+                resolveEffects(match, playerIndex, player.protagonistFormId)
+                    .forEach(message => this.addLog(match, player.username, 'effect_resolved', message));
+            }
         }
-
-        const resolvingCardIds = [
-            ...block.slots.map(slot => slot.cardId).filter((id): id is string => Boolean(id)),
-            cardId,
-        ];
-        const effectLogs = resolvingCardIds.flatMap(id => resolveEffects(match, playerIndex, id));
-
-        if (!player.completedEvents) player.completedEvents = [];
-        if (!player.completedEvents.includes(cardId)) {
-            player.completedEvents.push(cardId);
-        }
-
+        if (!player.completedEvents.includes(card.id)) player.completedEvents.push(card.id);
         block.eventCompleted = true;
         block.eventSubmitted = false;
-        block.slots.forEach(slot => {
-            slot.cardId = undefined;
-            slot.cardType = undefined;
-            slot.placedTurn = undefined;
-        });
-        block.eventSlot = undefined;
-        player.discard.push(...resolvingCardIds);
-        const completedBlockIndex = block.blockIndex;
-
-        const storyGain = GAME_CONSTANTS.STORY_POINTS_EVENT_COMPLETE;
-        player.storyPoints += storyGain;
-        player.historyPoints = player.storyPoints;
-        opponent.fillerPoints += GAME_CONSTANTS.FILLER_POINTS_EVENT_COMPLETE;
-
-        this.addLog(match, player.username, 'event_complete', `${card.name}`);
-        this.addLog(match, player.username, 'cards_to_cemetery', `${resolvingCardIds.length} carta(s) van al Cementerio.`);
-        effectLogs.forEach(details => this.addLog(match, player.username, 'effect_resolved', details));
+        this.evolveProtagonist(player);
         this.consumeReducedRequirement(player);
-        this.resolveActCheckpoint(match, completedBlockIndex);
-
-        if (card.type === CardType.EVENT_FINAL) {
-            player.finalEventPlayed = true;
-        } else {
-            this.advanceToNextBlock(player);
+        this.addLog(match, player.username, card.type === CardType.CLIMAX_EVENT ? 'climax_revealed' : 'event_complete', card.name);
+        if (openNextArc && card.type === CardType.EVENT) {
+            const next = player.board.currentBlockIndex + 1;
+            player.board.blocks.push(createBlock(next, player.protagonistFormId || player.protagonistId || ''));
+            player.board.currentBlockIndex = next;
         }
     }
 
-    // Check if a block is complete (all slots filled and event done)
-    private isBlockComplete(block: TimelineBlock): boolean {
-        const allSlotsFilled = block.slots.every(slot => slot.cardId);
-        return allSlotsFilled && block.eventCompleted;
-    }
-
-    // Advance to next block
-    private advanceToNextBlock(player: PlayerState): void {
-        const nextIndex = player.board.currentBlockIndex + 1;
-
-        if (nextIndex < GAME_CONSTANTS.MAX_BLOCKS) {
-            const slots: TimelineSlot[] = SLOT_POSITIONS.map(pos => ({
-                position: pos as any,
-                cardId: undefined,
-            }));
-
-            player.board.blocks.push({
-                blockIndex: nextIndex,
-                slots,
-                eventSlot: undefined,
-                eventCompleted: false,
-            });
-
-            player.board.currentBlockIndex = nextIndex;
-        }
-    }
-
-    private resolveActCheckpoint(match: MatchState, completedBlockIndex: number): void {
-        const checkpoint = completedBlockIndex === 0 ? 'act_one' : completedBlockIndex === 2 ? 'act_two' : null;
-        if (!checkpoint) return;
-
-        match.actCheckpointsResolved ||= [];
-        if (match.actCheckpointsResolved.includes(checkpoint)) return;
-        match.actCheckpointsResolved.push(checkpoint);
-
-        const [p1, p2] = match.players;
-        const p1Tempo = this.getTempoScore(p1);
-        const p2Tempo = this.getTempoScore(p2);
-        const leader = p1Tempo >= p2Tempo ? p1 : p2;
-        const trailing = leader === p1 ? p2 : p1;
-        const isActTwo = checkpoint === 'act_two';
-
-        leader.storyPoints += isActTwo ? 3 : 2;
-        leader.historyPoints = leader.storyPoints;
-
-        const fillerRelief = isActTwo ? 4 : 2;
-        trailing.fillerPoints = Math.max(0, trailing.fillerPoints - fillerRelief);
-        trailing.storyPoints += isActTwo ? 1 : 0;
-        trailing.historyPoints = trailing.storyPoints;
-        this.drawCards(trailing, isActTwo ? 2 : 1);
-
-        if (isActTwo && trailing.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD) {
-            trailing.fillerPoints = GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD - 1;
-            trailing.eventsBlockedTurns = Math.max(trailing.eventsBlockedTurns, 1);
-            trailing.isEventsBlocked = true;
-            trailing.canPlayEvents = false;
-        }
-
-        const label = isActTwo ? 'Acto II - Punto medio' : 'Acto I - Planteamiento';
-        this.addLog(
-            match,
-            'system',
-            'act_checkpoint',
-            `${label}: ${leader.username} lidera tempo ${Math.max(p1Tempo, p2Tempo)}-${Math.min(p1Tempo, p2Tempo)}; ${trailing.username} roba ${isActTwo ? 2 : 1} y baja ${fillerRelief} FP (Filler Points)`
+    private evolveProtagonist(player: PlayerState): void {
+        const nextIndex = Math.min((player.protagonistTotalEvents || 1) - 1, Math.max(0, player.completedEvents.length - 1));
+        const nextForm = Object.values(CARDS).find(card =>
+            card.type === CardType.PROTAGONIST && card.protagonistId === player.protagonistId && card.formIndex === nextIndex
         );
+        if (!nextForm) return;
+        player.protagonistFormId = nextForm.id;
+        player.protagonistFormIndex = nextIndex;
     }
 
-    private getTempoScore(player: PlayerState): number {
-        return (player.storyPoints ?? player.historyPoints ?? 0)
-            + player.completedEvents.length * 4
-            + player.board.currentBlockIndex * 3
-            - player.fillerPoints;
+    private passTurn(match: MatchState, playerIndex: number): void {
+        const next = (1 - playerIndex) as 0 | 1;
+        match.currentTurn = next;
+        match.activePlayerId = match.players[next].username;
+        match.turnNumber++;
+        match.turnStartedAt = Date.now();
+        grantTurnStoryIncome(match);
+        const extra = this.consumeExtraDraw(match.players[next]);
+        drawTurnCards(match.players[next], GAME_CONSTANTS.CARDS_DRAWN_PER_TURN + extra);
+        applyHandOngoingEffects(match, next);
+        this.tickStatusEffects(match.players[playerIndex]);
+        this.addLog(match, match.activePlayerId, 'turn_start', `Turno ${match.turnNumber}`);
     }
 
-    private drawCards(player: PlayerState, count: number): void {
-        const cardsToDraw = Math.min(
-            count,
-            player.deck.length,
-            GAME_CONSTANTS.MAX_HAND_SIZE - player.hand.length
-        );
-        for (let i = 0; i < cardsToDraw; i++) {
-            const drawn = player.deck.shift();
-            if (drawn) player.hand.push(drawn);
+    private processCpuTurnIfNeeded(match: MatchState): void {
+        if (!match.cpuOpponent || match.phase === 'ended' || match.activePlayerId !== match.cpuOpponent.username) return;
+        const cpuIndex = match.playerOrder.indexOf(match.cpuOpponent.username);
+        if (cpuIndex < 0) return;
+        for (let guard = 0; guard < 20 && !match.winner && match.activePlayerId === match.cpuOpponent.username; guard++) {
+            const plan = chooseCpuPlay(match, cpuIndex);
+            if (!plan) break;
+            this.handlePlayCard(match, cpuIndex, plan.cardId, plan.slotPosition, plan.isEventActivation);
+            this.addLog(match, match.cpuOpponent.username, 'cpu_decision', CARDS[plan.cardId]?.name || plan.cardId);
         }
+        if (!match.winner && match.activePlayerId === match.cpuOpponent.username) this.handleEndTurn(match, cpuIndex, true);
+    }
+
+    private handleForfeit(match: MatchState, playerIndex: number): void {
+        const winner = match.players[1 - playerIndex];
+        match.winner = winner.username;
+        match.winReason = 'surrender';
+        match.phase = 'ended';
+        this.addLog(match, match.players[playerIndex].username, 'forfeit', `${winner.username} gana por abandono.`);
+    }
+
+    private applyTimerElapsed(match: MatchState): void {
+        if (!match.timerEnabled || !match.playerTimers || !match.turnStartedAt) return;
+        const elapsed = Math.max(0, Math.floor((Date.now() - match.turnStartedAt) / 1000));
+        match.playerTimers[match.activePlayerId] = Math.max(0, (match.playerTimers[match.activePlayerId] ?? MATCH_TIMER_SECONDS) - elapsed);
+        match.turnStartedAt = Date.now();
     }
 
     private consumeExtraDraw(player: PlayerState): number {
         let extra = 0;
-        player.statusEffects ||= [];
-        player.statusEffects = player.statusEffects.filter(effect => {
-            if (effect.type !== 'EXTRA_DRAW_NEXT_TURN') return true;
+        player.statusEffects = (player.statusEffects || []).filter(effect => {
+            if (effect.type !== EffectType.EXTRA_DRAW_NEXT_TURN && effect.type !== 'EXTRA_DRAW_NEXT_TURN') return true;
             extra += Math.max(1, effect.value || 1);
             return false;
         });
@@ -762,76 +723,24 @@ export class MatchService {
     }
 
     private consumeReducedRequirement(player: PlayerState): void {
-        player.statusEffects ||= [];
-        let consumed = false;
-        player.statusEffects = player.statusEffects.filter(effect => {
-            if (!consumed && effect.type === 'NEXT_EVENT_REDUCE_REQUIREMENT') {
-                consumed = true;
+        let removed = false;
+        player.statusEffects = (player.statusEffects || []).filter(effect => {
+            if (!removed && effect.type === 'NEXT_EVENT_REDUCE_REQUIREMENT') {
+                removed = true;
                 return false;
             }
             return true;
         });
     }
 
-    private applyHandStartEffects(match: MatchState, player: PlayerState): void {
-        for (const cardId of player.hand) {
-            const card = CARDS[cardId];
-            const handDecay = card?.effects?.filter(effect => effect.type === 'HAND_SP_DECAY_PERCENT') || [];
-            for (const effect of handDecay) {
-                const percent = Math.max(1, effect.value || 5);
-                const loss = Math.max(1, Math.ceil((player.storyPoints || 0) * (percent / 100)));
-                player.storyPoints = Math.max(0, (player.storyPoints || 0) - loss);
-                player.historyPoints = player.storyPoints;
-                this.addLog(match, player.username, 'effect_resolved', `${card.name} incomoda a ${player.username}: pierde ${loss} SP (Story Points).`);
-            }
-        }
-    }
-
     private tickStatusEffects(player: PlayerState): void {
-        player.statusEffects ||= [];
-        player.statusEffects = player.statusEffects
-            .filter(effect => effect.type === 'EXTRA_DRAW_NEXT_TURN' || effect.turnsRemaining > 0)
+        player.statusEffects = (player.statusEffects || [])
             .map(effect => ({ ...effect, turnsRemaining: effect.turnsRemaining - 1 }))
-            .filter(effect => effect.type === 'EXTRA_DRAW_NEXT_TURN' || effect.turnsRemaining > 0);
+            .filter(effect => effect.turnsRemaining > 0);
     }
 
-    // Check victory conditions
-    private checkVictory(match: MatchState): void {
-        if (match.winner) return;
-
-        for (const player of match.players) {
-            const opponent = match.players.find(p => p.username !== player.username)!;
-
-            // Filler becomes a loss condition only in Act III, after both comeback
-            // checkpoints had room to resolve. Before that it is pressure, not checkmate.
-            if (opponent.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD && player.board.currentBlockIndex >= 3) {
-                match.winner = player.username;
-                match.winReason = 'opponent_filler';
-                match.phase = 'ended';
-                this.addLog(match, player.username, 'victory',
-                    `${opponent.username} accumulated too much filler!`);
-                return;
-            }
-
-            // Victory by Final Event (usually explicit, but check here if needed)
-            if (player.finalEventPlayed) {
-                match.winner = player.username;
-                match.winReason = 'final_event';
-                match.phase = 'ended';
-                return;
-            }
-        }
-    }
-
-    // Add log entry
     private addLog(match: MatchState, player: string, action: string, details?: string): void {
-        match.log.push({
-            turn: match.turnNumber,
-            player,
-            action,
-            details,
-            timestamp: Date.now(),
-        });
+        match.log.push({ turn: match.turnNumber, player, action, details, timestamp: Date.now() });
     }
 }
 

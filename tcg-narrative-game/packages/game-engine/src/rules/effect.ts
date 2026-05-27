@@ -1,11 +1,11 @@
 import { MatchState, EffectType, CardType, TimelineSlot, EffectCondition } from '@tcg/shared/types';
 import { CARDS } from '../content/cards';
-import { evaluateRequirements } from './validation';
 
 export function resolveEffects(
     state: MatchState,
     playerIndex: number,
-    cardId: string
+    cardId: string,
+    options: { multiplier?: number; entryOnly?: boolean } = {}
 ): string[] {
     const card = CARDS[cardId];
     if (!card) return [];
@@ -17,15 +17,8 @@ export function resolveEffects(
     player.statusEffects ||= [];
     opponent.statusEffects ||= [];
 
-    if (card.type === CardType.TOKEN && card.requirements?.length) {
-        const tokenRequirements = evaluateRequirements(state, playerIndex, card.requirements);
-        if (!tokenRequirements.ok) {
-            logs.push(card.name + ' queda como material, pero no activa sus efectos: ' + (tokenRequirements.reasons?.join(' ') || 'no cumple sus requisitos.'));
-            return logs;
-        }
-    }
-
-    for (const effect of card.effects) {
+    const effects = options.entryOnly ? (card.entryEffects || []) : card.effects;
+    for (const effect of effects) {
         if (effect.condition && !isEffectConditionMet(state, playerIndex, effect.condition)) {
             logs.push(card.name + ' no activa ' + (effect.description || effect.type) + ': condicion incompleta.');
             continue;
@@ -33,7 +26,12 @@ export function resolveEffects(
 
         const target = effect.target === 'OPPONENT' ? opponent : player;
         target.statusEffects ||= [];
-        const val = effect.value || 0;
+        const numericMultiplier = options.multiplier || 1;
+        const val = (effect.value || 0) * (
+            (effect.type === EffectType.STORY || effect.type === EffectType.FILLER || effect.type === 'STORY' || effect.type === 'FILLER')
+                ? numericMultiplier
+                : 1
+        );
 
         switch (effect.type) {
             case EffectType.STORY:
@@ -46,8 +44,12 @@ export function resolveEffects(
 
             case EffectType.FILLER:
             case 'FILLER':
-                target.fillerPoints = (target.fillerPoints || 0) + val;
-                logs.push(`${target.username} ${val >= 0 ? 'recibe' : 'limpia'} ${Math.abs(val)} FP (Filler Points) por ${card.name}.`);
+                {
+                    const before = target.fillerPoints || 0;
+                    target.fillerPoints = Math.max(0, before + val);
+                    const applied = target.fillerPoints - before;
+                    logs.push(`${target.username} ${val >= 0 ? 'recibe' : 'limpia'} ${Math.abs(applied)} FP (Filler Points) por ${card.name}.`);
+                }
                 break;
 
             case EffectType.DRAW:
@@ -160,13 +162,116 @@ export function resolveEffects(
 
             case EffectType.INVOKE_CARD_TO_OPPONENT_HAND:
             case 'INVOKE_CARD_TO_OPPONENT_HAND': {
-                const cardToInvoke = effect.cardId || 'isekai-char-demon-lord-gouki';
-                if (CARDS[cardToInvoke] && target.hand.length < 10) {
+                const cardToInvoke = effect.cardId || 'isekai-external-demon-lord-gouki';
+                const uniqueCurse = CARDS[cardToInvoke]?.effects.some(item =>
+                    item.type === EffectType.HAND_RANDOM_FILLER_THEN_DISCARD || item.type === 'HAND_RANDOM_FILLER_THEN_DISCARD'
+                );
+                if (CARDS[cardToInvoke] && target.hand.length < 10 && (!uniqueCurse || !target.hand.includes(cardToInvoke))) {
                     target.hand.push(cardToInvoke);
                     logs.push(`${card.name} invoca ${CARDS[cardToInvoke].name} en la mano de ${target.username}.`);
                 }
                 break;
             }
+
+            case EffectType.RECOVER_FROM_CEMETERY:
+            case 'RECOVER_FROM_CEMETERY': {
+                const recoverId = effect.cardId || target.discard[target.discard.length - 1];
+                const discardIndex = recoverId ? target.discard.indexOf(recoverId) : -1;
+                if (discardIndex >= 0 && recoverId && target.hand.length < 10) {
+                    target.discard.splice(discardIndex, 1);
+                    target.hand.push(recoverId);
+                    logs.push(`${card.name} recupera ${CARDS[recoverId]?.name || recoverId} del Cementerio a la mano de ${target.username}.`);
+                }
+                break;
+            }
+
+            case EffectType.RECOVER_FROM_COMPLETED_ARC:
+            case 'RECOVER_FROM_COMPLETED_ARC': {
+                let remaining = Math.max(1, effect.value || 1);
+                const recovered: string[] = [];
+                const sourceIsResolvingEvent = card.type === CardType.EVENT || card.type === CardType.CLIMAX_EVENT;
+                const blocks = [...target.board.blocks].reverse();
+                for (const block of blocks) {
+                    if (remaining <= 0 || target.hand.length >= 10) break;
+                    const resolvedNow = sourceIsResolvingEvent && block.blockIndex === target.board.currentBlockIndex;
+                    if (!block.eventCompleted && !resolvedNow) continue;
+                    for (const slot of [...block.slots].reverse()) {
+                        if (remaining <= 0 || target.hand.length >= 10) break;
+                        if (!slot.cardId) continue;
+                        recovered.push(slot.cardId);
+                        target.hand.push(slot.cardId);
+                        slot.cardId = undefined;
+                        slot.cardType = undefined;
+                        slot.placedTurn = undefined;
+                        remaining--;
+                    }
+                }
+                if (recovered.length) {
+                    logs.push(`${card.name} trae ${recovered.map(id => CARDS[id]?.name || id).join(', ')} de un arco resuelto a la mano de ${target.username}.`);
+                }
+                break;
+            }
+
+            case EffectType.SEARCH_CLIMAX:
+            case 'SEARCH_CLIMAX': {
+                const index = target.deck.findIndex(id => CARDS[id]?.type === CardType.CLIMAX_EVENT && (!effect.cardId || id === effect.cardId));
+                if (index >= 0 && target.hand.length < 10) {
+                    const found = target.deck.splice(index, 1)[0];
+                    target.hand.push(found);
+                    logs.push(`${target.username} busca ${CARDS[found]?.name || found} en su mazo por ${card.name}.`);
+                }
+                break;
+            }
+
+            case EffectType.SEARCH_CARD_TYPE:
+            case 'SEARCH_CARD_TYPE': {
+                const wantedType = effect.cardType || CardType.ITEM;
+                const index = target.deck.findIndex(id => CARDS[id]?.type === wantedType);
+                if (index >= 0 && target.hand.length < 10) {
+                    const found = target.deck.splice(index, 1)[0];
+                    target.hand.push(found);
+                    logs.push(`${target.username} busca ${CARDS[found]?.name || found} de tipo ${wantedType} por ${card.name}.`);
+                }
+                break;
+            }
+
+            case EffectType.MODIFY_CLIMAX_LEVEL:
+            case 'MODIFY_CLIMAX_LEVEL': {
+                if (state.pendingClimax) {
+                    const tiers: Array<2 | 4 | 10> = [2, 4, 10];
+                    const current = tiers.indexOf(state.pendingClimax.multiplier);
+                    const reduced = Math.max(0, current - Math.max(1, effect.value || 1));
+                    state.pendingClimax.multiplier = tiers[reduced];
+                    logs.push(`${card.name} reduce el Climax rival a x${state.pendingClimax.multiplier}.`);
+                }
+                break;
+            }
+
+            case EffectType.PROTECT_PROTAGONIST:
+            case 'PROTECT_PROTAGONIST':
+                target.statusEffects.push({
+                    id: `status_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                    type: 'PROTECT_PROTAGONIST',
+                    sourceCardId: card.id,
+                    sourceName: card.name,
+                    turnsRemaining: effect.turns || 2,
+                    message: `Tu Protagonista ignora el proximo efecto de silencio por ${card.name}.`,
+                });
+                logs.push(`${card.name} protege al Protagonista de ${target.username} del proximo silencio.`);
+                break;
+
+            case EffectType.SILENCE_PROTAGONIST_NEXT_EVENT:
+            case 'SILENCE_PROTAGONIST_NEXT_EVENT':
+                target.statusEffects.push({
+                    id: `status_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                    type: 'SILENCE_PROTAGONIST_NEXT_EVENT',
+                    sourceCardId: card.id,
+                    sourceName: card.name,
+                    turnsRemaining: effect.turns || 2,
+                    message: `El Protagonista no activa sus efectos en su proximo Evento por ${card.name}.`,
+                });
+                logs.push(`${card.name} silencia al Protagonista de ${target.username} para su proximo Evento.`);
+                break;
         }
     }
 

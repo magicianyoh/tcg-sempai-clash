@@ -34,6 +34,12 @@ export function evaluateRequirements(
                 }
                 break;
 
+            case 'FILLER_MIN':
+                if (player.fillerPoints < (req.value || 0)) {
+                    reasons.push(`Requiere ${req.value} FP (Filler Points), tienes ${player.fillerPoints}.`);
+                }
+                break;
+
             case 'EVENT_COMPLETED':
                 if (req.cardIds) {
                     const missing = req.cardIds.filter(id => !player.completedEvents.includes(id));
@@ -41,6 +47,18 @@ export function evaluateRequirements(
                         const names = missing.map(id => CARDS[id]?.name || id).join(', ');
                         reasons.push(`Requiere completar evento(s): ${names}.`);
                     }
+                }
+                break;
+
+            case 'EVENT_COUNT_MIN':
+                if (player.completedEvents.length < (req.value || 1)) {
+                    reasons.push(`Requiere completar ${req.value || 1} Evento(s); completaste ${player.completedEvents.length}.`);
+                }
+                break;
+
+            case 'DISCARD_FROM_HAND':
+                if (player.hand.length - 1 < (req.value || 1)) {
+                    reasons.push(`Requiere descartar ${req.value || 1} carta(s) adicional(es) de la mano.`);
                 }
                 break;
 
@@ -75,6 +93,26 @@ export function evaluateRequirements(
                     reasons.push(`Requiere ${req.value || 1} carta(s) en campo: ${criteria.join(' + ')}.`);
                 }
                 break;
+
+            case 'CARD_IN_COMPLETED_ARC': {
+                let historicalCount = 0;
+                player.board.blocks.filter(block => block.eventCompleted).forEach(block => {
+                    block.slots.forEach(slot => {
+                        if (!slot.cardId) return;
+                        const card = CARDS[slot.cardId];
+                        if (!card) return;
+                        if (req.cardIds && !req.cardIds.includes(card.id)) return;
+                        if (req.cardType && card.type !== req.cardType) return;
+                        if (req.tag && !card.tags?.includes(req.tag)) return;
+                        if (req.archetype && card.archetype !== req.archetype) return;
+                        historicalCount++;
+                    });
+                });
+                if (historicalCount < (req.value || 1)) {
+                    reasons.push(`Requiere ${req.value || 1} carta(s) compatible(s) revelada(s) en un arco previo.`);
+                }
+                break;
+            }
         }
     }
 
@@ -82,6 +120,10 @@ export function evaluateRequirements(
         ok: reasons.length === 0,
         reasons
     };
+}
+
+function protagonistUsesFillerEconomy(player: PlayerState): boolean {
+    return Boolean(player.protagonistId && CARDS[player.protagonistId]?.costResource === 'FP');
 }
 
 function isImplicitCompletedProtagonistRequirement(player: PlayerState, cardId: string): boolean {
@@ -142,14 +184,11 @@ export function canPlayCard(
         return { ok: false, reasons: ['No es tu turno'] };
     }
 
-    // 2. Check cost
-    // Assumes energy/actions system. If we limit plays per turn (max 3), checked elsewhere usually.
-    // Assuming cost check is handled by "plays remaining" logic in main loop, 
-    // but if cards have specific 'cost' property:
-    if (card.cost > 0) {
-        // We defined cost but didn't strictly define separate "Energy" resource in types yet 
-        // besides plays-per-turn. Phase 2 usually implies Action Points or just card count limit.
-        // For now, ignoring numerical cost check unless resource added.
+    // 2. V2 card costs consume either SP or FP.
+    const resource = card.costResource || 'SP';
+    const balance = resource === 'FP' ? player.fillerPoints : (player.storyPoints ?? player.historyPoints ?? 0);
+    if (card.cost > balance) {
+        return { ok: false, reasons: [`Necesitas ${card.cost} ${resource} para jugar ${card.name}; tienes ${balance}.`] };
     }
 
     const blockedType = player.statusEffects?.find(effect =>
@@ -171,7 +210,29 @@ export function canPlayCard(
     }
 
     // 3. Event Specific Checks
-    if (card.type === CardType.EVENT || card.type === CardType.EVENT_KEY || card.type === CardType.EVENT_FINAL) {
+    if (card.type === CardType.PROTAGONIST) {
+        return { ok: false, reasons: ['El protagonista entra automaticamente como avatar del deck.'] };
+    }
+    if (card.tags?.includes('external-only')) {
+        return { ok: false, reasons: ['Esta carta solo puede permanecer en la mano o ser descartada por un efecto.'] };
+    }
+
+    if (card.type === CardType.PLOT_TWIST_EVENT && state.phase !== 'climax_response') {
+        return { ok: false, reasons: ['El Plot-Twist solo aparece como respuesta a un Climax.'] };
+    }
+
+    if (card.type === CardType.QUICK_EVENT || card.type === CardType.TOKEN) {
+        const requirementResult = evaluateRequirements(state, playerIndex, card.requirements || []);
+        if (!requirementResult.ok) return requirementResult;
+    }
+
+    if (state.phase === 'climax_response' && (
+        card.type === CardType.EVENT || card.type === CardType.CLIMAX_EVENT || card.type === CardType.EVENT_FINAL
+    )) {
+        return { ok: false, reasons: ['Durante la respuesta solo puedes activar el Plot-Twist.'] };
+    }
+
+    if (card.type === CardType.EVENT || card.type === CardType.EVENT_KEY || card.type === CardType.EVENT_FINAL || card.type === CardType.CLIMAX_EVENT || card.type === CardType.PLOT_TWIST_EVENT) {
 
         // Target must be event orb
         if (!target?.isEventOrb) {
@@ -179,12 +240,23 @@ export function canPlayCard(
         }
 
         // Filler Cap Check
-        if (!player.canPlayEvents || (player.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD && player.board.currentBlockIndex >= 3)) {
+        if (!player.canPlayEvents || (
+            !protagonistUsesFillerEconomy(player)
+            && player.fillerPoints >= GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD
+            && player.board.currentBlockIndex >= 3
+        )) {
             return { ok: false, reasons: [`Bloqueado por exceso de FP (Filler Points) (${GAME_CONSTANTS.FILLER_BLOCK_THRESHOLD}+)`] };
         }
 
         const prereqResult = evaluateEventPrerequisites(player, card);
         if (!prereqResult.ok) return prereqResult;
+
+        const requirementResult = evaluateRequirements(
+            state,
+            playerIndex,
+            getEffectiveRequirements(state, playerIndex, card.requirements || [])
+        );
+        if (!requirementResult.ok) return requirementResult;
 
         // Check if slot available (if specific block targeting is used)
         if (target.blockIndex !== undefined) {
@@ -217,33 +289,9 @@ export function canReturnToHand(
     blockIndex: number,
     position: string
 ): ValidationResult {
-    const player = state.players[playerIndex];
-
-    if (state.activePlayerId !== player.username) {
-        return { ok: false, reasons: ['No es tu turno'] };
-    }
-
-    const block = player.board.blocks[blockIndex];
-    if (!block) return { ok: false, reasons: ['Bloque no existe'] };
-
-    const slot = block.slots.find(s => s.position === position);
-    if (!slot || !slot.cardId) return { ok: false, reasons: ['Slot vacío'] };
-
-    if (slot.placedTurn !== undefined && slot.placedTurn !== state.turnNumber) {
-        return { ok: false, reasons: ['La carta ya quedo fijada al campo'] };
-    }
-
-    // Rule: Cannot return if block has active event?
-    // Often returning valid cards breaks the event requirements if we re-check dynamically.
-    // If event is just placed but not resolved -> preventing exploits.
-    if (!block.eventCompleted && block.eventSlot) {
-        // If there's an active event in progress, maybe we lock the cards?
-        // Let's decide: YES, lock cards supporting an active event to prevent easy cycling.
-        return { ok: false, reasons: ['Cartas bloqueadas por Evento activo'] };
-    }
-
-    // Locked status (from effects)
-    // if (player.lockedSlots.includes(...)) ...
-
-    return { ok: true, reasons: [] };
+    void state;
+    void playerIndex;
+    void blockIndex;
+    void position;
+    return { ok: false, reasons: ['Las cartas colocadas permanecen en su arco'] };
 }

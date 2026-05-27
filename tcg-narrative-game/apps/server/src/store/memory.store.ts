@@ -1,7 +1,24 @@
 import { CardData, DeckData, MatchState } from '@tcg/shared/types';
 import { LobbyState } from '@tcg/shared/protocol';
+import { GAME_CONSTANTS } from '@tcg/shared/constants';
+import { CARDS } from '@tcg/game-engine/content/cards';
 import * as fs from 'fs';
 import * as path from 'path';
+
+const CATALOG_CONTENT_VERSION = 5;
+const REBUILT_ROUTE_PROTAGONISTS = new Set([
+    'mecha-hero-brave-gai',
+    'shonen-hero-dragon-ryu',
+    'shonen-hero-kenji-forms',
+    'shonen-hero-nakama-hiro',
+    'shonen-hero-spirit-aya',
+    'isekai-hero-slime-rimu',
+    'isekai-hero-villainess-ema',
+    'isekai-hero-artisan-nia',
+    'isekai-hero-refused-yuna',
+    'isekai-hero-bartender-zatos-last-call',
+    'isekai-hero-bartender-zatos-rainwood',
+]);
 
 // ============================================
 // User Model
@@ -64,7 +81,8 @@ export type PersistedCardData = CardData & {
 };
 
 interface PersistedStoreState {
-    version: 1;
+    version: 2;
+    catalogContentVersion?: number;
     users: Array<[string, User]>;
     decks: Array<[string, DeckData]>;
     decksByUser: Array<[string, string[]]>;
@@ -159,7 +177,7 @@ export class MemoryStore {
             if (!fs.existsSync(this.dbFilePath)) return;
 
             const raw = fs.readFileSync(this.dbFilePath, 'utf8');
-            const parsed = JSON.parse(raw) as Partial<PersistedStoreState>;
+            const parsed = JSON.parse(raw) as Partial<PersistedStoreState> & { version?: number };
 
             if (Array.isArray(parsed.users)) {
                 this.users = new Map(parsed.users);
@@ -202,9 +220,97 @@ export class MemoryStore {
                     },
                 };
             }
+                        if (parsed.version !== 2) {
+                            this.backupLegacyDatabase();
+                            this.decks.clear();
+                            this.decksByUser = new Map(Array.from(this.users.keys()).map(username => [username, []]));
+                            this.users.forEach(user => delete user.activeDeckId);
+                            this.cardOverrides.clear();
+                            this.prebuiltDeckSettings.deckOverrides = {};
+                            this.saveToDisk();
+                        } else {
+                            let changed = this.removeIncompatibleV2Decks();
+                            if (parsed.catalogContentVersion !== CATALOG_CONTENT_VERSION) {
+                                this.backupCatalogDatabase();
+                                this.cardOverrides.clear();
+                                this.prebuiltDeckSettings.deckOverrides = {};
+                                this.removeChangedRouteDecks();
+                                changed = true;
+                            }
+                            if (changed) this.saveToDisk();
+                        }
         } catch {
             // Keep the in-code defaults when the local JSON database is missing or invalid.
         }
+    }
+
+    private backupLegacyDatabase(): void {
+        try {
+            const backupPath = path.join(path.dirname(this.dbFilePath), 'db.v1.backup.json');
+            if (!fs.existsSync(backupPath)) {
+                fs.copyFileSync(this.dbFilePath, backupPath);
+                }
+
+        } catch {
+            // A failed backup must not prevent startup; existing file remains intact.
+        }
+    }
+
+    private backupCatalogDatabase(): void {
+        try {
+            const backupPath = path.join(path.dirname(this.dbFilePath), 'db.catalog-v4.backup.json');
+            if (!fs.existsSync(backupPath)) {
+                fs.copyFileSync(this.dbFilePath, backupPath);
+            }
+        } catch {
+            // A failed backup must not prevent startup; existing file remains intact.
+        }
+    }
+
+    private removeIncompatibleV2Decks(): boolean {
+        const activeArchetypes = new Set(['SHONEN', 'MECHA', 'SHOJO', 'ISEKAI']);
+        let changed = false;
+        const incompatible = new Set(
+            Array.from(this.decks.entries())
+                .filter(([, deck]) => !deck.protagonistId
+                    || !activeArchetypes.has(deck.archetypeId)
+                    || deck.cards.length !== GAME_CONSTANTS.DECK_SIZE
+                    || !CARDS[deck.protagonistId]
+                    || deck.cards.some(cardId => !CARDS[cardId]))
+                .map(([id]) => id)
+        );
+        for (const [id, cards] of Object.entries(this.prebuiltDeckSettings.deckOverrides || {})) {
+            if (cards.length !== GAME_CONSTANTS.DECK_SIZE) {
+                delete this.prebuiltDeckSettings.deckOverrides?.[id];
+                changed = true;
+            }
+        }
+        if (incompatible.size === 0) return changed;
+
+        incompatible.forEach(id => this.decks.delete(id));
+        this.decksByUser.forEach((deckIds, username) => {
+            this.decksByUser.set(username, deckIds.filter(id => !incompatible.has(id)));
+        });
+        this.users.forEach(user => {
+            if (user.activeDeckId && incompatible.has(user.activeDeckId)) {
+                delete user.activeDeckId;
+            }
+        });
+        return true;
+    }
+
+    private removeChangedRouteDecks(): void {
+        const removed = new Set(Array.from(this.decks.entries())
+            .filter(([, deck]) => Boolean(deck.protagonistId && REBUILT_ROUTE_PROTAGONISTS.has(deck.protagonistId)))
+            .map(([id]) => id));
+        if (!removed.size) return;
+        removed.forEach(id => this.decks.delete(id));
+        this.decksByUser.forEach((deckIds, username) => {
+            this.decksByUser.set(username, deckIds.filter(id => !removed.has(id)));
+        });
+        this.users.forEach(user => {
+            if (user.activeDeckId && removed.has(user.activeDeckId)) delete user.activeDeckId;
+        });
     }
 
     private saveToDisk(): void {
@@ -213,7 +319,8 @@ export class MemoryStore {
             fs.mkdirSync(dir, { recursive: true });
 
             const state: PersistedStoreState = {
-                version: 1,
+                version: 2,
+                catalogContentVersion: CATALOG_CONTENT_VERSION,
                 users: Array.from(this.users.entries()),
                 decks: Array.from(this.decks.entries()),
                 decksByUser: Array.from(this.decksByUser.entries()),

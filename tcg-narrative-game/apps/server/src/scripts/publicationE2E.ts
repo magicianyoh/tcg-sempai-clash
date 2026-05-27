@@ -71,14 +71,15 @@ function waitForMatchState(
     });
 }
 
-async function createDeckFromTemplate(token: string, name: string): Promise<{ deckId: string; archetypeId: string }> {
-    const prebuilt = await request<{ decks: Array<{ archetypeId: string; cards: string[] }> }>('GET', '/prebuilt-decks', undefined, token);
+async function createDeckFromTemplate(token: string, name: string): Promise<{ deckId: string; archetypeId: string; cpuDeckId: string }> {
+    const prebuilt = await request<{ decks: Array<{ id: string; archetypeId: string; protagonistId: string; cards: string[] }> }>('GET', '/prebuilt-decks', undefined, token);
     const template = prebuilt.decks[0];
     if (!template) throw new Error('No prebuilt deck available');
 
     const deck = await request<{ deck: { id: string; cards: string[] } }>('POST', '/decks', {
         name,
         archetypeId: template.archetypeId,
+        protagonistId: template.protagonistId,
         cardIds: template.cards,
         backgroundId: 'bg_01',
     }, token);
@@ -87,13 +88,14 @@ async function createDeckFromTemplate(token: string, name: string): Promise<{ de
         throw new Error(`Builder created deck with ${deck.deck.cards.length} cards`);
     }
 
-    return { deckId: deck.deck.id, archetypeId: template.archetypeId };
+    return { deckId: deck.deck.id, archetypeId: template.archetypeId, cpuDeckId: template.id };
 }
 
-async function createCpuMatchAndBattle(token: string, deckId: string, archetypeId: string): Promise<JsonValue> {
+async function createCpuMatchAndBattle(token: string, deckId: string, archetypeId: string, cpuDeckId: string): Promise<JsonValue> {
     const cpuMatch = await request<{ matchId: string; matchState: JsonValue }>('POST', '/cpu-match', {
         deckId,
         cpuArchetypeId: archetypeId,
+        cpuDeckId,
         difficulty: 'normal',
         formatId: 'standard',
     }, token);
@@ -135,10 +137,11 @@ async function main(): Promise<void> {
     if (me.username !== username) throw new Error('Authenticated /auth/me mismatch');
 
     const deck = await createDeckFromTemplate(login.token, 'Publication E2E Deck');
-    const firstBattle = await createCpuMatchAndBattle(login.token, deck.deckId, deck.archetypeId);
+    const firstBattle = await createCpuMatchAndBattle(login.token, deck.deckId, deck.archetypeId, deck.cpuDeckId);
     const rematch = await request<{ matchId: string; matchState: JsonValue }>('POST', '/cpu-match', {
         deckId: deck.deckId,
         cpuArchetypeId: deck.archetypeId,
+        cpuDeckId: deck.cpuDeckId,
         difficulty: 'normal',
         formatId: 'standard',
     }, login.token);

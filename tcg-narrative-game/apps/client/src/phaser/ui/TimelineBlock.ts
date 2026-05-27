@@ -21,12 +21,13 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
     private blockIndex: number;
     private isPlayerBlock: boolean;
     private orbGlow: Phaser.GameObjects.Graphics | null = null;
+    private protagonistSlot: Phaser.GameObjects.Container | null = null;
     private glowTween: Phaser.Tweens.Tween | null = null;
 
-    private static readonly SLOT_WIDTH = 96;
-    private static readonly SLOT_HEIGHT = 132;
-    private static readonly ORB_RADIUS = 39;
-    private static readonly GUIDE_RADIUS = 132;
+    private static readonly SLOT_WIDTH = 84;
+    private static readonly SLOT_HEIGHT = 116;
+    private static readonly EVENT_WIDTH = 90;
+    private static readonly EVENT_HEIGHT = 124;
 
     constructor(scene: Phaser.Scene, config: TimelineBlockConfig) {
         super(scene, config.x, config.y);
@@ -36,6 +37,7 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
         this.createBackground();
         this.createSlots();
         this.createEventOrb();
+        this.createProtagonistSlot();
 
         if (config.scale) {
             this.setScale(config.scale);
@@ -46,18 +48,22 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
 
     private createBackground(): void {
         const guide = this.scene.add.graphics();
-        guide.lineStyle(4, 0xffffff, 0.9);
-        guide.strokeCircle(0, 0, TimelineBlock.GUIDE_RADIUS);
+        guide.lineStyle(2, 0xffffff, 0.36);
+        guide.beginPath();
+        guide.moveTo(-142, 30);
+        guide.lineTo(-60, -52);
+        guide.lineTo(60, -52);
+        guide.lineTo(142, 30);
+        guide.strokePath();
         this.add(guide);
     }
 
     private createSlots(): void {
-        const offset = TimelineBlock.GUIDE_RADIUS;
         const positions: { pos: SlotPosition; x: number; y: number }[] = [
-            { pos: 'top', x: 0, y: -offset },
-            { pos: 'bottom', x: 0, y: offset },
-            { pos: 'left', x: -offset, y: 0 },
-            { pos: 'right', x: offset, y: 0 },
+            { pos: 'top', x: -80, y: -18 },
+            { pos: 'bottom', x: 80, y: -18 },
+            { pos: 'left', x: -174, y: 48 },
+            { pos: 'right', x: 174, y: 48 },
         ];
 
         for (const { pos, x, y } of positions) {
@@ -76,7 +82,7 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
     }
 
     private createEventOrb(): void {
-        const orb = this.scene.add.container(0, 0);
+        const orb = this.scene.add.container(0, -176);
 
         this.orbGlow = this.scene.add.graphics();
         orb.add(this.orbGlow);
@@ -90,23 +96,34 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
         const outer = this.scene.add.graphics();
         outer.lineStyle(4, 0xffffff, 1);
         outer.fillStyle(0x000000, 0.82);
-        outer.fillCircle(0, 0, TimelineBlock.ORB_RADIUS);
-        outer.strokeCircle(0, 0, TimelineBlock.ORB_RADIUS);
+        outer.fillRect(-TimelineBlock.EVENT_WIDTH / 2, -TimelineBlock.EVENT_HEIGHT / 2, TimelineBlock.EVENT_WIDTH, TimelineBlock.EVENT_HEIGHT);
+        outer.strokeRect(-TimelineBlock.EVENT_WIDTH / 2, -TimelineBlock.EVENT_HEIGHT / 2, TimelineBlock.EVENT_WIDTH, TimelineBlock.EVENT_HEIGHT);
         orb.add(outer);
 
-        const lens = this.scene.add.graphics();
-        lens.lineStyle(2, 0xffffff, 0.75);
-        lens.fillStyle(0xffffff, 0.12);
-        lens.fillCircle(-6, -4, TimelineBlock.ORB_RADIUS * 0.55);
-        lens.strokeCircle(-6, -4, TimelineBlock.ORB_RADIUS * 0.55);
-        lens.fillStyle(0xffffff, 0.25);
-        lens.fillCircle(-16, -14, 7);
-        orb.add(lens);
+        const label = this.scene.add.text(0, 0, 'EVENTO', {
+            fontSize: '13px',
+            color: '#cbd5e1',
+            fontStyle: 'bold',
+        }).setOrigin(0.5);
+        orb.add(label);
 
-        orb.setSize(TimelineBlock.ORB_RADIUS * 2, TimelineBlock.ORB_RADIUS * 2);
+        orb.setSize(TimelineBlock.EVENT_WIDTH, TimelineBlock.EVENT_HEIGHT);
         orb.setInteractive({ dropZone: true });
         orb.setData('isEventOrb', true);
         orb.setData('isEmpty', true);
+    }
+
+    private createProtagonistSlot(): void {
+        const slot = this.scene.add.container(0, 82);
+        const frame = this.scene.add.rectangle(0, 0, 94, 130, 0x090d17, 0.95).setStrokeStyle(3, 0xffffff, 0.8);
+        const text = this.scene.add.text(0, 0, 'PROTAGONISTA', {
+            fontSize: '10px',
+            color: '#94a3b8',
+            fontStyle: 'bold',
+        }).setOrigin(0.5);
+        slot.add([frame, text]);
+        this.protagonistSlot = slot;
+        this.add(slot);
     }
 
     getSlot(position: SlotPosition): FieldSlot | undefined {
@@ -194,14 +211,14 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
         const orbBg = this.scene.add.graphics();
         orbBg.fillStyle(0x4ecdc4, 1);
         orbBg.lineStyle(4, 0xffffff, 1);
-        orbBg.fillCircle(0, 0, TimelineBlock.ORB_RADIUS);
-        orbBg.strokeCircle(0, 0, TimelineBlock.ORB_RADIUS);
+        orbBg.fillRect(-TimelineBlock.EVENT_WIDTH / 2, -TimelineBlock.EVENT_HEIGHT / 2, TimelineBlock.EVENT_WIDTH, TimelineBlock.EVENT_HEIGHT);
+        orbBg.strokeRect(-TimelineBlock.EVENT_WIDTH / 2, -TimelineBlock.EVENT_HEIGHT / 2, TimelineBlock.EVENT_WIDTH, TimelineBlock.EVENT_HEIGHT);
         this.eventOrb.add(orbBg);
 
         const cardLabel = this.scene.add.text(0, 0, cardName, {
             fontSize: '10px',
             color: '#001315',
-            wordWrap: { width: TimelineBlock.ORB_RADIUS * 1.7 },
+            wordWrap: { width: TimelineBlock.EVENT_WIDTH - 10 },
             align: 'center',
             fontStyle: 'bold',
         }).setOrigin(0.5);
@@ -210,12 +227,29 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
         this.eventOrb.setData('isEmpty', false);
         this.eventOrb.setData('cardId', cardId);
 
-        orbBg.setInteractive(new Phaser.Geom.Circle(0, 0, TimelineBlock.ORB_RADIUS), Phaser.Geom.Circle.Contains);
+        orbBg.setInteractive(new Phaser.Geom.Rectangle(-TimelineBlock.EVENT_WIDTH / 2, -TimelineBlock.EVENT_HEIGHT / 2, TimelineBlock.EVENT_WIDTH, TimelineBlock.EVENT_HEIGHT), Phaser.Geom.Rectangle.Contains);
         orbBg.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
             this.scene.events.emit('card-clicked', cardId, pointer, this.blockIndex, 'event');
         });
 
         return true;
+    }
+
+    placeProtagonist(cardId: string, cardName: string): void {
+        if (!this.protagonistSlot) return;
+        this.protagonistSlot.removeAll(true);
+        const bg = this.scene.add.rectangle(0, 0, 94, 130, 0xe94560, 0.96).setStrokeStyle(3, 0xffffff);
+        const label = this.scene.add.text(0, 0, cardName, {
+            fontSize: '12px',
+            color: '#ffffff',
+            fontStyle: 'bold',
+            align: 'center',
+            wordWrap: { width: 84 },
+        }).setOrigin(0.5);
+        bg.setInteractive({ useHandCursor: true }).on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            this.scene.events.emit('card-clicked', cardId, pointer, this.blockIndex, 'protagonist');
+        });
+        this.protagonistSlot.add([bg, label]);
     }
 
     startGlow(): void {
@@ -260,9 +294,9 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
         if (!this.orbGlow) return;
         this.orbGlow.clear();
         this.orbGlow.fillStyle(color, alpha);
-        this.orbGlow.fillCircle(0, 0, TimelineBlock.ORB_RADIUS + 12);
+        this.orbGlow.fillRect(-TimelineBlock.EVENT_WIDTH / 2 - 9, -TimelineBlock.EVENT_HEIGHT / 2 - 9, TimelineBlock.EVENT_WIDTH + 18, TimelineBlock.EVENT_HEIGHT + 18);
         this.orbGlow.lineStyle(3, color, 0.95);
-        this.orbGlow.strokeCircle(0, 0, TimelineBlock.ORB_RADIUS + 18);
+        this.orbGlow.strokeRect(-TimelineBlock.EVENT_WIDTH / 2 - 14, -TimelineBlock.EVENT_HEIGHT / 2 - 14, TimelineBlock.EVENT_WIDTH + 28, TimelineBlock.EVENT_HEIGHT + 28);
     }
 
     private getCardColor(cardType: string): number {
@@ -272,10 +306,13 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
             case 'CHARACTER': return 0x3498db;
             case 'ITEM': return 0xf39c12;
             case 'LOCATION': return 0x8e44ad;
-            case 'TOKEN': return 0x22c55e;
+            case 'TOKEN':
+            case 'QUICK_EVENT': return 0x22c55e;
             case 'EVENT':
             case 'EVENT_KEY': return 0x2ecc71;
             case 'EVENT_FINAL': return 0xffd166;
+            case 'CLIMAX_EVENT': return 0xffd166;
+            case 'PLOT_TWIST_EVENT': return 0xe94560;
             case 'FILLER': return 0x7f8c8d;
             default: return 0x555555;
         }
@@ -287,8 +324,11 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
             case 'PERSONAJE':
             case 'CHARACTER': return 'PERS';
             case 'LOCATION': return 'LOC';
-            case 'TOKEN': return 'TOK';
+            case 'TOKEN':
+            case 'QUICK_EVENT': return 'QEV';
             case 'EVENT_FINAL': return 'FINAL';
+            case 'CLIMAX_EVENT': return 'CLIMAX';
+            case 'PLOT_TWIST_EVENT': return 'PLOT';
             case 'EVENT':
             case 'EVENT_KEY': return 'EVT';
             default: return cardType.slice(0, 5);

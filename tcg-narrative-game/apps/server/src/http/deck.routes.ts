@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { store } from '../store/memory.store';
-import { DeckData } from '@tcg/shared/types';
-import { GAME_CONSTANTS, ARCHETYPES } from '@tcg/shared/constants';
+import { CardData, CardType, DeckData } from '@tcg/shared/types';
+import { GAME_CONSTANTS, V2_ARCHETYPES } from '@tcg/shared/constants';
 import { CARDS } from '@tcg/game-engine/content/cards';
 import { getPrebuiltDecks } from '../decks/prebuilt-decks';
 
@@ -14,28 +14,39 @@ interface CreateDeckBody {
     archetypeId: string;
     cardIds: string[];
     backgroundId?: string;
+    protagonistId: string;
 }
 
 interface UpdateDeckBody {
     name?: string;
     cardIds?: string[];
     backgroundId?: string;
+    protagonistId?: string;
 }
 
 interface DeckParams {
     id: string;
 }
 
-function validateDeck(archetypeId: string, cardIds: string[]): { valid: boolean; error?: string } {
+function narrativeRoute(card: CardData): string | undefined {
+    if (card.type !== CardType.EVENT && card.type !== CardType.CLIMAX_EVENT) return undefined;
+    return card.tags?.find(tag => tag.startsWith('route:'))?.slice('route:'.length);
+}
+
+function validateDeck(archetypeId: string, protagonistId: string | undefined, cardIds: string[]): { valid: boolean; error?: string } {
     // Check deck size
     if (cardIds.length !== GAME_CONSTANTS.DECK_SIZE) {
         return { valid: false, error: `Deck must have exactly ${GAME_CONSTANTS.DECK_SIZE} cards` };
     }
 
     // Check archetype is valid
-    const validArchetypes = Object.values(ARCHETYPES);
+    const validArchetypes = [...V2_ARCHETYPES];
     if (!validArchetypes.includes(archetypeId as any)) {
         return { valid: false, error: `Invalid archetype: ${archetypeId}` };
+    }
+    const protagonist = protagonistId ? CARDS[protagonistId] : undefined;
+    if (!protagonist || protagonist.type !== CardType.PROTAGONIST || protagonist.formIndex !== 0 || protagonist.archetype !== archetypeId) {
+        return { valid: false, error: 'Select a valid V2 protagonist for this archetype' };
     }
 
     // Count card copies
@@ -55,12 +66,28 @@ function validateDeck(archetypeId: string, cardIds: string[]): { valid: boolean;
         if (card.archetype !== archetypeId) {
             return { valid: false, error: `Card ${cardId} does not belong to archetype ${archetypeId}` };
         }
+        if (card.type === CardType.PROTAGONIST || card.type === CardType.PLOT_TWIST_EVENT) {
+            return { valid: false, error: `${card.name} is associated with the protagonist and is not part of the ${GAME_CONSTANTS.DECK_SIZE}-card deck` };
+        }
+        if (card.tags?.includes('external-only')) {
+            return { valid: false, error: `${card.name} can only be invoked by a card effect` };
+        }
+        if (card.protagonistId && card.protagonistId !== protagonistId) {
+            return { valid: false, error: `${card.name} belongs to another protagonist route` };
+        }
 
         // Check max copies
         const maxCopies = card.maxCopies ?? GAME_CONSTANTS.MAX_COPIES_PER_CARD;
         if (cardCount[cardId] > maxCopies) {
             return { valid: false, error: `Too many copies of ${card.name} (max: ${maxCopies})` };
         }
+    }
+
+    const routes = new Set(cardIds
+        .map(cardId => narrativeRoute(CARDS[cardId]))
+        .filter((route): route is string => Boolean(route)));
+    if (routes.size > 1) {
+        return { valid: false, error: 'El mazo debe elegir una sola ruta narrativa de Eventos para su protagonista.' };
     }
 
     return { valid: true };
@@ -109,13 +136,13 @@ export async function deckRoutes(fastify: FastifyInstance) {
     // POST /decks - Create new deck
     fastify.post<{ Body: CreateDeckBody }>('/decks', async (request, reply) => {
         const user = request.user as { username: string };
-        const { name, archetypeId, cardIds, backgroundId } = request.body;
+        const { name, archetypeId, cardIds, backgroundId, protagonistId } = request.body;
 
-        if (!name || !archetypeId || !cardIds) {
-            return reply.code(400).send({ error: 'Missing required fields: name, archetypeId, cardIds' });
+        if (!name || !archetypeId || !protagonistId || !cardIds) {
+            return reply.code(400).send({ error: 'Missing required fields: name, archetypeId, protagonistId, cardIds' });
         }
 
-        const validation = validateDeck(archetypeId, cardIds);
+        const validation = validateDeck(archetypeId, protagonistId, cardIds);
         if (!validation.valid) {
             return reply.code(400).send({ error: validation.error });
         }
@@ -125,6 +152,7 @@ export async function deckRoutes(fastify: FastifyInstance) {
             archetypeId,
             cards: cardIds,
             backgroundId,
+            protagonistId,
         });
 
         // Set as active deck
@@ -137,7 +165,7 @@ export async function deckRoutes(fastify: FastifyInstance) {
     fastify.put<{ Params: DeckParams; Body: UpdateDeckBody }>('/decks/:id', async (request, reply) => {
         const user = request.user as { username: string };
         const { id } = request.params;
-        const { name, cardIds, backgroundId } = request.body;
+        const { name, cardIds, backgroundId, protagonistId } = request.body;
 
         if (!store.isUserDeck(user.username, id)) {
             return reply.code(404).send({ error: 'Deck not found' });
@@ -150,7 +178,7 @@ export async function deckRoutes(fastify: FastifyInstance) {
 
         // Validate cards if updating
         if (cardIds) {
-            const validation = validateDeck(existingDeck.archetypeId as string, cardIds);
+            const validation = validateDeck(existingDeck.archetypeId as string, protagonistId || existingDeck.protagonistId, cardIds);
             if (!validation.valid) {
                 return reply.code(400).send({ error: validation.error });
             }
@@ -160,6 +188,7 @@ export async function deckRoutes(fastify: FastifyInstance) {
             ...(name && { name }),
             ...(cardIds && { cards: cardIds }),
             ...(backgroundId && { backgroundId }),
+            ...(protagonistId && { protagonistId }),
         });
 
         return { deck: updated };

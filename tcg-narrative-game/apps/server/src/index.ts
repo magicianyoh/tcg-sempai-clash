@@ -72,6 +72,7 @@ server.post('/cpu-match', async (request, reply) => {
     const body = request.body as {
         deckId?: string;
         cpuArchetypeId?: string;
+        cpuDeckId?: string;
         difficulty?: CpuDifficulty;
         formatId?: string;
         timerEnabled?: boolean;
@@ -91,7 +92,7 @@ server.post('/cpu-match', async (request, reply) => {
     }
 
     try {
-        const match = matchService.createCpuMatch(user.username, deckId, cpuArchetypeId, difficulty, formatId, body?.timerEnabled === true);
+        const match = matchService.createCpuMatch(user.username, deckId, cpuArchetypeId, difficulty, formatId, body?.timerEnabled === true, body?.cpuDeckId);
         return reply.code(201).send({ matchId: match.matchId, matchState: match });
     } catch (err: any) {
         return reply.code(400).send({ error: err.message || 'Could not create CPU match' });
