@@ -18,7 +18,6 @@ import {
 } from '../content/card-catalog';
 import { ARCHETYPE_INFO, GAME_CONSTANTS, V2_ARCHETYPES } from '@tcg/shared/constants';
 import { CardType } from '@tcg/shared/types';
-import { simulationRoutes } from './simulation.routes';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -286,5 +285,4 @@ export async function adminRoutes(fastify: FastifyInstance) {
         };
     });
 
-    await simulationRoutes(fastify);
 }

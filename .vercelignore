@@ -1,0 +1,13 @@
+SempaiClash-Servidor.cmd
+SempaiClash-Simulador.cmd
+nuevo-layout.fw.png
+nuevo-layout.jpg
+tools/
+tcg-narrative-game/apps/android/
+tcg-narrative-game/apps/client/simulator.html
+tcg-narrative-game/apps/client/src/simulator.ts
+tcg-narrative-game/apps/server/src/http/simulation.routes.ts
+tcg-narrative-game/apps/server/src/simulation/
+tcg-narrative-game/apps/server/data/
+**/node_modules/
+**/dist/

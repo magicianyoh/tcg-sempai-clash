@@ -18,3 +18,5 @@ Thumbs.db
 
 tcg-narrative-game/apps/server/data/
 tools/logs/
+
+.vercel

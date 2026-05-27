@@ -1,0 +1,6 @@
+{
+  "framework": null,
+  "installCommand": "echo \"Install handled by buildCommand\"",
+  "buildCommand": "cd tcg-narrative-game/apps/client && npm install && npm run build",
+  "outputDirectory": "tcg-narrative-game/apps/client/dist"
+}
