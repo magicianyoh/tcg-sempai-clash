@@ -1398,7 +1398,7 @@
         function renderDeckDropdown() {
             const dropdown = document.getElementById('deck-dropdown');
             const savedOptions = savedDecks.map(d => `<option value="saved:${d.id}">${d.name} (${d.archetypeId})</option>`).join('');
-            const prebuiltOptions = prebuiltDecks.map(d => `<option value="prebuilt:${d.id}">Plantilla: ${d.name}</option>`).join('');
+            const prebuiltOptions = prebuiltDecks.map(d => `<option value="prebuilt:${d.id}">${d.name}</option>`).join('');
             const emptyPrebuiltOption = '<option value="" disabled>No hay decks pre-armados activos</option>';
             dropdown.innerHTML = '<option value="">--- Nuevo Mazo ---</option>' +
                 (savedOptions ? `<optgroup label="Mis mazos">${savedOptions}</optgroup>` : '') +

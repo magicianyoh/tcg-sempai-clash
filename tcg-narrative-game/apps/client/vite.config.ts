@@ -22,6 +22,7 @@ export default defineConfig({
             '/cpu-match': apiProxy,
             '/ui-settings': apiProxy,
             '/wiki-content': apiProxy,
+            '/home-news': apiProxy,
             '/health': apiProxy,
             '/ws': {
                 ...apiProxy,

@@ -622,20 +622,20 @@
                         <label>Date label
                             <input id="news-date-label" placeholder="MAY 2026 / BALANCE / UI">
                         </label>
-                        <label>Image
-                            <input id="news-image" class="media-picker" data-media-type="image" placeholder="url or uploaded image">
-                        </label>
-                        <label>Link URL
-                            <input id="news-link-url" placeholder="https://...">
-                        </label>
-                        <label>Link label
-                            <input id="news-link-label" placeholder="Read more">
-                        </label>
                         <label class="switch-row">
                             <span>Feature on top</span>
                             <input id="news-featured" type="checkbox">
                         </label>
                         <label style="grid-column: 1 / -1;">Body
+                            <div class="actions" style="margin: 8px 0 6px;">
+                                <button class="btn" data-news-format="bold" type="button">Bold</button>
+                                <button class="btn" data-news-format="italic" type="button">Italic</button>
+                                <button class="btn" data-news-format="underline" type="button">Underline</button>
+                                <button class="btn" data-news-format="bullet" type="button">Bullets</button>
+                                <button class="btn" data-news-format="numbered" type="button">Numbers</button>
+                                <button class="btn" data-news-format="link" type="button">Insert link</button>
+                                <button class="btn" data-news-format="image" type="button">Insert image</button>
+                            </div>
                             <textarea id="news-body" style="min-height: 180px;"></textarea>
                         </label>
                     </form>
@@ -679,6 +679,14 @@
                     <div>
                         <h4>Deck seleccionado <span id="prebuilt-deck-count" class="meta">0/20</span></h4>
                         <div id="prebuilt-deck-list" class="deck-edit-list"></div>
+                        <div class="row" style="margin-top:10px;">
+                            <div style="flex:1;">
+                                <strong>+ Add Card</strong>
+                                <span class="meta">Type : to search cards from this deck's archetype/line. Extra cards beyond 20 are ignored.</span>
+                                <textarea id="prebuilt-add-card-input" placeholder=":"></textarea>
+                            </div>
+                            <button id="prebuilt-add-card-btn" class="btn" type="button">Add</button>
+                        </div>
                         <div class="actions">
                             <button id="save-prebuilt-deck-btn" class="btn primary" type="button">Guardar este deck</button>
                             <button id="reset-prebuilt-deck-btn" class="btn danger" type="button">Volver al auto-generado</button>

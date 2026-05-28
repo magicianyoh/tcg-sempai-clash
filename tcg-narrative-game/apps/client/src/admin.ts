@@ -20,6 +20,7 @@ type AdminCard = {
     likes?: string[];
     dislikes?: string[];
     tags?: string[];
+    protagonistId?: string;
 };
 type AdminEffect = {
     type: string;
@@ -717,9 +718,6 @@ function clearNewsForm() {
     ($<HTMLInputElement>('news-id')).value = '';
     ($<HTMLInputElement>('news-title-input')).value = '';
     ($<HTMLInputElement>('news-date-label')).value = '';
-    ($<HTMLInputElement>('news-image')).value = '';
-    ($<HTMLInputElement>('news-link-url')).value = '';
-    ($<HTMLInputElement>('news-link-label')).value = '';
     ($<HTMLInputElement>('news-featured')).checked = false;
     ($<HTMLTextAreaElement>('news-body')).value = '';
     renderHomeNewsList();
@@ -751,11 +749,44 @@ function renderSelectedNews() {
     ($<HTMLInputElement>('news-id')).value = item.id;
     ($<HTMLInputElement>('news-title-input')).value = item.title || '';
     ($<HTMLInputElement>('news-date-label')).value = item.dateLabel || '';
-    ($<HTMLInputElement>('news-image')).value = item.image || '';
-    ($<HTMLInputElement>('news-link-url')).value = item.linkUrl || '';
-    ($<HTMLInputElement>('news-link-label')).value = item.linkLabel || '';
     ($<HTMLInputElement>('news-featured')).checked = Boolean(item.featured);
     ($<HTMLTextAreaElement>('news-body')).value = item.body || '';
+}
+
+function insertIntoTextarea(textareaId: string, value: string, selectOffset = value.length): void {
+    const textarea = $<HTMLTextAreaElement>(textareaId);
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? start;
+    textarea.value = `${textarea.value.slice(0, start)}${value}${textarea.value.slice(end)}`;
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = start + selectOffset;
+}
+
+function wrapTextareaSelection(textareaId: string, prefix: string, suffix: string, fallback: string): void {
+    const textarea = $<HTMLTextAreaElement>(textareaId);
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? start;
+    const selected = textarea.value.slice(start, end) || fallback;
+    textarea.value = `${textarea.value.slice(0, start)}${prefix}${selected}${suffix}${textarea.value.slice(end)}`;
+    textarea.focus();
+    textarea.selectionStart = start + prefix.length;
+    textarea.selectionEnd = start + prefix.length + selected.length;
+}
+
+function formatNewsBody(action: string): void {
+    if (action === 'bold') return wrapTextareaSelection('news-body', '**', '**', 'bold text');
+    if (action === 'italic') return wrapTextareaSelection('news-body', '*', '*', 'italic text');
+    if (action === 'underline') return wrapTextareaSelection('news-body', '__', '__', 'underlined text');
+    if (action === 'bullet') return insertIntoTextarea('news-body', '\n- First point\n- Second point\n');
+    if (action === 'numbered') return insertIntoTextarea('news-body', '\n1. First point\n2. Second point\n');
+    if (action === 'link') {
+        const label = prompt('Link text') || 'link text';
+        const url = prompt('URL') || 'https://';
+        return insertIntoTextarea('news-body', `[${label}](${url})`);
+    }
+    if (action === 'image') {
+        openMediaModal('news-body-image', 'image');
+    }
 }
 
 async function saveHomeNews() {
@@ -763,9 +794,6 @@ async function saveHomeNews() {
         title: ($<HTMLInputElement>('news-title-input')).value,
         body: ($<HTMLTextAreaElement>('news-body')).value,
         dateLabel: ($<HTMLInputElement>('news-date-label')).value,
-        image: ($<HTMLInputElement>('news-image')).value,
-        linkUrl: ($<HTMLInputElement>('news-link-url')).value,
-        linkLabel: ($<HTMLInputElement>('news-link-label')).value,
         featured: ($<HTMLInputElement>('news-featured')).checked,
     };
 
@@ -897,6 +925,94 @@ function addCardToPrebuiltDraft(cardId: string) {
     if (prebuiltDeckDraft.length >= DECK_SIZE || count >= max) return;
     prebuiltDeckDraft.push(cardId);
     renderPrebuiltDeckEditor();
+}
+
+function eligiblePrebuiltCards(): AdminCard[] {
+    const deck = selectedPrebuiltDeck();
+    if (!deck) return [];
+    return cards
+        .filter(card => card.archetype === deck.archetypeId)
+        .filter(card => !['PROTAGONIST', 'PLOT_TWIST_EVENT'].includes(card.type))
+        .filter(card => !card.tags?.includes('avatar-only') && !card.tags?.includes('response-only'))
+        .filter(card => !card.tags?.includes('climax-only') || card.protagonistId === deck.protagonistId)
+        .filter(card => !card.protagonistId || card.protagonistId === deck.protagonistId)
+        .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function findPrebuiltCardToken(token: string): AdminCard | undefined {
+    const normalized = token.trim().toLowerCase();
+    if (!normalized) return undefined;
+    return eligiblePrebuiltCards().find(card =>
+        card.id.toLowerCase() === normalized || card.name.toLowerCase() === normalized
+    );
+}
+
+function addTypedCardsToPrebuiltDraft() {
+    const input = $<HTMLTextAreaElement>('prebuilt-add-card-input');
+    if (prebuiltDeckDraft.length >= DECK_SIZE) {
+        setMessage('prebuilt-message', 'Deck already has 20 cards.');
+        return;
+    }
+
+    const tokens = input.value
+        .split(/[\n,]+/)
+        .map(value => value.trim())
+        .filter(Boolean);
+    let added = 0;
+    for (const token of tokens) {
+        if (prebuiltDeckDraft.length >= DECK_SIZE) break;
+        const card = findPrebuiltCardToken(token);
+        if (!card) continue;
+        const count = prebuiltDeckDraft.filter(id => id === card.id).length;
+        const max = card.maxCopies ?? 3;
+        if (count >= max) continue;
+        prebuiltDeckDraft.push(card.id);
+        added++;
+    }
+
+    input.value = '';
+    renderPrebuiltDeckEditor();
+    setMessage('prebuilt-message', added ? `${added} card(s) added.` : 'No valid card was added.', !added);
+}
+
+function setupPrebuiltAddAutocomplete() {
+    const textarea = $<HTMLTextAreaElement>('prebuilt-add-card-input');
+    const menu = $('card-suggestions');
+
+    textarea.addEventListener('input', () => {
+        const beforeCursor = textarea.value.slice(0, textarea.selectionStart || 0);
+        if (!beforeCursor.endsWith(':')) {
+            menu.classList.remove('open');
+            return;
+        }
+
+        const options = eligiblePrebuiltCards().slice(0, 20);
+        const rect = textarea.getBoundingClientRect();
+        menu.style.left = `${rect.left}px`;
+        menu.style.top = `${Math.min(window.innerHeight - 230, rect.bottom + 6)}px`;
+        menu.innerHTML = options.map(option => `
+            <button type="button" data-prebuilt-card-ref="${option.id}">
+                <strong>${option.name}</strong><br>
+                <span class="meta">${displayCardType(option.type)} / ${option.id}</span>
+            </button>
+        `).join('');
+        menu.classList.add('open');
+
+        menu.querySelectorAll<HTMLButtonElement>('[data-prebuilt-card-ref]').forEach(button => {
+            button.addEventListener('click', () => {
+                const id = button.dataset.prebuiltCardRef || '';
+                const start = textarea.selectionStart || textarea.value.length;
+                textarea.value = textarea.value.slice(0, start - 1) + id + ', ' + textarea.value.slice(start);
+                textarea.focus();
+                textarea.selectionStart = textarea.selectionEnd = start + id.length + 1;
+                menu.classList.remove('open');
+            });
+        });
+    });
+
+    textarea.addEventListener('blur', () => {
+        setTimeout(() => menu.classList.remove('open'), 160);
+    });
 }
 
 function setPrebuiltDraftCount(cardId: string, count: number) {
@@ -1146,6 +1262,12 @@ function renderMediaModal() {
         tile.addEventListener('click', () => {
             const asset = mediaAssets.find(item => item.id === tile.dataset.mediaId);
             if (!asset || !pendingMediaTarget) return;
+            if (pendingMediaTarget === 'news-body-image') {
+                insertIntoTextarea('news-body', `\n![${asset.name}](${asset.dataUrl})\n`);
+                $('media-modal').classList.remove('open');
+                pendingMediaTarget = '';
+                return;
+            }
             ($<HTMLInputElement>(pendingMediaTarget)).value = asset.dataUrl;
             $('media-modal').classList.remove('open');
         });
@@ -1177,6 +1299,7 @@ function bindEvents() {
     setupCardReferenceAutocomplete('card-dislikes');
     setupCardReferenceAutocomplete('card-requirements');
     setupCardReferenceAutocomplete('effect-card-id');
+    setupPrebuiltAddAutocomplete();
     $('import-btn').addEventListener('click', importCsv);
     $('validate-import-btn').addEventListener('click', validateCsvImport);
     $('download-card-template-btn').addEventListener('click', () => downloadCsvTemplate('cards'));
@@ -1187,9 +1310,13 @@ function bindEvents() {
     $('new-news-btn').addEventListener('click', clearNewsForm);
     $('save-news-btn').addEventListener('click', saveHomeNews);
     $('delete-news-btn').addEventListener('click', deleteHomeNews);
+    document.querySelectorAll<HTMLButtonElement>('[data-news-format]').forEach(button => {
+        button.addEventListener('click', () => formatNewsBody(button.dataset.newsFormat || ''));
+    });
     $('save-prebuilt-btn').addEventListener('click', savePrebuiltDeckSettings);
     $('save-prebuilt-deck-btn').addEventListener('click', saveSelectedPrebuiltDeck);
     $('reset-prebuilt-deck-btn').addEventListener('click', resetSelectedPrebuiltDeck);
+    $('prebuilt-add-card-btn').addEventListener('click', addTypedCardsToPrebuiltDraft);
     $('prebuilt-editor-select').addEventListener('change', () => selectPrebuiltDeck(($<HTMLSelectElement>('prebuilt-editor-select')).value));
     $('save-ui-btn').addEventListener('click', saveSettings);
     $('upload-media-btn').addEventListener('click', uploadMedia);

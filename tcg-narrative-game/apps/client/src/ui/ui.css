@@ -364,6 +364,18 @@ a {
     line-height: 1.45;
 }
 
+.news ul,
+.news ol {
+    margin: 8px 0 0 18px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.news li + li {
+    margin-top: 4px;
+}
+
 .news-date {
     color: var(--teal) !important;
     font-size: 11px !important;

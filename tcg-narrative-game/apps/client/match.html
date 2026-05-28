@@ -492,6 +492,11 @@
                     <div class="title">Create Lobby</div>
                     <div class="desc">Get a code to invite a friend</div>
                 </button>
+                <button class="match-btn create" id="show-join-lobby-btn">
+                    <div class="icon">JOIN</div>
+                    <div class="title">Join Lobby</div>
+                    <div class="desc">Enter an existing lobby code</div>
+                </button>
                 <button class="match-btn cpu" id="cpu-match-btn">
                     <div class="icon">CPU</div>
                     <div class="title">Vs CPU</div>
@@ -617,6 +622,7 @@
         let queueTimer = null;
         let pendingInvite = null;
         let cpuDecks = [];
+        const initialMode = new URLSearchParams(window.location.search).get('mode');
 
         // Auth check
         const token = localStorage.getItem('token');
@@ -625,6 +631,12 @@
 
         if (!token) {
             window.location.href = '/auth.html';
+        }
+
+        if (initialMode === 'lobby') {
+            window.addEventListener('DOMContentLoaded', () => {
+                document.getElementById('join-section')?.classList.add('active');
+            });
         }
 
         function clearExpiredSession() {
@@ -929,6 +941,12 @@
                 type: 'LOBBY_CREATE',
                 payload: { formatId: 'standard' }
             }));
+        });
+
+        document.getElementById('show-join-lobby-btn').addEventListener('click', () => {
+            document.getElementById('join-section').classList.add('active');
+            document.getElementById('join-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            document.getElementById('lobby-code-input').focus();
         });
 
         // Join Lobby

@@ -2,5 +2,18 @@
   "framework": null,
   "installCommand": "echo \"Install handled by buildCommand\"",
   "buildCommand": "cd tcg-narrative-game/apps/client && npm install && npm run build",
-  "outputDirectory": "tcg-narrative-game/apps/client/dist"
+  "outputDirectory": "tcg-narrative-game/apps/client/dist",
+  "rewrites": [
+    { "source": "/admin/:path*", "destination": "https://senpai-clash-api.onrender.com/admin/:path*" },
+    { "source": "/auth/:path*", "destination": "https://senpai-clash-api.onrender.com/auth/:path*" },
+    { "source": "/decks", "destination": "https://senpai-clash-api.onrender.com/decks" },
+    { "source": "/decks/:path*", "destination": "https://senpai-clash-api.onrender.com/decks/:path*" },
+    { "source": "/prebuilt-decks", "destination": "https://senpai-clash-api.onrender.com/prebuilt-decks" },
+    { "source": "/cards", "destination": "https://senpai-clash-api.onrender.com/cards" },
+    { "source": "/cpu-match", "destination": "https://senpai-clash-api.onrender.com/cpu-match" },
+    { "source": "/ui-settings", "destination": "https://senpai-clash-api.onrender.com/ui-settings" },
+    { "source": "/wiki-content", "destination": "https://senpai-clash-api.onrender.com/wiki-content" },
+    { "source": "/home-news", "destination": "https://senpai-clash-api.onrender.com/home-news" },
+    { "source": "/health", "destination": "https://senpai-clash-api.onrender.com/health" }
+  ]
 }

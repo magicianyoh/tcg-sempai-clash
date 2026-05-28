@@ -26,8 +26,8 @@ type HomeNewsItem = {
 
 if (loggedIn) {
     if (matchAction) matchAction.href = '/match.html';
-    if (lobbyAction) lobbyAction.href = '/match.html';
-    if (roomLink) roomLink.href = '/match.html';
+    if (lobbyAction) lobbyAction.href = '/match.html?mode=lobby';
+    if (roomLink) roomLink.href = '/match.html?mode=lobby';
     if (matchActionTitle) matchActionTitle.textContent = 'Find match';
     if (matchActionCopy) matchActionCopy.textContent = 'Quick Match, private lobby, or CPU battle.';
     if (loginNav) loginNav.textContent = 'Matches';
@@ -35,19 +35,15 @@ if (loggedIn) {
     if (sessionName) sessionName.textContent = username || 'Player';
 }
 
-async function updateServerStatus(): Promise<void> {
+async function updateUserStats(): Promise<void> {
     if (!serverPill) return;
-    try {
-        const response = await fetch(`${API_URL}/health`);
-        if (!response.ok) throw new Error('offline');
-        serverPill.classList.remove('checking', 'offline');
-        serverPill.classList.add('online');
-        serverPill.textContent = 'Server online';
-    } catch {
-        serverPill.classList.remove('checking', 'online');
-        serverPill.classList.add('offline');
-        serverPill.textContent = 'Server offline';
+    serverPill.classList.remove('checking', 'offline', 'online');
+    serverPill.classList.add('online');
+    if (!loggedIn) {
+        serverPill.textContent = 'Rank: sign in';
+        return;
     }
+    serverPill.textContent = 'WR --% | Rank soon';
 }
 
 function escapeHtml(value: unknown): string {
@@ -60,11 +56,52 @@ function escapeHtml(value: unknown): string {
     }[char] || char));
 }
 
-function formatBasicText(value: string): string {
+function formatInlineMarkdown(value: string): string {
     return escapeHtml(value)
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\n{2,}/g, '</p><p>')
-        .replace(/\n/g, '<br>');
+        .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img class="news-image" src="$2" alt="$1">')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a class="news-link" href="$2" target="_blank" rel="noreferrer">$1</a>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/__([^_]+)__/g, '<u>$1</u>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+}
+
+function formatBasicText(value: string): string {
+    const lines = value.split(/\r?\n/);
+    const html: string[] = [];
+    let listType: 'ul' | 'ol' | '' = '';
+    const closeList = () => {
+        if (listType) {
+            html.push(`</${listType}>`);
+            listType = '';
+        }
+    };
+
+    for (const line of lines) {
+        const bullet = line.match(/^\s*[-*]\s+(.+)$/);
+        const numbered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+        if (bullet) {
+            if (listType !== 'ul') {
+                closeList();
+                html.push('<ul>');
+                listType = 'ul';
+            }
+            html.push(`<li>${formatInlineMarkdown(bullet[1])}</li>`);
+            continue;
+        }
+        if (numbered) {
+            if (listType !== 'ol') {
+                closeList();
+                html.push('<ol>');
+                listType = 'ol';
+            }
+            html.push(`<li>${formatInlineMarkdown(numbered[1])}</li>`);
+            continue;
+        }
+        closeList();
+        if (line.trim()) html.push(`<p>${formatInlineMarkdown(line)}</p>`);
+    }
+    closeList();
+    return html.join('');
 }
 
 function renderNews(news: HomeNewsItem[]): void {
@@ -85,7 +122,7 @@ function renderNews(news: HomeNewsItem[]): void {
         const link = item.linkUrl
             ? `<a class="news-link" href="${escapeHtml(item.linkUrl)}" target="_blank" rel="noreferrer">${escapeHtml(item.linkLabel || 'Read more')}</a>`
             : '';
-        const body = `<p>${formatBasicText(item.body || '')}</p>`;
+        const body = formatBasicText(item.body || '');
         if (index === 0 || item.featured) {
             return `
                 <article class="news-featured">
@@ -121,5 +158,5 @@ async function loadHomeNews(): Promise<void> {
     }
 }
 
-void updateServerStatus();
+void updateUserStats();
 void loadHomeNews();
