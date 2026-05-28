@@ -47,6 +47,10 @@ server.get('/wiki-content', async () => {
     return { content: store.getWikiContent() };
 });
 
+server.get('/home-news', async () => {
+    return { news: store.listHomeNews() };
+});
+
 server.get('/cards', async () => {
     const cardsByArchetype: Record<string, unknown[]> = {};
 

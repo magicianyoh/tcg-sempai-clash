@@ -56,7 +56,7 @@
         }
 
         .container {
-            max-width: 800px;
+            max-width: 1040px;
             margin: 0 auto;
             padding: 40px 20px;
         }
@@ -65,7 +65,7 @@
             background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
+            border-radius: 8px;
             padding: 30px;
             margin-bottom: 20px;
         }
@@ -84,7 +84,7 @@
         .match-btn {
             padding: 30px;
             border: 2px solid rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
+            border-radius: 8px;
             background: transparent;
             color: #fff;
             cursor: pointer;
@@ -495,12 +495,12 @@
                 <button class="match-btn cpu" id="cpu-match-btn">
                     <div class="icon">CPU</div>
                     <div class="title">Vs CPU</div>
-                    <div class="desc">Elegir protagonista y dificultad</div>
+                    <div class="desc">Choose protagonist and difficulty</div>
                 </button>
             </div>
             <label class="timer-option">
                 <input id="match-timer-enabled" type="checkbox">
-                Timer competitivo: 1 minuto por jugador
+                Competitive timer: 1 minute per player
             </label>
         </div>
 
@@ -518,21 +518,21 @@
                     </select>
                 </div>
                 <div>
-                    <label class="field-label" for="cpu-deck">Protagonista / Deck</label>
+                    <label class="field-label" for="cpu-deck">Protagonist / Deck</label>
                     <select class="select-input" id="cpu-deck"></select>
                 </div>
                 <div>
                     <label class="field-label" for="cpu-difficulty">Difficulty</label>
                     <select class="select-input" id="cpu-difficulty">
-                        <option value="easy">Facil - toma riesgos y comete errores</option>
-                        <option value="normal" selected>Normal - planifica su arco</option>
-                        <option value="hard">Dificil - optimiza Climax y respuesta</option>
+                        <option value="easy">Easy - takes risks and makes mistakes</option>
+                        <option value="normal" selected>Normal - plans its arc</option>
+                        <option value="hard">Hard - optimizes Climax and response</option>
                     </select>
                 </div>
             </div>
             <label class="timer-option">
                 <input id="cpu-timer-enabled" type="checkbox">
-                Timer competitivo: 1 minuto por jugador
+                Competitive timer: 1 minute per player
             </label>
             <div class="cpu-actions">
                 <button class="leave-btn" id="cpu-back-btn">Back</button>
@@ -569,13 +569,13 @@
                 <div class="invite-panel hidden" id="invite-panel">
                     <p id="invite-copy"></p>
                     <div class="invite-actions">
-                        <button class="ready-btn" id="accept-invite-btn">Aceptar</button>
-                        <button class="leave-btn" id="reject-invite-btn">Rechazar</button>
+                        <button class="ready-btn" id="accept-invite-btn">Accept</button>
+                        <button class="leave-btn" id="reject-invite-btn">Reject</button>
                     </div>
                 </div>
                 <div class="lobby-settings">
-                    <label><input id="invite-timer-enabled" type="checkbox"> Timer 1 minuto</label>
-                    <label><input id="invite-private-enabled" type="checkbox"> Partida privada</label>
+                    <label><input id="invite-timer-enabled" type="checkbox"> 1-minute timer</label>
+                    <label><input id="invite-private-enabled" type="checkbox"> Private match</label>
                 </div>
                 <div class="lobby-players" id="lobby-players">
                     <div class="player-slot empty">
@@ -587,9 +587,9 @@
                         <div class="player-status">-</div>
                     </div>
                 </div>
-                <h2>Partidas activas</h2>
+                <h2>Active matches</h2>
                 <div class="active-match-list" id="active-match-list">
-                    <p class="player-status">Todavia no hay partidas activas.</p>
+                    <p class="player-status">No active matches yet.</p>
                 </div>
                 <div class="lobby-actions">
                     <button class="leave-btn" id="leave-btn">Leave</button>
@@ -639,7 +639,7 @@
             const data = await res.json().catch(() => ({}));
             if (res.status === 401 || res.status === 403) {
                 clearExpiredSession();
-                throw new Error('Sesion vencida. Volve a iniciar sesion.');
+                throw new Error('Session expired. Please sign in again.');
             }
             return data;
         }
@@ -754,7 +754,7 @@
                 case 'LOBBY_INVITE':
                     pendingInvite = msg.payload;
                     document.getElementById('invite-copy').textContent =
-                        `${pendingInvite.fromUsername} te invito a una partida${pendingInvite.privateMatch ? ' privada' : ''}${pendingInvite.timerEnabled ? ' con timer' : ''}.`;
+                        `${pendingInvite.fromUsername} invited you to a${pendingInvite.privateMatch ? ' private' : ''} match${pendingInvite.timerEnabled ? ' with timer' : ''}.`;
                     document.getElementById('invite-panel').classList.remove('hidden');
                     break;
 
@@ -963,12 +963,12 @@
             playersEl.innerHTML = currentLobby.players.map(player => `
                 <div class="player-slot ${player.activeMatchId ? 'ready' : ''}">
                     <div class="player-name">${escapeHtml(player.username)}</div>
-                    <div class="player-status">${player.activeMatchId ? 'En partida' : 'Disponible'}</div>
+                    <div class="player-status">${player.activeMatchId ? 'In match' : 'Available'}</div>
                     ${player.username !== username && !player.activeMatchId
-                        ? `<button class="challenge-btn" data-challenge="${escapeHtml(player.username)}">Retar</button>`
+                        ? `<button class="challenge-btn" data-challenge="${escapeHtml(player.username)}">Challenge</button>`
                         : ''}
                     ${player.username !== username && player.activeMatchId && !matchById.get(player.activeMatchId)?.privateMatch
-                        ? `<button class="spectate-btn" data-spectate="${escapeHtml(player.activeMatchId)}">Espectar</button>`
+                        ? `<button class="spectate-btn" data-spectate="${escapeHtml(player.activeMatchId)}">Spectate</button>`
                         : ''}
                 </div>
             `).join('');
@@ -984,13 +984,13 @@
             matchesEl.innerHTML = matches.length
                 ? matches.map(match => `
                     <div class="active-match">
-                        <span>${escapeHtml(match.players.join(' vs '))}${match.privateMatch ? ' / Privada' : ''}</span>
+                        <span>${escapeHtml(match.players.join(' vs '))}${match.privateMatch ? ' / Private' : ''}</span>
                         ${!match.privateMatch && !match.players.includes(username)
-                            ? `<button class="spectate-btn" data-spectate="${escapeHtml(match.matchId)}">Espectar</button>`
+                            ? `<button class="spectate-btn" data-spectate="${escapeHtml(match.matchId)}">Spectate</button>`
                             : ''}
                     </div>
                 `).join('')
-                : '<p class="player-status">Todavia no hay partidas activas.</p>';
+                : '<p class="player-status">No active matches yet.</p>';
             matchesEl.querySelectorAll('[data-spectate]').forEach(button => {
                 button.addEventListener('click', () => {
                     ws.send(JSON.stringify({ type: 'MATCH_SPECTATE', payload: { matchId: button.dataset.spectate } }));

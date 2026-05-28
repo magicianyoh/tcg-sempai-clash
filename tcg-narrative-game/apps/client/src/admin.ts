@@ -63,6 +63,18 @@ type PrebuiltDeckSettings = {
     archetypes: Record<string, boolean>;
     deckOverrides?: Record<string, string[]>;
 };
+type HomeNewsItem = {
+    id: string;
+    title: string;
+    body: string;
+    dateLabel: string;
+    image?: string;
+    linkUrl?: string;
+    linkLabel?: string;
+    featured?: boolean;
+    createdAt: number;
+    updatedAt: number;
+};
 type CardAuditIssue = {
     severity: 'error' | 'warning';
     cardId: string;
@@ -102,8 +114,10 @@ let users: AdminUser[] = [];
 let mediaAssets: MediaAsset[] = [];
 let prebuiltDecks: PrebuiltDeck[] = [];
 let prebuiltSettings: PrebuiltDeckSettings = { enabled: true, archetypes: {} };
+let homeNews: HomeNewsItem[] = [];
 let selectedCardId = '';
 let selectedPrebuiltDeckId = '';
+let selectedNewsId = '';
 let prebuiltDeckDraft: string[] = [];
 let pendingMediaTarget = '';
 let pendingMediaType: 'image' | 'audio' | 'other' = 'image';
@@ -208,7 +222,7 @@ async function login() {
 
 async function loadAll() {
     hydrateFxDropdowns();
-    await Promise.all([loadCards(), loadUsers(), loadSettings(), loadMedia(), loadPrebuiltDeckSettings()]);
+    await Promise.all([loadCards(), loadUsers(), loadSettings(), loadMedia(), loadPrebuiltDeckSettings(), loadHomeNews()]);
     await runCardAudit(false);
 }
 
@@ -690,6 +704,102 @@ async function resetPassword(username: string) {
     }
 }
 
+async function loadHomeNews() {
+    const data = await request<{ news: HomeNewsItem[] }>('/admin/home-news', { headers: authHeaders() });
+    homeNews = data.news || [];
+    selectedNewsId ||= homeNews[0]?.id || '';
+    renderHomeNewsList();
+    renderSelectedNews();
+}
+
+function clearNewsForm() {
+    selectedNewsId = '';
+    ($<HTMLInputElement>('news-id')).value = '';
+    ($<HTMLInputElement>('news-title-input')).value = '';
+    ($<HTMLInputElement>('news-date-label')).value = '';
+    ($<HTMLInputElement>('news-image')).value = '';
+    ($<HTMLInputElement>('news-link-url')).value = '';
+    ($<HTMLInputElement>('news-link-label')).value = '';
+    ($<HTMLInputElement>('news-featured')).checked = false;
+    ($<HTMLTextAreaElement>('news-body')).value = '';
+    renderHomeNewsList();
+}
+
+function renderHomeNewsList() {
+    $('news-list').innerHTML = homeNews.map(item => `
+        <button class="row ${item.id === selectedNewsId ? 'active' : ''}" data-news-id="${item.id}" type="button">
+            <strong>${escapeHtml(item.title)}${item.featured ? ' (featured)' : ''}</strong>
+            <span class="meta">${escapeHtml(item.dateLabel)} / ${escapeHtml(item.id)}</span>
+        </button>
+    `).join('') || '<p class="meta">No news items yet.</p>';
+
+    document.querySelectorAll<HTMLButtonElement>('[data-news-id]').forEach(button => {
+        button.addEventListener('click', () => {
+            selectedNewsId = button.dataset.newsId || '';
+            renderHomeNewsList();
+            renderSelectedNews();
+        });
+    });
+}
+
+function renderSelectedNews() {
+    const item = homeNews.find(news => news.id === selectedNewsId);
+    if (!item) {
+        clearNewsForm();
+        return;
+    }
+    ($<HTMLInputElement>('news-id')).value = item.id;
+    ($<HTMLInputElement>('news-title-input')).value = item.title || '';
+    ($<HTMLInputElement>('news-date-label')).value = item.dateLabel || '';
+    ($<HTMLInputElement>('news-image')).value = item.image || '';
+    ($<HTMLInputElement>('news-link-url')).value = item.linkUrl || '';
+    ($<HTMLInputElement>('news-link-label')).value = item.linkLabel || '';
+    ($<HTMLInputElement>('news-featured')).checked = Boolean(item.featured);
+    ($<HTMLTextAreaElement>('news-body')).value = item.body || '';
+}
+
+async function saveHomeNews() {
+    const payload = {
+        title: ($<HTMLInputElement>('news-title-input')).value,
+        body: ($<HTMLTextAreaElement>('news-body')).value,
+        dateLabel: ($<HTMLInputElement>('news-date-label')).value,
+        image: ($<HTMLInputElement>('news-image')).value,
+        linkUrl: ($<HTMLInputElement>('news-link-url')).value,
+        linkLabel: ($<HTMLInputElement>('news-link-label')).value,
+        featured: ($<HTMLInputElement>('news-featured')).checked,
+    };
+
+    try {
+        const path = selectedNewsId ? `/admin/home-news/${encodeURIComponent(selectedNewsId)}` : '/admin/home-news';
+        const method = selectedNewsId ? 'PUT' : 'POST';
+        const data = await request<{ newsItem: HomeNewsItem }>(path, {
+            method,
+            headers: jsonHeaders(),
+            body: JSON.stringify(payload),
+        });
+        selectedNewsId = data.newsItem.id;
+        setMessage('news-message', 'News item saved.');
+        await loadHomeNews();
+    } catch (error: any) {
+        setMessage('news-message', error.message, true);
+    }
+}
+
+async function deleteHomeNews() {
+    if (!selectedNewsId || !confirm('Delete this news item?')) return;
+    try {
+        await request(`/admin/home-news/${encodeURIComponent(selectedNewsId)}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+        });
+        selectedNewsId = '';
+        setMessage('news-message', 'News item deleted.');
+        await loadHomeNews();
+    } catch (error: any) {
+        setMessage('news-message', error.message, true);
+    }
+}
+
 async function loadPrebuiltDeckSettings() {
     const data = await request<{ settings: PrebuiltDeckSettings; decks: PrebuiltDeck[] }>('/admin/prebuilt-decks/settings', { headers: authHeaders() });
     prebuiltSettings = data.settings || { enabled: true, archetypes: {}, deckOverrides: {} };
@@ -1074,6 +1184,9 @@ function bindEvents() {
     $('download-archetype-template-btn').addEventListener('click', () => downloadCsvTemplate('archetypes'));
     $('run-audit-btn').addEventListener('click', () => runCardAudit(true));
     $('create-user-btn').addEventListener('click', createUser);
+    $('new-news-btn').addEventListener('click', clearNewsForm);
+    $('save-news-btn').addEventListener('click', saveHomeNews);
+    $('delete-news-btn').addEventListener('click', deleteHomeNews);
     $('save-prebuilt-btn').addEventListener('click', savePrebuiltDeckSettings);
     $('save-prebuilt-deck-btn').addEventListener('click', saveSelectedPrebuiltDeck);
     $('reset-prebuilt-deck-btn').addEventListener('click', resetSelectedPrebuiltDeck);

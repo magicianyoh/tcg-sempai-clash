@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,112 +8,99 @@
 </head>
 <body class="home">
     <header class="topbar">
-        <a class="brand" href="/" aria-label="Sempai Clash inicio">
+        <a class="brand" href="/" aria-label="Sempai Clash home">
             <span class="brand-mark">SC</span>
             <span>
                 <strong>SEMPAI CLASH</strong>
                 <small>Card Battle Stories</small>
             </span>
         </a>
-        <nav class="top-links" aria-label="Navegacion principal">
+        <nav class="top-links" aria-label="Main navigation">
             <a href="/wiki.html">Wiki</a>
             <a href="/auth.html" id="login-nav">Login</a>
         </nav>
     </header>
 
     <main class="hub">
-        <section class="command-panel" aria-label="Comenzar a jugar">
+        <section class="command-panel" aria-label="Start playing">
             <div class="command-heading">
                 <p class="overline">BATTLE HUB</p>
                 <h1>Sempai Clash</h1>
-                <p class="tagline">Elegí un protagonista, armá su arco y enfrentá otra historia.</p>
+                <p class="tagline">Choose a protagonist, build their arc, and clash with another story.</p>
             </div>
 
             <div class="play-grid">
                 <a class="action action-primary" id="match-action" href="/auth.html">
-                    <strong id="match-action-title">Iniciar sesion</strong>
-                    <span id="match-action-copy">Entra para buscar partida o enfrentar a la CPU.</span>
+                    <strong id="match-action-title">Sign in</strong>
+                    <span id="match-action-copy">Enter to find a match or battle the CPU.</span>
                 </a>
                 <a class="action" href="/build.html">
                     <strong>Deck Builder</strong>
-                    <span>Selecciona protagonista y prepara su ruta narrativa.</span>
+                    <span>Select a protagonist and prepare their narrative route.</span>
                 </a>
                 <a class="action" id="lobby-action" href="/auth.html">
-                    <strong>Lobbys</strong>
-                    <span>Crea una sala o ingresa con codigo.</span>
+                    <strong>Lobbies</strong>
+                    <span>Create a room or join with a code.</span>
                 </a>
                 <a class="action action-secondary" href="/wiki.html">
-                    <strong>Reglas y cartas</strong>
-                    <span>Consulta arcos, Climax y Quick Events.</span>
+                    <strong>Rules and cards</strong>
+                    <span>Read about arcs, Climax, and Quick Events.</span>
                 </a>
             </div>
 
             <div class="account-strip">
                 <div>
-                    <p class="label">Sesion</p>
-                    <p class="account-name" id="session-name">Invitado</p>
+                    <p class="label">Session</p>
+                    <p class="account-name" id="session-name">Guest</p>
                 </div>
-                <span class="server-pill checking" id="server-pill">Verificando servidor</span>
+                <span class="server-pill checking" id="server-pill">Checking server</span>
             </div>
         </section>
 
         <aside class="side-panel">
             <section class="news" aria-labelledby="news-title">
                 <div class="section-header">
-                    <h2 id="news-title">Actualizaciones</h2>
-                    <span>Version 2</span>
+                    <h2 id="news-title">Updates</h2>
                 </div>
-                <article class="news-featured">
-                    <p class="news-date">26 MAY 2026</p>
-                    <h3>Arcos evolutivos en juego</h3>
-                    <p>Los protagonistas ingresan al campo y evolucionan con cada Evento completado. Climax y Plot-Twist definen el desenlace.</p>
-                </article>
-                <article class="news-row">
-                    <p class="news-date">BALANCE</p>
-                    <div>
-                        <h3>Aperturas mas consistentes</h3>
-                        <p>El primer arco obtiene asistencia moderada en mano inicial y robos tempranos.</p>
-                    </div>
-                </article>
-                <article class="news-row">
-                    <p class="news-date">UI</p>
-                    <div>
-                        <h3>Campo mobile y Quick Events</h3>
-                        <p>Swipe de mano separado, Cementerio navegable y efectos de accion inmediata.</p>
-                    </div>
-                </article>
+                <div id="home-news-list">
+                    <article class="news-featured">
+                        <p class="news-date">LOADING</p>
+                        <h3>Loading updates</h3>
+                        <p>Checking the latest game notes.</p>
+                    </article>
+                </div>
             </section>
 
             <section class="rooms" aria-labelledby="community-title">
                 <div class="section-header">
-                    <h2 id="community-title">Competitivo</h2>
+                    <h2 id="community-title">Competitive</h2>
                 </div>
                 <a class="room-link" id="room-link" href="/auth.html">
                     <span>
-                        <strong>Lobbys privados</strong>
-                        <small>Partida con codigo y timer opcional</small>
+                        <strong>Private lobbies</strong>
+                        <small>Code-based matches with optional timer</small>
                     </span>
-                    <b>Entrar</b>
+                    <b>Enter</b>
                 </a>
                 <div class="room-link disabled" aria-disabled="true">
                     <span>
                         <strong>Leaderboards</strong>
-                        <small>Ranking de temporada</small>
+                        <small>Season ranking</small>
                     </span>
-                    <b>Proximamente</b>
+                    <b>Soon</b>
                 </div>
             </section>
         </aside>
 
-        <figure class="battle-preview" aria-label="Vista previa del campo vertical">
-            <figcaption>Campo activo / Arco en curso</figcaption>
+        <figure class="battle-preview" aria-label="Vertical field preview">
+            <figcaption>Active field / Current arc</figcaption>
             <div class="preview-scene">
-                <div class="preview-slot event">Evento</div>
+                <div class="preview-slot event">Event</div>
                 <div class="preview-slot left"></div>
                 <div class="preview-slot upper"></div>
                 <div class="preview-slot right"></div>
                 <div class="preview-slot lower"></div>
-                <div class="preview-card protagonist">Protagonista</div>
+                <div class="preview-card protagonist">Protagonist</div>
             </div>
             <div class="preview-hand" aria-hidden="true">
                 <span></span><span></span><span></span><span></span><span></span>

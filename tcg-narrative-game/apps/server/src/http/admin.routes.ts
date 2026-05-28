@@ -71,6 +71,17 @@ interface AdminPrebuiltDeckSettingsBody {
     deckOverrides?: Record<string, string[]>;
 }
 
+interface AdminHomeNewsBody {
+    id?: string;
+    title?: string;
+    body?: string;
+    dateLabel?: string;
+    image?: string;
+    linkUrl?: string;
+    linkLabel?: string;
+    featured?: boolean;
+}
+
 function csvEscape(value: unknown): string {
     const text = String(value ?? '');
     return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -264,6 +275,30 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     fastify.put<{ Body: AdminWikiBody }>('/admin/wiki-content', async (request) => {
         return { content: store.updateWikiContent(request.body) };
+    });
+
+    fastify.get('/admin/home-news', async () => {
+        return { news: store.listHomeNews() };
+    });
+
+    fastify.post<{ Body: AdminHomeNewsBody }>('/admin/home-news', async (request, reply) => {
+        if (!request.body.title?.trim() || !request.body.body?.trim()) {
+            return reply.code(400).send({ error: 'Title and body are required' });
+        }
+        return reply.code(201).send({ newsItem: store.upsertHomeNews(request.body as AdminHomeNewsBody & { title: string; body: string }) });
+    });
+
+    fastify.put<{ Params: { id: string }; Body: AdminHomeNewsBody }>('/admin/home-news/:id', async (request, reply) => {
+        if (!request.body.title?.trim() || !request.body.body?.trim()) {
+            return reply.code(400).send({ error: 'Title and body are required' });
+        }
+        return { newsItem: store.upsertHomeNews({ ...request.body, id: request.params.id } as AdminHomeNewsBody & { title: string; body: string }) };
+    });
+
+    fastify.delete<{ Params: { id: string } }>('/admin/home-news/:id', async (request, reply) => {
+        const deleted = store.deleteHomeNews(request.params.id);
+        if (!deleted) return reply.code(404).send({ error: 'News item not found' });
+        return { success: true };
     });
 
     fastify.get('/admin/prebuilt-decks/settings', async () => {

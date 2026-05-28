@@ -406,49 +406,49 @@ function line(prefix: string, hero: string): string {
 }
 
 function strategyEffects(strategy: Strategy, stage = 0): CardEffect[] {
-    if (strategy === 'rush') return [fx(EffectType.STORY, 1 + Math.min(stage, 2), 'SELF', `Otorga +${1 + Math.min(stage, 2)} SP al concretar un Evento.`)];
+    if (strategy === 'rush') return [fx(EffectType.STORY, 2 + Math.min(stage, 3), 'SELF', `Gain +${2 + Math.min(stage, 3)} SP when an Event is completed.`)];
     if (strategy === 'engine') return stage > 1
-        ? [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP al concretar un Evento.'), fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta al concretar un Evento.')]
-        : [fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta al concretar un Evento.')];
-    if (strategy === 'bond') return [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP al concretar un Evento si la escena avanza.')];
-    return [fx(EffectType.FILLER, -1 - Math.min(stage, 1), 'SELF', `Reduce ${1 + Math.min(stage, 1)} FP al concretar un Evento.`)];
+        ? [fx(EffectType.STORY, 2, 'SELF', 'Gain +2 SP when an Event is completed.'), fx(EffectType.DRAW, 1, 'SELF', 'Draw 1 card when an Event is completed.')]
+        : [fx(EffectType.DRAW, 1, 'SELF', 'Draw 1 card when an Event is completed.')];
+    if (strategy === 'bond') return [fx(EffectType.STORY, 3, 'SELF', 'Gain +3 SP when the scene advances.')];
+    return [fx(EffectType.FILLER, -2 - Math.min(stage, 2), 'SELF', `Reduce your FP by ${2 + Math.min(stage, 2)} when an Event is completed.`)];
 }
 
 function eventEffects(strategy: Strategy, step: number): CardEffect[] {
     const story = 3 + step;
-    const effects = [fx(EffectType.STORY, story, 'SELF', `Otorga +${story} SP al activar este Evento.`)];
-    if (strategy === 'rush') effects.push(fx(EffectType.FILLER, 1 + (step > 1 ? 1 : 0), 'OPPONENT', 'Otorga FP al rival por la presion del arco.'));
-    if (strategy === 'engine' && step % 2 === 1) effects.push(fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta al activar este Evento.'));
-    if (strategy === 'control' && step >= 1) effects.push(fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Silencia una carta rival el proximo turno.', { turns: 1 }));
+    const effects = [fx(EffectType.STORY, story, 'SELF', `Gain +${story} SP when this Event resolves.`)];
+    if (strategy === 'rush') effects.push(fx(EffectType.FILLER, 1 + (step > 1 ? 1 : 0), 'OPPONENT', 'Give the rival FP from the pressure of this arc.'));
+    if (strategy === 'engine' && step % 2 === 1) effects.push(fx(EffectType.DRAW, 1, 'SELF', 'Draw 1 card when this Event resolves.'));
+    if (strategy === 'control' && step >= 1) effects.push(fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Silence one random rival hand card next turn.', { turns: 1 }));
     return effects;
 }
 
 function heroEventEffects(hero: Hero): CardEffect[] {
     const effects: CardEffect[] = [];
     if (hero.eventStoryBonus) {
-        effects.push(fx(EffectType.STORY, hero.eventStoryBonus, 'SELF', `Otorga +${hero.eventStoryBonus} SP por la identidad de esta ruta.`));
+        effects.push(fx(EffectType.STORY, hero.eventStoryBonus, 'SELF', `Gain +${hero.eventStoryBonus} SP from this route identity.`));
     }
     if (hero.eventSelfFillerDelta) {
         const value = hero.eventSelfFillerDelta;
         const description = value > 0
-            ? `Recibe +${value} FP por acelerar su propio arco.`
-            : `Reduce ${Math.abs(value)} FP al transformar presion en avance.`;
+            ? `Gain +${value} FP by accelerating your own arc.`
+            : `Reduce your FP by ${Math.abs(value)} by turning pressure into progress.`;
         effects.push(fx(EffectType.FILLER, value, 'SELF', description));
     }
     if (hero.eventOpponentFillerBonus) {
-        effects.push(fx(EffectType.FILLER, hero.eventOpponentFillerBonus, 'OPPONENT', `Otorga +${hero.eventOpponentFillerBonus} FP al rival por la presion de esta ruta.`));
+        effects.push(fx(EffectType.FILLER, hero.eventOpponentFillerBonus, 'OPPONENT', `Give the rival +${hero.eventOpponentFillerBonus} FP from this route pressure.`));
     }
     return effects;
 }
 
 function materialEffect(kind: 'support' | 'item' | 'location', strategy: Strategy): CardEffect[] {
     if (kind === 'support') return strategy === 'control'
-        ? [fx(EffectType.FILLER, -1, 'SELF', 'Reduce 1 FP al concretar el Evento que lo usa.')]
-        : [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP al concretar el Evento que lo usa.')];
+        ? [fx(EffectType.FILLER, -2, 'SELF', 'Reduce your FP by 2 when the Event using this card resolves.')]
+        : [fx(EffectType.STORY, 2, 'SELF', 'Gain +2 SP when the Event using this card resolves.')];
     if (kind === 'item') return strategy === 'engine'
-        ? [fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta al concretar el Evento que lo usa.')]
-        : [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP al concretar el Evento que lo usa.')];
-    return [fx(EffectType.FILLER, -1, 'SELF', 'Reduce 1 FP al concretar el Evento que la usa.')];
+        ? [fx(EffectType.DRAW, 1, 'SELF', 'Draw 1 card and gain tempo when the Event using this card resolves.')]
+        : [fx(EffectType.STORY, 2, 'SELF', 'Gain +2 SP when the Event using this card resolves.')];
+    return [fx(EffectType.FILLER, -2, 'SELF', 'Reduce your FP by 2 when the Event using this Location resolves.')];
 }
 
 function eventResourceRequirement(resource: Resource, step: number): CardRequirement {
@@ -457,8 +457,8 @@ function eventResourceRequirement(resource: Resource, step: number): CardRequire
     const thresholds = resource === 'SP' ? storyThresholds : fillerThresholds;
     const value = thresholds[Math.min(step, thresholds.length - 1)];
     return resource === 'SP'
-        ? { type: 'STORY_MIN', value, description: `Requiere ${value} SP.` }
-        : { type: 'FILLER_MIN', value, description: `Requiere ${value} FP.` };
+        ? { type: 'STORY_MIN', value, description: `Requires ${value} SP.` }
+        : { type: 'FILLER_MIN', value, description: `Requires ${value} FP.` };
 }
 
 function progressiveMaterialCount(step: number, totalNormalEvents: number): number {
@@ -480,7 +480,7 @@ function routeMaterialRequirement(
         type: 'CARD_ON_BOARD',
         cardIds: eligibleIds,
         value,
-        description: `Requiere ${value} material(es) validos de la ruta en el arco actual.`,
+        description: `Requires ${value} valid route material(s) in the current arc.`,
     };
 }
 
@@ -496,7 +496,7 @@ for (const plan of plans) {
         costResource: 'SP',
         description,
         backstory: `${name} appears across multiple routes of ${plan.theme}.`,
-        effects: [fx(EffectType.STORY, 1, 'SELF', 'Otorga +1 SP al concretar el Evento que lo usa.')],
+        effects: [fx(EffectType.STORY, 2 + index, 'SELF', `Gain +${2 + index} SP when the Event using this card resolves.`)],
         archetype: plan.id,
         image: `${plan.prefix}-shared-char-${slug}`,
         affinity: { compatibleWith: [] },
@@ -512,7 +512,7 @@ for (const plan of plans) {
         costResource: 'SP',
         description,
         backstory: `${name} can support any protagonist of this archetype.`,
-        effects: index === 0 ? [fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta al concretar el Evento que lo usa.')] : [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP al concretar el Evento que lo usa.')],
+        effects: index === 0 ? [fx(EffectType.DRAW, 1, 'SELF', 'Draw 1 card when the Event using this card resolves.')] : [fx(EffectType.STORY, 3, 'SELF', 'Gain +3 SP when the Event using this card resolves.')],
         archetype: plan.id,
         image: `${plan.prefix}-shared-item-${slug}`,
         maxCopies: 3,
@@ -527,60 +527,60 @@ for (const plan of plans) {
         let effects: CardEffect[];
         switch (slug) {
             case 'commercial-break':
-                effects = [fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta inmediatamente.')];
+                effects = [fx(EffectType.DRAW, 1, 'SELF', 'Draw 1 card immediately.')];
                 break;
             case 'training-montage':
-                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requiere haber completado 1 Evento.' });
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requires 1 completed Event.' });
                 effects = plan.id === ARCHETYPES.MECHA
-                    ? [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP inmediatamente.'), fx(EffectType.SEARCH_CARD_TYPE, 1, 'SELF', 'Busca 1 Item en el deck.', { cardType: CardType.ITEM })]
-                    : [fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP inmediatamente.'), fx(EffectType.DRAW, 1, 'SELF', 'Roba 1 carta inmediatamente.')];
+                    ? [fx(EffectType.STORY, 2, 'SELF', 'Gain +2 SP immediately.'), fx(EffectType.SEARCH_CARD_TYPE, 1, 'SELF', 'Search 1 Item from your deck.', { cardType: CardType.ITEM })]
+                    : [fx(EffectType.STORY, 2, 'SELF', 'Gain +2 SP immediately.'), fx(EffectType.DRAW, 1, 'SELF', 'Draw 1 card immediately.')];
                 cost = 2;
                 break;
             case 'misunderstanding':
                 if (plan.id === ARCHETYPES.ISEKAI) {
-                    requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requiere haber completado 1 Evento.' });
+                    requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requires 1 completed Event.' });
                     cost = 2;
                 }
                 effects = plan.id === ARCHETYPES.ISEKAI
-                    ? [fx(EffectType.INVOKE_CARD_TO_OPPONENT_HAND, 1, 'OPPONENT', 'Invoca Demon Lord Gouki en la mano rival.', { cardId: 'isekai-external-demon-lord-gouki' })]
-                    : [fx(EffectType.FILLER, 2, 'OPPONENT', 'Otorga +2 FP al rival inmediatamente.')];
+                    ? [fx(EffectType.INVOKE_CARD_TO_OPPONENT_HAND, 1, 'OPPONENT', "Add Demon Lord Gouki to the rival's hand.", { cardId: 'isekai-external-demon-lord-gouki' })]
+                    : [fx(EffectType.FILLER, 2, 'OPPONENT', 'Give the rival +2 FP immediately.')];
                 break;
             case 'recap':
-                requirements.push({ type: 'DISCARD_FROM_HAND', value: 1, description: 'Descarta 1 carta de tu mano como costo adicional.' });
-                effects = [fx(EffectType.SEARCH_CARD_TYPE, 1, 'SELF', 'Descarta 1 carta: busca 1 Evento normal en tu deck y lo agrega a tu mano.', { cardType: CardType.EVENT })];
+                requirements.push({ type: 'DISCARD_FROM_HAND', value: 1, description: 'Discard 1 card from your hand as an additional cost.' });
+                effects = [fx(EffectType.SEARCH_CARD_TYPE, 1, 'SELF', 'Discard 1 card: search 1 normal Event from your deck and add it to your hand.', { cardType: CardType.EVENT })];
                 break;
             case 'rival-cut-in':
-                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requiere haber completado 1 Evento.' });
-                effects = [fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Silencia una carta aleatoria rival durante el proximo turno.', { turns: 1 })];
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requires 1 completed Event.' });
+                effects = [fx(EffectType.BLOCK_RANDOM_HAND_CARD_NEXT_TURN, 1, 'OPPONENT', 'Silence one random rival hand card during their next turn.', { turns: 1 })];
                 break;
             case 'last-save':
-                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requiere haber completado 1 Evento.' });
-                requirements.push({ type: 'DISCARD_FROM_HAND', value: 2, description: 'Descarta 2 cartas de tu mano como costo adicional.' });
-                effects = [fx(EffectType.RECOVER_FROM_CEMETERY, 1, 'SELF', 'Descarta 2 cartas: recupera la ultima carta de tu Cementerio a la mano.')];
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requires 1 completed Event.' });
+                requirements.push({ type: 'DISCARD_FROM_HAND', value: 2, description: 'Discard 2 cards from your hand as an additional cost.' });
+                effects = [fx(EffectType.RECOVER_FROM_CEMETERY, 1, 'SELF', 'Discard 2 cards: recover the last card from your Cemetery to your hand.')];
                 costResource = 'FP';
                 break;
             case 'genre-shift':
-                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requiere haber completado 1 Evento.' });
-                effects = [fx(EffectType.NEXT_EVENT_REDUCE_REQUIREMENT, 1, 'SELF', 'El siguiente Evento ignora un requisito.', { turns: 2 })];
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 1, description: 'Requires 1 completed Event.' });
+                effects = [fx(EffectType.NEXT_EVENT_REDUCE_REQUIREMENT, 1, 'SELF', 'Your next Event ignores one requirement.', { turns: 2 })];
                 break;
             case 'plot-armor':
-                requirements.push({ type: 'EVENT_COUNT_MIN', value: 2, description: 'Requiere haber completado 2 Eventos.' });
-                effects = [fx(EffectType.PROTECT_PROTAGONIST, 1, 'SELF', 'Protege al Protagonista del proximo silencio.', { turns: 2 }), fx(EffectType.STORY, 2, 'SELF', 'Otorga +2 SP inmediatamente.')];
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 2, description: 'Requires 2 completed Events.' });
+                effects = [fx(EffectType.PROTECT_PROTAGONIST, 1, 'SELF', 'Protect your Protagonist from the next silence effect.', { turns: 2 }), fx(EffectType.STORY, 3, 'SELF', 'Gain +3 SP immediately.')];
                 costResource = 'FP';
                 cost = 2;
                 break;
             case 'resolution-key':
-                requirements.push({ type: 'EVENT_COUNT_MIN', value: 2, description: 'Requiere haber completado 2 Eventos.' });
-                effects = [fx(EffectType.SEARCH_CLIMAX, 1, 'SELF', 'Busca el Evento Climax y lo agrega a tu mano.')];
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 2, description: 'Requires 2 completed Events.' });
+                effects = [fx(EffectType.SEARCH_CLIMAX, 1, 'SELF', 'Search your Climax Event and add it to your hand.')];
                 cost = 2;
                 break;
             default:
-                requirements.push({ type: 'EVENT_COUNT_MIN', value: 2, description: 'Requiere haber completado 2 Eventos.' });
+                requirements.push({ type: 'EVENT_COUNT_MIN', value: 2, description: 'Requires 2 completed Events.' });
                 effects = plan.id === ARCHETYPES.MECHA
-                    ? [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', 'Impide al rival jugar Items durante el proximo turno.', { turns: 1, cardType: CardType.ITEM })]
+                    ? [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', 'Prevent the rival from playing Items next turn.', { turns: 1, cardType: CardType.ITEM })]
                     : plan.id === ARCHETYPES.SHOJO
-                        ? [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', 'Impide al rival jugar Personajes durante el proximo turno.', { turns: 1, cardType: CardType.PERSONAJE })]
-                        : [fx(EffectType.SILENCE_PROTAGONIST_NEXT_EVENT, 1, 'OPPONENT', 'Silencia los efectos del Protagonista rival en su proximo Evento.', { turns: 2 })];
+                        ? [fx(EffectType.BLOCK_CARD_TYPE, 1, 'OPPONENT', 'Prevent the rival from playing Characters next turn.', { turns: 1, cardType: CardType.PERSONAJE })]
+                        : [fx(EffectType.SILENCE_PROTAGONIST_NEXT_EVENT, 1, 'OPPONENT', "Silence the rival Protagonist's effects on their next Event.", { turns: 2 })];
                 cost = 2;
                 costResource = 'FP';
                 break;
@@ -591,7 +591,7 @@ for (const plan of plans) {
             type: CardType.QUICK_EVENT,
             cost,
             costResource,
-            description: `${description} Se resuelve inmediatamente al jugarla.`,
+            description: `${description} It resolves immediately when played.`,
             backstory: `${name} is a fast intervention within ${plan.theme}.`,
             requirements,
             effects,
@@ -648,10 +648,10 @@ for (const plan of plans) {
                 description: hero.description,
                 backstory: `${hero.name} follows a ${hero.strategy} route through ${plan.theme}.`,
                 effects: hero.resource === 'FP'
-                    ? [fx(EffectType.FILLER, hero.strategy === 'control' ? 4 : 3, 'SELF', `Recibe +${hero.strategy === 'control' ? 4 : 3} FP al concretar un Evento para alimentar su estrategia.`), ...strategyEffects(hero.strategy, form)]
+                    ? [fx(EffectType.FILLER, hero.strategy === 'control' ? 4 : 3, 'SELF', `Gain +${hero.strategy === 'control' ? 4 : 3} FP when an Event is completed to fuel this strategy.`), ...strategyEffects(hero.strategy, form)]
                     : strategyEffects(hero.strategy, form),
                 entryEffects: form === 0
-                    ? [fx(hero.resource === 'SP' ? EffectType.STORY : EffectType.FILLER, hero.resource === 'SP' ? 4 : hero.strategy === 'control' ? 6 : 5, 'SELF', hero.resource === 'SP' ? 'Inicia la historia con +4 SP.' : `Inicia bajo presion con +${hero.strategy === 'control' ? 6 : 5} FP utilizables.`)]
+                    ? [fx(hero.resource === 'SP' ? EffectType.STORY : EffectType.FILLER, hero.resource === 'SP' ? 4 : hero.strategy === 'control' ? 6 : 5, 'SELF', hero.resource === 'SP' ? 'Start the story with +4 SP.' : `Start under pressure with +${hero.strategy === 'control' ? 6 : 5} usable FP.`)]
                     : [],
                 archetype: plan.id,
                 image: formId,
@@ -670,7 +670,7 @@ for (const plan of plans) {
                 id: supportId,
                 name: hero.support[1],
                 type: CardType.PERSONAJE,
-                cost: hero.resource === 'FP' ? 1 : 2,
+                cost: hero.resource === 'FP' ? 1 : 1,
                 costResource: hero.resource,
                 description: hero.support[2],
                 backstory: `${hero.support[1]} belongs to the route of ${hero.name}.`,
@@ -706,7 +706,7 @@ for (const plan of plans) {
             id: locationId,
             name: hero.location[1],
             type: CardType.LOCATION,
-            cost: 2,
+            cost: hero.resource === 'FP' ? 2 : 2,
             costResource: hero.resource,
             description: hero.location[2],
             backstory: `${hero.location[1]} anchors a decisive scene for ${hero.name}.`,
@@ -724,7 +724,7 @@ for (const plan of plans) {
                 id: materialId,
                 name,
                 type,
-                cost: kind === 'item' ? 1 : 2,
+                cost: kind === 'item' ? 2 : 3,
                 costResource: hero.resource,
                 description,
                 backstory: `${name} marks a later turning point in the route of ${hero.name}.`,
@@ -748,13 +748,13 @@ for (const plan of plans) {
                 type: CardType.QUICK_EVENT,
                 cost: 1,
                 costResource: hero.resource,
-                description: `${description} Se resuelve inmediatamente al jugarla.`,
+                description: `${description} It resolves immediately when played.`,
                 backstory: `${name} keeps the route of ${hero.name} moving without skipping its narrative order.`,
                 requirements: [
-                    { type: 'DISCARD_FROM_HAND', value: 1, description: 'Descarta 1 carta de tu mano como costo adicional.' },
+                    { type: 'DISCARD_FROM_HAND', value: 1, description: 'Discard 1 card from your hand as an additional cost.' },
                 ],
                 effects: [
-                    fx(EffectType.SEARCH_CARD_TYPE, 1, 'SELF', 'Busca 1 Evento normal de esta ruta en tu deck y lo agrega a tu mano.', { cardType: CardType.EVENT }),
+                    fx(EffectType.SEARCH_CARD_TYPE, 1, 'SELF', 'Search 1 normal Event from this route in your deck and add it to your hand.', { cardType: CardType.EVENT }),
                 ],
                 archetype: plan.id,
                 image: quickId,
@@ -778,10 +778,10 @@ for (const plan of plans) {
                 id: eventId,
                 name,
                 type: CardType.EVENT,
-                cost: Math.min(3, 1 + Math.floor(step / 2)),
+                cost: Math.min(5, 1 + step),
                 costResource: hero.resource,
                 description,
-                backstory: `${description} En la ruta de ${hero.name}, este momento redefine su siguiente arco.`,
+                backstory: `${description} In ${hero.name}'s route, this moment redefines the next arc.`,
                 eventPrerequisites: previousEvent ? [previousEvent] : [],
                 requirements,
                 effects: [...eventEffects(hero.strategy, step), ...heroEventEffects(hero)],
@@ -799,22 +799,22 @@ for (const plan of plans) {
             ?.map(materialSlug => materialIdBySlug.get(materialSlug))
             .filter((id): id is string => Boolean(id)) || materialIds;
         const climaxBaseRequirements: CardRequirement[] = [
-            { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 2, description: 'Requiere 2 materiales validos de la ruta en el arco Climax.' },
+            { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 2, description: 'Requires 2 valid route materials in the Climax arc.' },
             eventResourceRequirement(hero.resource, normalCount),
         ];
         const climaxX4Requirements: CardRequirement[] = [
-            { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 3, description: 'Requiere 3 materiales validos de la ruta en el arco Climax.' },
+            { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 3, description: 'Requires 3 valid route materials in the Climax arc.' },
             eventResourceRequirement(hero.resource, normalCount + 1),
         ];
         const climaxX10Requirements: CardRequirement[] = [
-            { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 4, description: 'Requiere ocupar los 4 slots con materiales validos de la ruta.' },
+            { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 4, description: 'Requires all 4 slots filled with valid route materials.' },
             eventResourceRequirement(hero.resource, normalCount + 3),
         ];
         add({
             id: climaxId,
             name: hero.climax[1],
             type: CardType.CLIMAX_EVENT,
-            cost: hero.resource === 'FP' ? 1 : 3,
+            cost: hero.resource === 'FP' ? 3 : 5,
             costResource: hero.resource,
             description: hero.climax[2],
             backstory: `${hero.climax[1]} is the Climax Event of ${hero.name}.`,
@@ -825,7 +825,7 @@ for (const plan of plans) {
                 { multiplier: 4, requirements: climaxX4Requirements },
                 { multiplier: 10, requirements: climaxX10Requirements },
             ],
-            effects: [fx(EffectType.STORY, 8, 'SELF', 'Otorga +8 SP multiplicados por el nivel Climax.'), fx(EffectType.FILLER, -2, 'SELF', 'Reduce 2 FP multiplicados por el nivel Climax.')],
+            effects: [fx(EffectType.STORY, 8, 'SELF', 'Gain +8 SP multiplied by the Climax tier.'), fx(EffectType.FILLER, -2, 'SELF', 'Reduce your FP by 2 multiplied by the Climax tier.')],
             archetype: plan.id,
             image: climaxId,
             maxCopies: 1,
@@ -835,10 +835,10 @@ for (const plan of plans) {
 
         const plotId = `${protagonistId}-plot-${hero.plotTwist[0]}`;
         const plotEffects = hero.strategy === 'control'
-            ? [fx(EffectType.MODIFY_CLIMAX_LEVEL, 2, 'OPPONENT', 'Reduce dos niveles del Climax rival.'), fx(EffectType.FILLER, -3, 'SELF', 'Reduce 3 FP propios.')]
+            ? [fx(EffectType.MODIFY_CLIMAX_LEVEL, 2, 'OPPONENT', "Reduce the rival Climax by two tiers."), fx(EffectType.FILLER, -3, 'SELF', 'Reduce your FP by 3.')]
             : hero.strategy === 'rush'
-                ? [fx(EffectType.MODIFY_CLIMAX_LEVEL, 1, 'OPPONENT', 'Reduce un nivel del Climax rival.'), fx(EffectType.STORY, 5, 'SELF', 'Otorga +5 SP en la respuesta.')]
-                : [fx(EffectType.MODIFY_CLIMAX_LEVEL, 1, 'OPPONENT', 'Reduce un nivel del Climax rival.'), fx(EffectType.FILLER, 4, 'OPPONENT', 'Otorga +4 FP al rival.')];
+                ? [fx(EffectType.MODIFY_CLIMAX_LEVEL, 1, 'OPPONENT', "Reduce the rival Climax by one tier."), fx(EffectType.STORY, 5, 'SELF', 'Gain +5 SP during the response.')]
+                : [fx(EffectType.MODIFY_CLIMAX_LEVEL, 1, 'OPPONENT', "Reduce the rival Climax by one tier."), fx(EffectType.FILLER, 4, 'OPPONENT', 'Give the rival +4 FP.')];
         add({
             id: plotId,
             name: hero.plotTwist[1],
@@ -848,7 +848,7 @@ for (const plan of plans) {
             description: hero.plotTwist[2],
             backstory: `${hero.plotTwist[1]} is the last comeback chance of ${hero.name}.`,
             requirements: [
-                { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 2, description: 'Requiere 2 materiales validos de la ruta durante la respuesta.' },
+                { type: 'CARD_ON_BOARD', cardIds: climaxMaterialIds, value: 2, description: 'Requires 2 valid route materials during the response.' },
                 eventResourceRequirement(hero.resource, Math.max(1, normalCount - 2)),
             ],
             effects: plotEffects,
@@ -867,13 +867,13 @@ add({
     type: CardType.PERSONAJE,
     cost: 0,
     costResource: 'SP',
-    description: 'Un demonio que excede dimensiones y disfruta incomodar a seres de otros mundos.',
-    backstory: 'Gouki aparece sin invitacion, ocupa una mano ajena y exige protagonismo.',
+    description: 'A demon beyond dimensions who enjoys unsettling beings from other worlds.',
+    backstory: 'Gouki appears uninvited, occupies someone else s hand, and demands the spotlight.',
     effects: [fx(
         EffectType.HAND_RANDOM_FILLER_THEN_DISCARD,
         3,
         'SELF',
-        'Mientras permanece en tu mano, recibes entre 1 y 3 FP al inicio de tu turno durante 3 turnos; luego va al Cementerio.',
+        'While this card stays in your hand, gain 1 to 3 FP at the start of your turn for 3 turns; then it goes to the Cemetery.',
         { turns: 3 },
     )],
     archetype: ARCHETYPES.ISEKAI,

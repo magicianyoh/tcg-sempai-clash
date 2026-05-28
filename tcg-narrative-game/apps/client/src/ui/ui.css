@@ -344,6 +344,14 @@ a {
     padding: 14px 15px;
 }
 
+.news-image {
+    width: 100%;
+    max-height: 150px;
+    object-fit: cover;
+    margin-bottom: 10px;
+    border: 1px solid var(--border-bright);
+}
+
 .news h3 {
     margin: 5px 0 6px;
     font-size: 16px;
@@ -377,6 +385,14 @@ a {
 
 .news-row h3 {
     margin-top: 0;
+}
+
+.news-link {
+    display: inline-block;
+    margin-top: 8px;
+    color: var(--teal);
+    font-size: 13px;
+    font-weight: 700;
 }
 
 .room-link {

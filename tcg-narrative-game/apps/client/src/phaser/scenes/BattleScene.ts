@@ -103,17 +103,17 @@ function displayEnum(value?: string): string {
         SURVIVAL_GAME: 'Survival Game',
         HAREM_INVERSO: 'Harem Inverso',
         EVENT_FINAL: 'Final Event',
-        CLIMAX_EVENT: 'Evento Climax',
+        CLIMAX_EVENT: 'Climax Event',
         PLOT_TWIST_EVENT: 'Plot-Twist',
         EVENT_KEY: 'Key Event',
-        PROTAGONIST: 'Protagonista',
-        PERSONAJE: 'Personaje',
-        CHARACTER: 'Personaje',
-        LOCATION: 'Locacion',
+        PROTAGONIST: 'Protagonist',
+        PERSONAJE: 'Character',
+        CHARACTER: 'Character',
+        LOCATION: 'Location',
         ITEM: 'Item',
         TOKEN: 'Quick Event',
         QUICK_EVENT: 'Quick Event',
-        EVENT: 'Evento',
+        EVENT: 'Event',
         FILLER: 'Filler',
         ISEKAI: 'Isekai',
         SHONEN: 'Shonen',
@@ -212,6 +212,7 @@ export class BattleScene extends Phaser.Scene {
     private quickEventQueue: QuickEventPresentation[] = [];
     private quickEventPresentationActive = false;
     private lastTurnBannerKey = '';
+    private cardDetailOverlayCount = 0;
     private uiSettings: UiSettings = {
         victoryImage: '',
         victorySound: '',
@@ -320,7 +321,7 @@ export class BattleScene extends Phaser.Scene {
             fontStyle: 'bold',
         }).setOrigin(0.5);
 
-        this.turnCountText = this.add.text(width / 2, 102, 'Turno 1', {
+        this.turnCountText = this.add.text(width / 2, 102, 'Turn 1', {
             fontSize: '12px',
             color: '#aab2c2',
         }).setOrigin(0.5);
@@ -902,12 +903,18 @@ export class BattleScene extends Phaser.Scene {
             this.quickEventPresentationActive = false;
             return;
         }
+        if (this.isCardDetailOverlayOpen()) {
+            this.quickEventQueue.unshift(presentation);
+            this.quickEventPresentationActive = false;
+            this.time.delayedCall(220, () => this.showNextQuickEventPresentation());
+            return;
+        }
         this.quickEventPresentationActive = true;
         if (presentation.isOpponent) {
             const queuedBanners = this.bannerQueue.length + (this.bannerActive ? 1 : 0);
             this.enqueueBanner(
-                `${presentation.playerName.toUpperCase()} JUGO`,
-                `la carta ${presentation.card.name}`,
+                `${presentation.playerName.toUpperCase()} PLAYED`,
+                `the card ${presentation.card.name}`,
                 'danger',
             );
             this.time.delayedCall((queuedBanners + 1) * 1450, () => this.revealQuickEventPresentation(presentation));
@@ -948,7 +955,7 @@ export class BattleScene extends Phaser.Scene {
                 this.time.delayedCall(100, () => {
                     reveal.destroy();
                     veil.destroy();
-                    new CardDetailOverlay(this, {
+                    this.openCardDetailOverlay({
                         cards: [this.getCardDetailData(card.id)],
                         startIndex: 0,
                         confirmLabel: 'OK',
@@ -1036,7 +1043,7 @@ export class BattleScene extends Phaser.Scene {
         });
 
         const index = allCards.findIndex(card => card.id === startCardId);
-        new CardDetailOverlay(this, {
+        this.openCardDetailOverlay({
             cards: allCards,
             startIndex: index !== -1 ? index : 0,
             onClose: () => {
@@ -1051,10 +1058,36 @@ export class BattleScene extends Phaser.Scene {
         if (!this.matchState) return;
         const cards = (this.getViewedPlayer().discard || []).map(id => this.getCardDetailData(id));
         if (cards.length === 0) {
-            this.showFeedback(130, 118, 'El Cementerio esta vacio');
+            this.showFeedback(130, 118, 'The Cemetery is empty');
             return;
         }
-        new CardDetailOverlay(this, { cards, startIndex: 0, onClose: () => undefined });
+        this.openCardDetailOverlay({ cards, startIndex: 0, onClose: () => undefined });
+    }
+
+    private openCardDetailOverlay(config: ConstructorParameters<typeof CardDetailOverlay>[1]): CardDetailOverlay {
+        this.cardDetailOverlayCount += 1;
+        const originalOnClose = config.onClose;
+        return new CardDetailOverlay(this, {
+            ...config,
+            onClose: () => {
+                try {
+                    originalOnClose?.();
+                } finally {
+                    this.cardDetailOverlayCount = Math.max(0, this.cardDetailOverlayCount - 1);
+                    this.flushDeferredBanners();
+                }
+            },
+        });
+    }
+
+    private isCardDetailOverlayOpen(): boolean {
+        return this.cardDetailOverlayCount > 0 || this.data.get('card-detail-open') === true;
+    }
+
+    private flushDeferredBanners(): void {
+        if (!this.bannerActive && this.bannerQueue.length > 0 && !this.isCardDetailOverlayOpen()) {
+            this.playNextBanner();
+        }
     }
 
     private async loadCardCatalog(): Promise<void> {
@@ -1169,7 +1202,7 @@ export class BattleScene extends Phaser.Scene {
     private sendEndTurn(): void {
         if (!this.matchState || this.matchState.activePlayerId !== this.myUsername) return;
         if (!this.canInteractWithCurrentArc()) {
-            this.showFeedback(this.scale.width / 2, this.getBoardY(), 'Volve al arco actual para continuar.');
+            this.showFeedback(this.scale.width / 2, this.getBoardY(), 'Return to the active arc to continue.');
             return;
         }
         this.ws?.send(JSON.stringify({
@@ -1211,9 +1244,9 @@ export class BattleScene extends Phaser.Scene {
         const viewed = this.currentView === 'self' ? me : opp;
         this.applyFieldTheme(viewed.backgroundId);
 
-        this.turnIndicator.setText(isMyTurn ? 'TU TURNO' : 'TURNO DEL OPONENTE');
+        this.turnIndicator.setText(isMyTurn ? 'YOUR TURN' : "OPPONENT'S TURN");
         this.turnIndicator.setColor(isMyTurn ? '#4ecdc4' : '#aab2c2');
-        this.turnCountText.setText(`Turno ${this.matchState.turnNumber}`);
+        this.turnCountText.setText(`Turn ${this.matchState.turnNumber}`);
 
         this.playerTitleText.setText(this.currentView === 'self' ? viewed.username.toUpperCase() : `${viewed.username.toUpperCase()} (RIVAL)`);
         this.updateHudLayout();
@@ -1222,7 +1255,7 @@ export class BattleScene extends Phaser.Scene {
         const summaryLabel = this.currentView === 'self' ? 'Rival' : 'Yo';
         const viewedStory = viewed.storyPoints ?? viewed.historyPoints ?? 0;
         const summaryStory = summaryPlayer.storyPoints ?? summaryPlayer.historyPoints ?? 0;
-        this.statText.setText(`Puntos: ${this.getPlayerScore(viewed)}\nSP: ${viewedStory}  FP: ${viewed.fillerPoints}\nCementerio: ${viewed.discard?.length || 0}`);
+        this.statText.setText(`Score: ${this.getPlayerScore(viewed)}\nSP: ${viewedStory}  FP: ${viewed.fillerPoints}\nCemetery: ${viewed.discard?.length || 0}`);
         this.updateTimerText();
         this.opponentStatText.setText(`${summaryLabel}\nPuntos: ${this.getPlayerScore(summaryPlayer)}\nSP: ${summaryStory}\nFP: ${summaryPlayer.fillerPoints}\nCem: ${summaryPlayer.discard?.length || 0}`);
         this.updateObjectivePanel(me, viewed, isMyTurn);
@@ -1249,7 +1282,7 @@ export class BattleScene extends Phaser.Scene {
 
     private updateEndTurnLabel(): void {
         const label = this.endTurnBtn.getAll().find(child => child.getData('label') === true) as Phaser.GameObjects.Text | undefined;
-        label?.setText(this.isPreparedEventReady(this.myPlayerIndex) ? 'SIGUIENTE ARCO' : 'PASAR TURNO');
+        label?.setText(this.isPreparedEventReady(this.myPlayerIndex) ? 'NEXT ARC' : 'END TURN');
     }
 
     private updateTurnActionState(): void {
@@ -1333,11 +1366,11 @@ export class BattleScene extends Phaser.Scene {
 
     private createObjectiveText(me: PlayerState, viewed: PlayerState, isMyTurn: boolean): string {
         if (this.currentView === 'opponent') {
-            return `Viendo campo rival: ${viewed.username}\nLa mano rival permanece oculta.\nVolve a tu campo para jugar cartas.`;
+            return `Viewing rival field: ${viewed.username}\nThe rival hand stays hidden.\nReturn to your field to play cards.`;
         }
 
         const lines: string[] = [
-            isMyTurn ? 'Tu turno: resolve el arco o prepara el campo.' : `Esperando a ${this.matchState?.activePlayerId}.`,
+            isMyTurn ? 'Your turn: resolve the arc or prepare the field.' : `Waiting for ${this.matchState?.activePlayerId}.`,
         ];
 
         const restrictions = this.getRestrictionsText(me);
@@ -1351,8 +1384,8 @@ export class BattleScene extends Phaser.Scene {
                 this.isEventType(this.getCardDisplayData(cardId).type) && this.canActivateEventCard(cardId)
             );
             lines.push(playableEvent && isMyTurn
-                ? `Evento listo: ${this.getCardDisplayData(playableEvent).name}. Arrastralo al centro.`
-                : 'Objetivo: ocupa slots y busca un evento con requisitos completos.'
+                ? `Event ready: ${this.getCardDisplayData(playableEvent).name}. Drag it to the center.`
+                : 'Goal: fill slots and find an Event with complete requirements.'
             );
         }
 
@@ -1362,10 +1395,10 @@ export class BattleScene extends Phaser.Scene {
     private getRestrictionsText(player: PlayerState): string[] {
         const restrictions = (player.statusEffects || [])
             .filter(effect => effect.type === 'BLOCK_CARD_TYPE' && effect.turnsRemaining > 0)
-            .map(effect => `Restriccion: sin ${String(effect.cardType || 'ese tipo')} por ${effect.turnsRemaining} turno(s).`);
+            .map(effect => `Restriction: no ${String(effect.cardType || 'that type')} for ${effect.turnsRemaining} turn(s).`);
 
         if (!player.canPlayEvents || player.eventsBlockedTurns > 0 || player.isEventsBlocked) {
-            restrictions.push(`Restriccion: eventos bloqueados ${Math.max(1, player.eventsBlockedTurns || 1)} turno(s).`);
+            restrictions.push(`Restriction: Events blocked for ${Math.max(1, player.eventsBlockedTurns || 1)} turn(s).`);
         }
 
         return restrictions;
@@ -1378,8 +1411,8 @@ export class BattleScene extends Phaser.Scene {
         const card = this.getCardDisplayData(block.eventSlot);
         const missing = this.describeMissingRequirements(player, card);
         return missing.length === 0
-            ? `Evento preparado: ${card.name}\nListo para Siguiente Arco.`
-            : `Evento preparado: ${card.name}\nFalta: ${missing.slice(0, 2).join('; ')}`;
+            ? `Prepared Event: ${card.name}\nReady for Next Arc.`
+            : `Prepared Event: ${card.name}\nMissing: ${missing.slice(0, 2).join('; ')}`;
     }
 
     private describeMissingRequirements(player: PlayerState, card: CardDisplayData): string[] {
@@ -1400,7 +1433,7 @@ export class BattleScene extends Phaser.Scene {
                 case 'EVENT_COMPLETED': {
                     const required = requirement.cardIds || [];
                     const pending = required.filter(cardId => !player.completedEvents.includes(cardId));
-                    if (pending.length) missing.push(`eventos: ${pending.map(id => this.getCardDisplayData(id).name).join(', ')}`);
+                    if (pending.length) missing.push(`events: ${pending.map(id => this.getCardDisplayData(id).name).join(', ')}`);
                     break;
                 }
                 case 'CARD_ON_BOARD': {
@@ -1413,7 +1446,7 @@ export class BattleScene extends Phaser.Scene {
         }
         const pendingPrereqs = (card.prereqs || []).filter(cardId => !player.completedEvents.includes(cardId));
         if (pendingPrereqs.length) {
-            missing.push(`eventos: ${pendingPrereqs.map(id => this.getCardDisplayData(id).name).join(', ')}`);
+            missing.push(`events: ${pendingPrereqs.map(id => this.getCardDisplayData(id).name).join(', ')}`);
         }
         return missing;
     }
@@ -1435,12 +1468,12 @@ export class BattleScene extends Phaser.Scene {
 
     private describeBoardRequirement(requirement: NonNullable<CardDisplayData['requirements']>[number]): string {
         const count = requirement.value || 1;
-        if (requirement.cardIds?.length) return `${count} en campo: ${requirement.cardIds.map(id => this.getCardDisplayData(id).name).join(', ')}`;
+        if (requirement.cardIds?.length) return `${count} on field: ${requirement.cardIds.map(id => this.getCardDisplayData(id).name).join(', ')}`;
         if (requirement.description) return requirement.description;
-        if (requirement.cardType) return `${count} cartas ${requirement.cardType} en campo`;
-        if (requirement.tag) return `${count} cartas con tag ${requirement.tag} en campo`;
-        if (requirement.archetype) return `${count} cartas ${requirement.archetype} en campo`;
-        return `${count} cartas en campo`;
+        if (requirement.cardType) return `${count} ${requirement.cardType} cards on field`;
+        if (requirement.tag) return `${count} cards with tag ${requirement.tag} on field`;
+        if (requirement.archetype) return `${count} ${requirement.archetype} cards on field`;
+        return `${count} cards on field`;
     }
 
     private getCardHandDescription(card: CardDisplayData): string {
@@ -1458,7 +1491,7 @@ export class BattleScene extends Phaser.Scene {
             likes: (card.likes || []).map(id => this.getCardDisplayData(id).name),
             dislikes: (card.dislikes || []).map(id => this.getCardDisplayData(id).name),
             requirementsText: [
-                ...(card.prereqs || []).map(id => `Completar evento previo: ${this.getCardDisplayData(id).name}`),
+                ...(card.prereqs || []).map(id => `Complete previous Event: ${this.getCardDisplayData(id).name}`),
                 ...(card.requirements || []).map(requirement => this.describeRequirement(requirement)),
             ],
             effectsText: (card.effects || []).map(effect => this.describeEffect(effect)),
@@ -1469,37 +1502,37 @@ export class BattleScene extends Phaser.Scene {
         if (requirement.type === 'STORY_MIN') return `${requirement.value || 0} SP (Story Points)`;
         if (requirement.type === 'FILLER_MAX') return `FP (Filler Points) <= ${requirement.value || 0}`;
         if (requirement.type === 'FILLER_MIN') return `${requirement.value || 0} FP (Filler Points)`;
-        if (requirement.type === 'DISCARD_FROM_HAND') return `Descartar ${requirement.value || 1} carta(s) de la mano`;
-        if (requirement.type === 'EVENT_COMPLETED') return `Completar evento: ${requirement.cardIds?.map(id => this.getCardDisplayData(id).name).join(', ') || 'previo'}`;
-        if (requirement.type === 'EVENT_COUNT_MIN') return `Completar ${requirement.value || 1} Evento(s) previamente`;
+        if (requirement.type === 'DISCARD_FROM_HAND') return `Discard ${requirement.value || 1} card(s) from hand`;
+        if (requirement.type === 'EVENT_COMPLETED') return `Complete Event: ${requirement.cardIds?.map(id => this.getCardDisplayData(id).name).join(', ') || 'previous'}`;
+        if (requirement.type === 'EVENT_COUNT_MIN') return `Complete ${requirement.value || 1} Event(s) first`;
         if (requirement.type === 'CARD_ON_BOARD') return this.describeBoardRequirement(requirement);
-        if (requirement.type === 'CARD_IN_COMPLETED_ARC') return `Arco previo revelado: ${displayEnum(requirement.cardType || 'carta compatible')}`;
+        if (requirement.type === 'CARD_IN_COMPLETED_ARC') return `Previous revealed arc: ${displayEnum(requirement.cardType || 'compatible card')}`;
         return requirement.type;
     }
 
     private describeEffect(effect: NonNullable<CardDisplayData['effects']>[number]): string {
-        const target = effect.target === 'OPPONENT' ? 'rival' : 'propio';
-        if (effect.type === 'STORY') return `Otorga +${effect.value || 0} SP (Story Points) al jugador ${target}.`;
-        if (effect.type === 'FILLER') return `${(effect.value || 0) >= 0 ? 'Otorga' : 'Reduce'} ${Math.abs(effect.value || 0)} FP (Filler Points) al jugador ${target}.`;
-        if (effect.type === 'DRAW') return `Roba +${effect.value || 1} carta(s).`;
-        if (effect.type === 'DISCARD') return `Descarta ${effect.value || 1} carta(s) del ${target}.`;
-        if (effect.type === 'BLOCK_CARD_TYPE') return `Impide al ${target} jugar cartas de ${displayEnum(effect.cardType || 'un tipo')} por ${effect.turns || 1} turno(s).`;
-        if (effect.type === 'BLOCK_EVENTS') return `Impide al ${target} jugar eventos por ${effect.turns || effect.value || 1} turno(s).`;
-        if (effect.type === 'EXTRA_DRAW_NEXT_TURN') return `Roba +${effect.value || 1} carta(s) al inicio del proximo turno.`;
-        if (effect.type === 'REMOVE_OPPONENT_BOARD_CARD') return 'Remueve 1 carta del campo rival.';
-        if (effect.type === 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN') return 'Impide que el rival use 1 carta al azar de su mano durante el proximo turno.';
-        if (effect.type === 'NEXT_EVENT_REDUCE_REQUIREMENT') return 'Tu proximo evento ignora 1 requisito para poder jugarse.';
-        if (effect.type === 'INVOKE_CARD_TO_OPPONENT_HAND') return `Invoca ${this.getCardDisplayData(effect.cardId || 'isekai-external-demon-lord-gouki').name} en la mano del rival.`;
-        if (effect.type === 'HAND_SP_DECAY_PERCENT') return `Mientras esta carta este en tu mano, pierdes ${effect.value || 5}% de tus SP (Story Points) al inicio de cada turno.`;
-        if (effect.type === 'HAND_RANDOM_FILLER_THEN_DISCARD') return 'Mientras esta carta este en tu mano, recibes 1 FP (50%), 2 FP (30%) o 3 FP (20%) al inicio de tu turno. Tras 3 activaciones, va al Cementerio.';
-        if (effect.type === 'SEARCH_CLIMAX') return 'Busca el Evento Climax en tu deck y lo agrega a la mano.';
-        if (effect.type === 'SEARCH_CARD_TYPE') return `Busca 1 carta de tipo ${displayEnum(effect.cardType || 'ITEM')} en tu deck y la agrega a la mano.`;
-        if (effect.type === 'RECOVER_FROM_CEMETERY') return 'Recupera una carta permitida del Cementerio a tu mano.';
-        if (effect.type === 'RECOVER_FROM_COMPLETED_ARC') return `Devuelve hasta ${effect.value || 1} carta(s) de un arco resuelto a tu mano.`;
-        if (effect.type === 'MODIFY_CLIMAX_LEVEL') return `Reduce ${effect.value || 1} nivel(es) del Climax pendiente.`;
-        if (effect.type === 'PROTECT_PROTAGONIST') return 'Tu Protagonista ignora el proximo efecto que intente silenciarlo.';
-        if (effect.type === 'SILENCE_PROTAGONIST_NEXT_EVENT') return 'El Protagonista rival no activa sus efectos en su proximo Evento.';
-        if (effect.type === 'VICTORY') return 'Ganas la partida al concretar este Evento Final.';
+        const target = effect.target === 'OPPONENT' ? 'rival' : 'owner';
+        if (effect.type === 'STORY') return `Give +${effect.value || 0} SP (Story Points) to the ${target}.`;
+        if (effect.type === 'FILLER') return `${(effect.value || 0) >= 0 ? 'Give' : 'Reduce'} ${Math.abs(effect.value || 0)} FP (Filler Points) to the ${target}.`;
+        if (effect.type === 'DRAW') return `Draw +${effect.value || 1} card(s).`;
+        if (effect.type === 'DISCARD') return `Discard ${effect.value || 1} card(s) from the ${target}.`;
+        if (effect.type === 'BLOCK_CARD_TYPE') return `Prevent the ${target} from playing ${displayEnum(effect.cardType || 'a type')} cards for ${effect.turns || 1} turn(s).`;
+        if (effect.type === 'BLOCK_EVENTS') return `Prevent the ${target} from playing Events for ${effect.turns || effect.value || 1} turn(s).`;
+        if (effect.type === 'EXTRA_DRAW_NEXT_TURN') return `Draw +${effect.value || 1} card(s) at the start of the next turn.`;
+        if (effect.type === 'REMOVE_OPPONENT_BOARD_CARD') return 'Remove 1 card from the rival field.';
+        if (effect.type === 'BLOCK_RANDOM_HAND_CARD_NEXT_TURN') return 'Prevent the rival from using 1 random hand card next turn.';
+        if (effect.type === 'NEXT_EVENT_REDUCE_REQUIREMENT') return 'Your next Event ignores 1 requirement.';
+        if (effect.type === 'INVOKE_CARD_TO_OPPONENT_HAND') return `Add ${this.getCardDisplayData(effect.cardId || 'isekai-external-demon-lord-gouki').name} to the rival hand.`;
+        if (effect.type === 'HAND_SP_DECAY_PERCENT') return `While this card stays in your hand, lose ${effect.value || 5}% of your SP (Story Points) at the start of each turn.`;
+        if (effect.type === 'HAND_RANDOM_FILLER_THEN_DISCARD') return 'While this card stays in your hand, gain 1 FP (50%), 2 FP (30%), or 3 FP (20%) at the start of your turn. After 3 activations, it goes to the Cemetery.';
+        if (effect.type === 'SEARCH_CLIMAX') return 'Search your Climax Event from your deck and add it to your hand.';
+        if (effect.type === 'SEARCH_CARD_TYPE') return `Search 1 ${displayEnum(effect.cardType || 'ITEM')} card from your deck and add it to your hand.`;
+        if (effect.type === 'RECOVER_FROM_CEMETERY') return 'Recover an allowed card from the Cemetery to your hand.';
+        if (effect.type === 'RECOVER_FROM_COMPLETED_ARC') return `Return up to ${effect.value || 1} card(s) from a completed arc to your hand.`;
+        if (effect.type === 'MODIFY_CLIMAX_LEVEL') return `Reduce the pending Climax by ${effect.value || 1} tier(s).`;
+        if (effect.type === 'PROTECT_PROTAGONIST') return 'Your Protagonist ignores the next effect that would silence it.';
+        if (effect.type === 'SILENCE_PROTAGONIST_NEXT_EVENT') return "The rival Protagonist does not activate effects on its next Event.";
+        if (effect.type === 'VICTORY') return 'Win the match when this Final Event resolves.';
         return effect.type;
     }
 
@@ -1516,7 +1549,7 @@ export class BattleScene extends Phaser.Scene {
 
         const block = player.board.blocks[blockIndex];
         const emptySlot = block?.slots.find(slot => !slot.cardId);
-        if (!emptySlot) return 'No hay slots libres en este arco';
+        if (!emptySlot) return 'No free slots in this arc';
 
         const result = canPlayCard(this.matchState, this.myPlayerIndex, cardId, {
             blockIndex,
@@ -1710,7 +1743,7 @@ export class BattleScene extends Phaser.Scene {
         this.arcNavigation
             .setPosition(this.getArcNavigationX(), this.getBoardY())
             .setScale(this.scale.width < 560 ? 0.82 : 1);
-        this.arcNavigationText.setText(active ? `ACTUAL\n${blockIndex + 1} / ${maxIndex + 1}` : `ARCO\n${blockIndex + 1} / ${maxIndex + 1}`);
+        this.arcNavigationText.setText(active ? `ACTIVE\n${blockIndex + 1} / ${maxIndex + 1}` : `ARC\n${blockIndex + 1} / ${maxIndex + 1}`);
         this.arcUpButton.setAlpha(blockIndex < maxIndex ? 1 : 0.28);
         this.arcDownButton.setAlpha(blockIndex > 0 ? 1 : 0.28);
     }
@@ -2032,9 +2065,9 @@ export class BattleScene extends Phaser.Scene {
                 this.animateEventResolution(entry, card);
                 this.time.delayedCall(760, () => {
                     if (card?.type === 'EVENT_FINAL') {
-                        this.enqueueBanner('ARCO FINAL', `${entry.player} avanza al arco final con ${card.name}`, 'final');
+                        this.enqueueBanner('FINAL ARC', `${entry.player} advances with ${card.name}`, 'final');
                     } else {
-                        this.enqueueBanner('SIGUIENTE ARCO', `${entry.player} avanza con ${card?.name ?? entry.details ?? ''}`, 'event');
+                        this.enqueueBanner('NEXT ARC', `${entry.player} advances with ${card?.name ?? entry.details ?? ''}`, 'event');
                     }
                 });
                 break;
@@ -2042,30 +2075,30 @@ export class BattleScene extends Phaser.Scene {
             case 'climax_revealed':
                 this.playLocationChangeEffect('final');
                 this.emitParticleBurst(this.scale.width / 2, this.scale.height / 2, 0xffd166, 72);
-                this.enqueueBanner('CLIMAX', `${entry.player} desata ${entry.details ?? 'su desenlace'}`, 'final');
+                this.enqueueBanner('CLIMAX', `${entry.player} unleashes ${entry.details ?? 'their ending'}`, 'final');
                 break;
             case 'climax_complete':
                 this.playLocationChangeEffect('final');
                 this.emitParticleBurst(this.scale.width / 2, this.scale.height / 2, 0xffd166, 96);
-                this.enqueueBanner('CLIMAX COMPLETADO', `${entry.player} cierra el desenlace`, 'final');
+                this.enqueueBanner('CLIMAX COMPLETE', `${entry.player} closes the ending`, 'final');
                 break;
             case 'climax_pending':
-                this.enqueueBanner('CLIMAX PENDIENTE', 'El rival puede responder con Plot-Twist', 'danger');
+                this.enqueueBanner('CLIMAX PENDING', 'The rival can answer with a Plot-Twist', 'danger');
                 break;
             case 'plot_twist_offered':
-                this.enqueueBanner('PLOT-TWIST', `${entry.player} tiene una ultima respuesta`, 'danger');
+                this.enqueueBanner('PLOT-TWIST', `${entry.player} has one last answer`, 'danger');
                 break;
             case 'plot_twist_complete':
                 this.playLocationChangeEffect('danger');
                 this.emitParticleBurst(this.scale.width / 2, this.scale.height / 2, 0xe94560, 64);
-                this.enqueueBanner('PLOT-TWIST', `${entry.player} altera el desenlace`, 'danger');
+                this.enqueueBanner('PLOT-TWIST', `${entry.player} changes the ending`, 'danger');
                 break;
             case 'act_checkpoint':
                 this.playConfiguredEffect(this.uiSettings.phaseAdvanceEffect, 'turn');
                 break;
             case 'victory':
                 this.playConfiguredEffect(this.uiSettings.victoryEffect, 'final');
-                this.enqueueBanner('VICTORIA', `${entry.player} gana la partida`, 'final');
+                this.enqueueBanner('VICTORY', `${entry.player} wins the match`, 'final');
                 break;
         }
     }
@@ -2075,10 +2108,10 @@ export class BattleScene extends Phaser.Scene {
         if (this.lastTurnBannerKey === key) return;
         this.lastTurnBannerKey = key;
         if (playerName === this.myUsername) {
-            this.enqueueBanner('TU TURNO', `Turno ${turnNumber}`, 'turn');
+            this.enqueueBanner('YOUR TURN', `Turn ${turnNumber}`, 'turn');
             return;
         }
-        this.enqueueBanner(`TURNO DE ${playerName.toUpperCase()}`, `Turno ${turnNumber}`, 'neutral');
+        this.enqueueBanner(`${playerName.toUpperCase()}'S TURN`, `Turn ${turnNumber}`, 'neutral');
     }
 
     private appendNarrativeEntry(entry: LogEntry): void {
@@ -2468,12 +2501,16 @@ export class BattleScene extends Phaser.Scene {
 
     private enqueueBanner(title: string, subtitle: string | undefined, tone: BannerTone): void {
         this.bannerQueue.push({ title, subtitle, tone });
-        if (!this.bannerActive) {
+        if (!this.bannerActive && !this.isCardDetailOverlayOpen()) {
             this.playNextBanner();
         }
     }
 
     private playNextBanner(): void {
+        if (this.isCardDetailOverlayOpen()) {
+            this.bannerActive = false;
+            return;
+        }
         const next = this.bannerQueue.shift();
         if (!next) {
             this.bannerActive = false;

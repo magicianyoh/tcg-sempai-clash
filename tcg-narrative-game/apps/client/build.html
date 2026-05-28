@@ -710,12 +710,6 @@
             </div>
             <input type="text" class="deck-name-input" id="deck-name" placeholder="Nombre del mazo..." value="Mi Mazo">
 
-            <!-- Background Selector -->
-            <div style="margin-bottom: 5px; font-size: 0.8rem; color: rgba(255,255,255,0.7);">Tema del campo:</div>
-            <div class="bg-selector" id="bg-selector">
-                <!-- Populated by JS -->
-            </div>
-
             <div class="deck-list" id="deck-list">
                 <p style="color: rgba(255,255,255,0.5); text-align: center;">
                     Haz clic en las cartas para agregarlas
@@ -795,13 +789,6 @@
         let currentEditingDeckId = null;
         let selectedBackground = 'bg_01'; // Default
         let detailCardId = '';
-
-        const FIELD_THEMES = [
-            { id: 'bg_01', name: 'Neon Clash', sub: 'Cian / Rojo', a: '#020609', b: '#4ecdc4' },
-            { id: 'bg_02', name: 'Crimson Arc', sub: 'Rojo / Dorado', a: '#140508', b: '#ff5a76' },
-            { id: 'bg_03', name: 'Golden Stage', sub: 'Dorado / Verde', a: '#111008', b: '#ffd166' },
-            { id: 'bg_04', name: 'Violet Night', sub: 'Violeta / Azul', a: '#090615', b: '#9b5de5' },
-        ];
 
         // Auth check
         const token = localStorage.getItem('token');
@@ -1345,23 +1332,7 @@
 
         // Render Backgrounds
         function renderBackgrounds() {
-            const container = document.getElementById('bg-selector');
-            container.innerHTML = FIELD_THEMES.map(theme => `
-                <button class="bg-option ${theme.id === selectedBackground ? 'selected' : ''}"
-                     data-bg="${theme.id}"
-                     style="--theme-a: ${theme.a}; --theme-b: ${theme.b};"
-                     type="button">
-                    <span class="theme-name">${theme.name}</span>
-                    <span class="theme-sub">${theme.sub}</span>
-                </button>
-            `).join('');
-
-            container.querySelectorAll('.bg-option').forEach(el => {
-                el.addEventListener('click', () => {
-                    selectedBackground = el.dataset.bg;
-                    renderBackgrounds();
-                });
-            });
+            selectedBackground = selectedBackground || 'bg_01';
         }
 
         async function loadCardCatalog() {

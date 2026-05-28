@@ -5,7 +5,7 @@ import { CARDS } from '@tcg/game-engine/content/cards';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const CATALOG_CONTENT_VERSION = 5;
+const CATALOG_CONTENT_VERSION = 6;
 const REBUILT_ROUTE_PROTAGONISTS = new Set([
     'mecha-hero-brave-gai',
     'shonen-hero-dragon-ryu',
@@ -73,6 +73,19 @@ export interface PrebuiltDeckSettings {
     deckOverrides?: Record<string, string[]>;
 }
 
+export interface HomeNewsItem {
+    id: string;
+    title: string;
+    body: string;
+    dateLabel: string;
+    image?: string;
+    linkUrl?: string;
+    linkLabel?: string;
+    featured?: boolean;
+    createdAt: number;
+    updatedAt: number;
+}
+
 export type PersistedCardData = CardData & {
     sound?: string;
     extendedLore?: string;
@@ -95,6 +108,7 @@ interface PersistedStoreState {
     wikiContent: Partial<WikiContent>;
     prebuiltDeckSettings?: Partial<PrebuiltDeckSettings>;
     cardOverrides?: Array<[string, PersistedCardData]>;
+    homeNews?: HomeNewsItem[];
 }
 
 // ============================================
@@ -143,6 +157,33 @@ export class MemoryStore {
 
     private mediaAssets: Map<string, MediaAsset> = new Map();
     private cardOverrides: Map<string, PersistedCardData> = new Map();
+    private homeNews: HomeNewsItem[] = [
+        {
+            id: 'news-climax-plot-twist',
+            title: 'Climax and Plot-Twist endings',
+            body: 'Protagonists now evolve through arcs before the final Climax. Plot-Twist responses keep the ending tense until the last score check.',
+            dateLabel: 'MAY 2026',
+            featured: true,
+            createdAt: 1716681600000,
+            updatedAt: 1716681600000,
+        },
+        {
+            id: 'news-opening-balance',
+            title: 'More reliable opening arcs',
+            body: 'Opening hands and early draws now favor first-event setup cards without removing deck-building decisions.',
+            dateLabel: 'BALANCE',
+            createdAt: 1716681600001,
+            updatedAt: 1716681600001,
+        },
+        {
+            id: 'news-mobile-field',
+            title: 'Mobile field and Quick Events',
+            body: 'Hand swipe, Cemetery browsing, and immediate Quick Event presentation were cleaned up for mobile play.',
+            dateLabel: 'UI',
+            createdAt: 1716681600002,
+            updatedAt: 1716681600002,
+        },
+    ];
 
     private prebuiltDeckSettings: PrebuiltDeckSettings = {
         enabled: true,
@@ -197,6 +238,12 @@ export class MemoryStore {
             }
             if (Array.isArray(parsed.cardOverrides)) {
                 this.cardOverrides = new Map(parsed.cardOverrides);
+            }
+            if (Array.isArray(parsed.homeNews)) {
+                this.homeNews = parsed.homeNews
+                    .filter(item => item && typeof item.id === 'string')
+                    .map(item => ({ ...item }))
+                    .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
             }
             if (parsed.adminUiSettings && typeof parsed.adminUiSettings === 'object') {
                 this.adminUiSettings = {
@@ -262,7 +309,7 @@ export class MemoryStore {
 
     private backupCatalogDatabase(): void {
         try {
-            const backupPath = path.join(path.dirname(this.dbFilePath), 'db.catalog-v4.backup.json');
+            const backupPath = path.join(path.dirname(this.dbFilePath), 'db.catalog-v5.backup.json');
             if (!fs.existsSync(backupPath)) {
                 fs.copyFileSync(this.dbFilePath, backupPath);
             }
@@ -333,6 +380,7 @@ export class MemoryStore {
                 wikiContent: this.getWikiContent(),
                 prebuiltDeckSettings: this.getPrebuiltDeckSettings(),
                 cardOverrides: Array.from(this.cardOverrides.entries()),
+                homeNews: this.listHomeNews(),
             };
 
             const tempPath = `${this.dbFilePath}.tmp`;
@@ -619,6 +667,49 @@ export class MemoryStore {
         };
         this.saveToDisk();
         return this.getWikiContent();
+    }
+
+    listHomeNews(): HomeNewsItem[] {
+        return this.homeNews
+            .map(item => ({ ...item }))
+            .sort((a, b) => {
+                if (Boolean(a.featured) !== Boolean(b.featured)) return a.featured ? -1 : 1;
+                return Number(b.updatedAt || 0) - Number(a.updatedAt || 0);
+            });
+    }
+
+    upsertHomeNews(input: Partial<HomeNewsItem> & { title: string; body: string }): HomeNewsItem {
+        const now = Date.now();
+        const existing = input.id ? this.homeNews.find(item => item.id === input.id) : undefined;
+        const id = existing?.id || input.id || `news_${Math.random().toString(36).slice(2, 11)}`;
+        const item: HomeNewsItem = {
+            id,
+            title: input.title.trim(),
+            body: input.body.trim(),
+            dateLabel: (input.dateLabel || '').trim() || new Date(now).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase(),
+            image: input.image || '',
+            linkUrl: input.linkUrl || '',
+            linkLabel: input.linkLabel || '',
+            featured: Boolean(input.featured),
+            createdAt: existing?.createdAt || now,
+            updatedAt: now,
+        };
+        if (item.featured) {
+            this.homeNews = this.homeNews.map(news => news.id === id ? news : { ...news, featured: false });
+        }
+        this.homeNews = existing
+            ? this.homeNews.map(news => news.id === id ? item : news)
+            : [item, ...this.homeNews];
+        this.saveToDisk();
+        return { ...item };
+    }
+
+    deleteHomeNews(id: string): boolean {
+        const before = this.homeNews.length;
+        this.homeNews = this.homeNews.filter(item => item.id !== id);
+        const deleted = this.homeNews.length !== before;
+        if (deleted) this.saveToDisk();
+        return deleted;
     }
 
     listCardOverrides(): PersistedCardData[] {

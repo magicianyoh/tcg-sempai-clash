@@ -84,10 +84,10 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         super(scene, 0, 0);
         this.cards = config.cards.length > 0 ? config.cards : [{
             id: 'empty',
-            name: 'Sin carta',
+            name: 'No card',
             type: 'N/A',
             cost: 0,
-            description: 'No hay datos disponibles.',
+            description: 'No data available.',
         }];
         this.currentIndex = Phaser.Math.Clamp(config.startIndex, 0, this.cards.length - 1);
         this.closeCallback = config.onClose;
@@ -230,7 +230,7 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
         const firstX = -(width + gap) / 2;
         const secondX = (width + gap) / 2;
         face.add([
-            this.createTabButton(firstX, y, width, 'Efs./Req.', !loreActive, () => this.setLoreFace(false)),
+            this.createTabButton(firstX, y, width, 'Effects / Req.', !loreActive, () => this.setLoreFace(false)),
             this.createTabButton(secondX, y, width, 'Lore', loreActive, () => this.setLoreFace(true)),
         ]);
     }
@@ -399,7 +399,7 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
 
         const titleFontSize = card.name.length > 26 ? (this.compact ? '19px' : '21px') : (this.compact ? '23px' : '26px');
         this.nameText.setFontSize(titleFontSize).setText(card.name.toUpperCase());
-        this.typeText.setText(`${card.typeLabel || card.type}  |  Costo ${card.cost} ${card.costResource || 'SP'}`);
+        this.typeText.setText(`${card.typeLabel || card.type}  |  Cost ${card.cost} ${card.costResource || 'SP'}`);
 
         this.frontScroll.text.setText(this.buildFrontText(card));
         this.loreScroll.text.setText(this.buildLoreText(card));
@@ -413,21 +413,21 @@ export class CardDetailOverlay extends Phaser.GameObjects.Container {
     }
 
     private buildFrontText(card: CardInfo): string {
-        const effects = card.effectsText?.length ? card.effectsText.map(value => `- ${value}`).join('\n') : 'Sin efectos.';
+        const effects = card.effectsText?.length ? card.effectsText.map(value => `- ${value}`).join('\n') : 'No effects.';
         const requirements = card.requirementsText?.length
             ? card.requirementsText.map(value => `- ${value}`).join('\n')
-            : 'Sin requisitos.';
-        return `EFECTOS\n${effects}\n\nREQUISITOS\n${requirements}`;
+            : 'No requirements.';
+        return `EFFECTS\n${effects}\n\nREQUIREMENTS\n${requirements}`;
     }
 
     private buildLoreText(card: CardInfo): string {
         const affinityAllowed = ['PROTAGONIST', 'PERSONAJE', 'CHARACTER'].includes(card.type);
-        const rows = [`DESCRIPCION\n${card.description || 'Sin descripcion.'}`];
+        const rows = [`DESCRIPTION\n${card.description || 'No description.'}`];
         if (affinityAllowed) {
-            rows.push(`LE GUSTA\n${card.likes?.length ? card.likes.join(', ') : 'Sin afinidades.'}`);
-            rows.push(`NO LE GUSTA\n${card.dislikes?.length ? card.dislikes.join(', ') : 'Sin afinidades.'}`);
+            rows.push(`LIKES\n${card.likes?.length ? card.likes.join(', ') : 'No affinities.'}`);
+            rows.push(`DISLIKES\n${card.dislikes?.length ? card.dislikes.join(', ') : 'No affinities.'}`);
         }
-        rows.push(`LORE\n${card.backstory || 'Sin lore extendido.'}`);
+        rows.push(`LORE\n${card.backstory || 'No extended lore.'}`);
         return rows.join('\n\n');
     }
 

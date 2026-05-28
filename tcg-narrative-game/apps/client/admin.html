@@ -370,6 +370,7 @@
                 <button class="tab" data-tab="import">Importar CSV</button>
                 <button class="tab" data-tab="audit">Auditoria</button>
                 <button class="tab" data-tab="users">Usuarios</button>
+                <button class="tab" data-tab="news">Home News</button>
                 <button class="tab" data-tab="prebuilt">Decks pre-armados</button>
                 <button class="tab" data-tab="media">Gestión de medios</button>
                 <button class="tab" data-tab="ui">UI / FX</button>
@@ -601,6 +602,50 @@
                 </div>
                 <div id="user-list" class="user-list"></div>
                 <p id="user-message" class="message"></p>
+            </section>
+
+            <section class="panel section" id="news-section">
+                <h2>Home News</h2>
+                <p class="meta" style="margin: 8px 0 12px;">Create short updates for the home page. Body supports basic Markdown-style bold with **text** plus optional image and link fields.</p>
+                <div class="grid" style="margin-top: 12px;">
+                    <div>
+                        <h3>Published items</h3>
+                        <div id="news-list" class="card-list"></div>
+                    </div>
+                    <form id="news-form" class="grid">
+                        <label>ID
+                            <input id="news-id" disabled>
+                        </label>
+                        <label>Title
+                            <input id="news-title-input">
+                        </label>
+                        <label>Date label
+                            <input id="news-date-label" placeholder="MAY 2026 / BALANCE / UI">
+                        </label>
+                        <label>Image
+                            <input id="news-image" class="media-picker" data-media-type="image" placeholder="url or uploaded image">
+                        </label>
+                        <label>Link URL
+                            <input id="news-link-url" placeholder="https://...">
+                        </label>
+                        <label>Link label
+                            <input id="news-link-label" placeholder="Read more">
+                        </label>
+                        <label class="switch-row">
+                            <span>Feature on top</span>
+                            <input id="news-featured" type="checkbox">
+                        </label>
+                        <label style="grid-column: 1 / -1;">Body
+                            <textarea id="news-body" style="min-height: 180px;"></textarea>
+                        </label>
+                    </form>
+                </div>
+                <div class="actions">
+                    <button id="new-news-btn" class="btn" type="button">New item</button>
+                    <button id="save-news-btn" class="btn primary" type="button">Save news</button>
+                    <button id="delete-news-btn" class="btn danger" type="button">Delete</button>
+                </div>
+                <p id="news-message" class="message"></p>
             </section>
 
             <section class="panel section" id="prebuilt-section">
