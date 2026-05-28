@@ -8,6 +8,10 @@ type AdminCard = {
     description: string;
     desc?: string;
     extendedLore?: string;
+    endingTitle?: string;
+    endingLore?: string;
+    endingImage?: string;
+    endingSound?: string;
     image?: string;
     sound?: string;
     maxCopies?: number;
@@ -275,9 +279,13 @@ function renderSelectedCard() {
     ($<HTMLSelectElement>('card-cost-resource')).value = card.costResource || 'SP';
     ($<HTMLInputElement>('card-image')).value = card.image || '';
     ($<HTMLInputElement>('card-sound')).value = card.sound || '';
+    ($<HTMLInputElement>('card-ending-title')).value = card.endingTitle || '';
+    ($<HTMLInputElement>('card-ending-image')).value = card.endingImage || '';
+    ($<HTMLInputElement>('card-ending-sound')).value = card.endingSound || '';
     ($<HTMLInputElement>('card-max')).value = card.maxCopies ? String(card.maxCopies) : '';
     ($<HTMLTextAreaElement>('card-description')).value = card.description || card.desc || '';
     ($<HTMLTextAreaElement>('card-extended-lore')).value = card.extendedLore || '';
+    ($<HTMLTextAreaElement>('card-ending-lore')).value = card.endingLore || '';
     ($<HTMLElement>('card-likes-label')).style.display = supportsLikes ? '' : 'none';
     ($<HTMLElement>('card-dislikes-label')).style.display = supportsLikes ? '' : 'none';
     ($<HTMLTextAreaElement>('card-likes')).value = supportsLikes ? (card.likes || []).join(', ') : '';
@@ -476,9 +484,13 @@ async function saveCard() {
                 costResource: ($<HTMLSelectElement>('card-cost-resource')).value as 'SP' | 'FP',
                 image: ($<HTMLInputElement>('card-image')).value,
                 sound: ($<HTMLInputElement>('card-sound')).value,
+                endingTitle: ($<HTMLInputElement>('card-ending-title')).value,
+                endingImage: ($<HTMLInputElement>('card-ending-image')).value,
+                endingSound: ($<HTMLInputElement>('card-ending-sound')).value,
                 maxCopies: maxCopiesValue ? Number(maxCopiesValue) : undefined,
                 description: ($<HTMLTextAreaElement>('card-description')).value,
                 extendedLore: ($<HTMLTextAreaElement>('card-extended-lore')).value,
+                endingLore: ($<HTMLTextAreaElement>('card-ending-lore')).value,
                 likes: supportsLikes ? parseCsvList(($<HTMLTextAreaElement>('card-likes')).value) : [],
                 dislikes: supportsLikes ? parseCsvList(($<HTMLTextAreaElement>('card-dislikes')).value) : [],
                 requirements,

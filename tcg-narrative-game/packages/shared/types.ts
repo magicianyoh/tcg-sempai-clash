@@ -146,6 +146,10 @@ export interface CardData {
 
     // Lore
     backstory?: string;          // Flavor text / lore
+    endingTitle?: string;        // Climax/Plot-Twist ending title shown only on match end
+    endingLore?: string;         // Climax/Plot-Twist ending text shown only on match end
+    endingImage?: string;        // Climax/Plot-Twist ending image shown only on match end
+    endingSound?: string;        // Climax/Plot-Twist ending sound shown only on match end
 
     // Prerequisites (for EVENT type)
     eventPrerequisites?: string[]; // Event card IDs that must be completed first
@@ -268,8 +272,25 @@ export interface PendingClimax {
     attackerIndex: 0 | 1;
     responderIndex: 0 | 1;
     cardId: string;
+    plotTwistCardId?: string;
     multiplier: 2 | 4 | 10;
     responseOpen: boolean;
+}
+
+export interface MatchFinalSummary {
+    winner: string;
+    reason: 'climax' | 'draw' | 'final_event' | 'opponent_filler' | 'surrender' | 'timeout';
+    climaxCardId?: string;
+    plotTwistCardId?: string;
+    climaxCompleted: boolean;
+    plotTwistOccurred: boolean;
+    players: Array<{
+        username: string;
+        storyPoints: number;
+        fillerPoints: number;
+        netScore: number;
+        isWinner: boolean;
+    }>;
 }
 
 export interface MatchState {
@@ -294,6 +315,7 @@ export interface MatchState {
     // Result
     winner?: string;
     winReason?: 'climax' | 'draw' | 'final_event' | 'opponent_filler' | 'surrender' | 'timeout';
+    finalSummary?: MatchFinalSummary;
     actCheckpointsResolved?: string[];
     pendingClimax?: PendingClimax;
 

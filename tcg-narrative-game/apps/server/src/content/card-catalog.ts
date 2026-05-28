@@ -8,6 +8,10 @@ export type MutableCard = CardData & {
     likes?: string[];
     dislikes?: string[];
     extendedLore?: string;
+    endingTitle?: string;
+    endingLore?: string;
+    endingImage?: string;
+    endingSound?: string;
 };
 
 export type AdminCardRecord = PersistedCardData & {
@@ -116,6 +120,10 @@ export function serializeCard(card: MutableCard): AdminCardRecord {
         desc: card.description,
         backstory: card.backstory,
         extendedLore: card.extendedLore || card.backstory || '',
+        endingTitle: card.endingTitle || '',
+        endingLore: card.endingLore || '',
+        endingImage: card.endingImage || '',
+        endingSound: card.endingSound || '',
         eventPrerequisites: card.eventPrerequisites,
         prereqs: card.eventPrerequisites || [],
         requirements: card.requirements || [],
@@ -151,6 +159,10 @@ export function toPersistedCard(card: MutableCard): PersistedCardData {
         description: serialized.description,
         backstory: serialized.backstory,
         extendedLore: serialized.extendedLore,
+        endingTitle: serialized.endingTitle,
+        endingLore: serialized.endingLore,
+        endingImage: serialized.endingImage,
+        endingSound: serialized.endingSound,
         eventPrerequisites: serialized.eventPrerequisites,
         requirements: serialized.requirements,
         effects: serialized.effects,
@@ -237,7 +249,7 @@ export function importCsvCards(csv: string): AdminCardRecord[] {
 }
 
 export function exportCardsCsvTemplate(cards: MutableCard[] = Object.values(CARDS) as MutableCard[]): string {
-    const headers = ['id', 'name', 'type', 'archetype', 'protagonistId', 'cost', 'costResource', 'description', 'image', 'sound', 'likes', 'dislikes', 'tags', 'prereqs', 'requirements', 'effects', 'maxCopies'];
+    const headers = ['id', 'name', 'type', 'archetype', 'protagonistId', 'cost', 'costResource', 'description', 'image', 'sound', 'endingTitle', 'endingLore', 'endingImage', 'endingSound', 'likes', 'dislikes', 'tags', 'prereqs', 'requirements', 'effects', 'maxCopies'];
     const rows = cards.map(card => {
         const serialized = serializeCard(card);
         return [
@@ -251,6 +263,10 @@ export function exportCardsCsvTemplate(cards: MutableCard[] = Object.values(CARD
             serialized.description || serialized.desc || '',
             serialized.image || '',
             serialized.sound || '',
+            serialized.endingTitle || '',
+            serialized.endingLore || '',
+            serialized.endingImage || '',
+            serialized.endingSound || '',
             (serialized.likes || []).join('|'),
             (serialized.dislikes || []).join('|'),
             (serialized.tags || []).join('|'),
@@ -265,7 +281,7 @@ export function exportCardsCsvTemplate(cards: MutableCard[] = Object.values(CARD
 
 export function exportCardsCsvBlankTemplate(): string {
     return toCsv([
-        ['id', 'name', 'type', 'archetype', 'protagonistId', 'cost', 'costResource', 'description', 'image', 'sound', 'likes', 'dislikes', 'tags', 'prereqs', 'requirements', 'effects', 'maxCopies'],
+        ['id', 'name', 'type', 'archetype', 'protagonistId', 'cost', 'costResource', 'description', 'image', 'sound', 'endingTitle', 'endingLore', 'endingImage', 'endingSound', 'likes', 'dislikes', 'tags', 'prereqs', 'requirements', 'effects', 'maxCopies'],
         [
             'custom-card-id',
             'Nombre de carta',
@@ -276,6 +292,10 @@ export function exportCardsCsvBlankTemplate(): string {
             'SP',
             'Descripcion visible',
             'asset-o-url',
+            '',
+            'Good Ending',
+            'Texto final visible solo al cerrar la partida.',
+            '',
             '',
             'card-id-like-1|card-id-like-2',
             'card-id-dislike-1',
@@ -382,6 +402,10 @@ function mergeCard(existing: MutableCard, updates: Partial<AdminCardRecord>): Mu
         description: cleanString(updates.description ?? updates.desc) || existing.description,
         backstory: updates.backstory ?? existing.backstory,
         extendedLore: updates.extendedLore ?? existing.extendedLore,
+        endingTitle: updates.endingTitle ?? existing.endingTitle,
+        endingLore: updates.endingLore ?? existing.endingLore,
+        endingImage: updates.endingImage ?? existing.endingImage,
+        endingSound: updates.endingSound ?? existing.endingSound,
         type,
         cost: updates.cost !== undefined ? Number(updates.cost) : existing.cost,
         costResource: updates.costResource !== undefined ? updates.costResource : existing.costResource,
@@ -443,6 +467,10 @@ function upsertCsvRow(row: CsvRow): MutableCard {
         description: row.values.description || row.values.desc,
         backstory: row.values.backstory,
         extendedLore: row.values.extendedLore,
+        endingTitle: row.values.endingTitle,
+        endingLore: row.values.endingLore,
+        endingImage: row.values.endingImage,
+        endingSound: row.values.endingSound,
         archetype: row.values.archetype,
         image: row.values.image,
         sound: row.values.sound,

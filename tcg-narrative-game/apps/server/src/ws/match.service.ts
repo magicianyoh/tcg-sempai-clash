@@ -545,7 +545,7 @@ export class MatchService {
         if (card.type === CardType.CLIMAX_EVENT) {
             const multiplier = this.getClimaxMultiplier(match, playerIndex, card);
             const opponentIndex = (1 - playerIndex) as 0 | 1;
-            if (this.canOpenPlotTwist(match, opponentIndex)) {
+            if (this.canOpenPlotTwist(match, opponentIndex) || this.hasPlotTwistAvailable(match.players[opponentIndex])) {
                 match.pendingClimax = { attackerIndex: playerIndex as 0 | 1, responderIndex: opponentIndex, cardId: card.id, multiplier, responseOpen: true };
                 match.phase = 'climax_response';
                 match.currentTurn = opponentIndex;
@@ -558,7 +558,17 @@ export class MatchService {
             this.finalizeClimax(match);
             return;
         }
+        const opponentIndex = (1 - playerIndex) as 0 | 1;
+        const wasClimaxPathOpen = this.hasClimaxPrerequisitesSatisfied(player);
         this.resolveArc(match, playerIndex, card, 1, true);
+        if (
+            card.type === CardType.EVENT
+            && !wasClimaxPathOpen
+            && this.hasClimaxPrerequisitesSatisfied(player)
+            && this.canOpenPlotTwist(match, opponentIndex)
+        ) {
+            this.offerPlotTwist(match, opponentIndex);
+        }
     }
 
     private getClimaxMultiplier(match: MatchState, playerIndex: number, card: CardData): 2 | 4 | 10 {
@@ -576,17 +586,46 @@ export class MatchService {
         return responder.storyPoints < attacker.storyPoints && responder.completedEvents.length / total >= 0.7;
     }
 
-    private offerPlotTwist(match: MatchState, responderIndex: 0 | 1): void {
-        const responder = match.players[responderIndex];
-        const selectedRoute = [...responder.completedEvents, ...responder.hand, ...responder.deck]
+    private hasClimaxPrerequisitesSatisfied(player: PlayerState): boolean {
+        const selectedRoute = this.selectedRouteForPlayer(player);
+        return Object.values(CARDS).some(card => {
+            if (card.type !== CardType.CLIMAX_EVENT || card.protagonistId !== player.protagonistId) return false;
+            if (selectedRoute && cardRouteId(card) && cardRouteId(card) !== selectedRoute) return false;
+            const prereqs = card.eventPrerequisites || [];
+            if (prereqs.length > 0) return prereqs.every(eventId => player.completedEvents.includes(eventId));
+            const normalEventsCompleted = player.completedEvents.filter(eventId => CARDS[eventId]?.type === CardType.EVENT).length;
+            return normalEventsCompleted >= Math.max(1, (player.protagonistTotalEvents || 1) - 1);
+        });
+    }
+
+    private selectedRouteForPlayer(player: PlayerState): string | undefined {
+        return [...player.completedEvents, ...player.hand, ...player.deck]
             .map(id => cardRouteId(CARDS[id]))
             .find((route): route is string => Boolean(route));
-        const plot = Object.values(CARDS).find(card =>
-            card.type === CardType.PLOT_TWIST_EVENT && card.protagonistId === responder.protagonistId
-            && (!selectedRoute || cardRouteId(card) === selectedRoute)
+    }
+
+    private findPlotTwistForPlayer(player: PlayerState): CardData | undefined {
+        const selectedRoute = this.selectedRouteForPlayer(player);
+        return Object.values(CARDS).find(card =>
+            card.type === CardType.PLOT_TWIST_EVENT && card.protagonistId === player.protagonistId
+            && (!selectedRoute || !cardRouteId(card) || cardRouteId(card) === selectedRoute)
         );
-        if (plot && !responder.hand.includes(plot.id)) responder.hand.push(plot.id);
-        if (plot) this.addLog(match, responder.username, 'plot_twist_offered', plot.name);
+    }
+
+    private hasPlotTwistAvailable(player: PlayerState): boolean {
+        return player.hand.some(cardId => CARDS[cardId]?.type === CardType.PLOT_TWIST_EVENT);
+    }
+
+    private offerPlotTwist(match: MatchState, responderIndex: 0 | 1): CardData | undefined {
+        const responder = match.players[responderIndex];
+        const plot = this.findPlotTwistForPlayer(responder);
+        if (!plot) return undefined;
+        const alreadyAvailable = responder.hand.includes(plot.id)
+            || responder.deck.includes(plot.id)
+            || responder.completedEvents.includes(plot.id);
+        if (!alreadyAvailable) responder.hand.push(plot.id);
+        if (!alreadyAvailable) this.addLog(match, responder.username, 'plot_twist_offered', plot.name);
+        return plot;
     }
 
     private resolvePlotTwistIfPrepared(match: MatchState, responderIndex: number): void {
@@ -595,6 +634,7 @@ export class MatchService {
         const card = block.eventSlot ? CARDS[block.eventSlot] : undefined;
         if (!card || card.type !== CardType.PLOT_TWIST_EVENT) return;
         this.resolveArc(match, responderIndex, card, 1, false);
+        if (match.pendingClimax) match.pendingClimax.plotTwistCardId = card.id;
         this.addLog(match, player.username, 'plot_twist_complete', card.name);
     }
 
@@ -620,7 +660,26 @@ export class MatchService {
             match.winReason = 'climax';
         }
         match.phase = 'ended';
+        match.finalSummary = this.buildFinalSummary(match, pending.cardId, pending.plotTwistCardId);
         this.addLog(match, 'system', 'victory', `${match.winner} cierra la partida. SP - FP: ${first.username} ${firstNet}, ${second.username} ${secondNet}.`);
+    }
+
+    private buildFinalSummary(match: MatchState, climaxCardId?: string, plotTwistCardId?: string): NonNullable<MatchState['finalSummary']> {
+        return {
+            winner: match.winner || 'Empate',
+            reason: match.winReason || 'climax',
+            climaxCardId,
+            plotTwistCardId,
+            climaxCompleted: Boolean(climaxCardId),
+            plotTwistOccurred: Boolean(plotTwistCardId),
+            players: match.players.map(player => ({
+                username: player.username,
+                storyPoints: player.storyPoints,
+                fillerPoints: player.fillerPoints,
+                netScore: player.storyPoints - player.fillerPoints,
+                isWinner: match.winner === player.username,
+            })),
+        };
     }
 
     private resolveArc(match: MatchState, playerIndex: number, card: CardData, eventMultiplier: number, openNextArc: boolean): void {
@@ -702,6 +761,7 @@ export class MatchService {
         match.winner = winner.username;
         match.winReason = 'surrender';
         match.phase = 'ended';
+        match.finalSummary = this.buildFinalSummary(match);
         this.addLog(match, match.players[playerIndex].username, 'forfeit', `${winner.username} gana por abandono.`);
     }
 

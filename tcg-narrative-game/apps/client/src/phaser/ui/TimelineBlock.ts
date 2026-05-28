@@ -23,6 +23,8 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
     private orbGlow: Phaser.GameObjects.Graphics | null = null;
     private protagonistSlot: Phaser.GameObjects.Container | null = null;
     private glowTween: Phaser.Tweens.Tween | null = null;
+    private hexPulse: Phaser.GameObjects.Graphics | null = null;
+    private hexPulseTween: Phaser.Tweens.Tween | null = null;
 
     private static readonly SLOT_WIDTH = 84;
     private static readonly SLOT_HEIGHT = 116;
@@ -47,23 +49,17 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
     }
 
     private createBackground(): void {
-        const guide = this.scene.add.graphics();
-        guide.lineStyle(2, 0xffffff, 0.36);
-        guide.beginPath();
-        guide.moveTo(-142, 30);
-        guide.lineTo(-60, -52);
-        guide.lineTo(60, -52);
-        guide.lineTo(142, 30);
-        guide.strokePath();
-        this.add(guide);
+        this.hexPulse = this.scene.add.graphics();
+        this.hexPulse.setAlpha(0);
+        this.add(this.hexPulse);
     }
 
     private createSlots(): void {
         const positions: { pos: SlotPosition; x: number; y: number }[] = [
-            { pos: 'top', x: -80, y: -18 },
-            { pos: 'bottom', x: 80, y: -18 },
-            { pos: 'left', x: -174, y: 48 },
-            { pos: 'right', x: 174, y: 48 },
+            { pos: 'top', x: -126, y: -58 },
+            { pos: 'bottom', x: 126, y: -58 },
+            { pos: 'left', x: -126, y: 76 },
+            { pos: 'right', x: 126, y: 76 },
         ];
 
         for (const { pos, x, y } of positions) {
@@ -82,7 +78,7 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
     }
 
     private createEventOrb(): void {
-        const orb = this.scene.add.container(0, -176);
+        const orb = this.scene.add.container(0, -184);
 
         this.orbGlow = this.scene.add.graphics();
         orb.add(this.orbGlow);
@@ -114,7 +110,7 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
     }
 
     private createProtagonistSlot(): void {
-        const slot = this.scene.add.container(0, 82);
+        const slot = this.scene.add.container(0, 174);
         const frame = this.scene.add.rectangle(0, 0, 94, 130, 0x090d17, 0.95).setStrokeStyle(3, 0xffffff, 0.8);
         const text = this.scene.add.text(0, 0, 'PROTAGONISTA', {
             fontSize: '10px',
@@ -273,6 +269,29 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
         this.clearEventOrbHighlight();
     }
 
+    setClimaxPathPulse(active: boolean): void {
+        if (!this.hexPulse) return;
+        if (!active) {
+            if (this.hexPulseTween) {
+                this.hexPulseTween.stop();
+                this.hexPulseTween = null;
+            }
+            this.hexPulse.clear();
+            this.hexPulse.setAlpha(0);
+            return;
+        }
+
+        this.drawHexPulse(0.5);
+        if (this.hexPulseTween) return;
+        this.hexPulseTween = this.scene.tweens.addCounter({
+            from: 0,
+            to: 1,
+            duration: 1600,
+            repeat: -1,
+            onUpdate: tween => this.drawHexPulse(tween.getValue() ?? 0),
+        });
+    }
+
     highlightEventOrb(valid: boolean): void {
         if (!this.isEventOrbEmpty()) return;
         this.drawOrbGlow(valid ? 0x4ecdc4 : 0xe94560, 0.75);
@@ -297,6 +316,38 @@ export class TimelineBlock extends Phaser.GameObjects.Container {
         this.orbGlow.fillRect(-TimelineBlock.EVENT_WIDTH / 2 - 9, -TimelineBlock.EVENT_HEIGHT / 2 - 9, TimelineBlock.EVENT_WIDTH + 18, TimelineBlock.EVENT_HEIGHT + 18);
         this.orbGlow.lineStyle(3, color, 0.95);
         this.orbGlow.strokeRect(-TimelineBlock.EVENT_WIDTH / 2 - 14, -TimelineBlock.EVENT_HEIGHT / 2 - 14, TimelineBlock.EVENT_WIDTH + 28, TimelineBlock.EVENT_HEIGHT + 28);
+    }
+
+    private drawHexPulse(progress: number): void {
+        if (!this.hexPulse) return;
+        const color = 0xffd166;
+        const points = [
+            new Phaser.Math.Vector2(0, -184),
+            new Phaser.Math.Vector2(152, -92),
+            new Phaser.Math.Vector2(152, 92),
+            new Phaser.Math.Vector2(0, 184),
+            new Phaser.Math.Vector2(-152, 92),
+            new Phaser.Math.Vector2(-152, -92),
+            new Phaser.Math.Vector2(0, -184),
+        ];
+        this.hexPulse.clear();
+        this.hexPulse.setAlpha(1);
+        this.hexPulse.lineStyle(3, color, 0.16);
+        this.hexPulse.strokePoints(points, false, false);
+
+        const segmentCount = points.length - 1;
+        const head = progress * segmentCount;
+        const activeSegment = Math.floor(head) % segmentCount;
+        const localProgress = head - Math.floor(head);
+        const start = points[activeSegment];
+        const end = points[activeSegment + 1];
+        const pulseEnd = Phaser.Math.Interpolation.Linear([start.x, end.x], localProgress);
+        const pulseEndY = Phaser.Math.Interpolation.Linear([start.y, end.y], localProgress);
+        this.hexPulse.lineStyle(6, color, 0.92);
+        this.hexPulse.beginPath();
+        this.hexPulse.moveTo(start.x, start.y);
+        this.hexPulse.lineTo(pulseEnd, pulseEndY);
+        this.hexPulse.strokePath();
     }
 
     private getCardColor(cardType: string): number {

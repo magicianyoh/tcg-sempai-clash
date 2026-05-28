@@ -539,6 +539,7 @@ function handleMatchAction(
                     matchId: updatedMatch.matchId,
                     winner: updatedMatch.winner!,
                     reason: updatedMatch.winReason || 'victory',
+                    summary: updatedMatch.finalSummary,
                 });
                 playerClient.matchId = undefined;
             });

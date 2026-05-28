@@ -7,6 +7,7 @@ import { canPlayCard } from '@tcg/game-engine/rules/validation';
 import { GAME_CONSTANTS } from '@tcg/shared/constants';
 import type {
     LogEntry,
+    MatchFinalSummary,
     MatchState,
     PlayerState,
     TimelineBlock as TimelineBlockData,
@@ -20,6 +21,10 @@ interface CardDisplayData {
     costResource?: 'SP' | 'FP';
     description: string;
     backstory?: string;
+    endingTitle?: string;
+    endingLore?: string;
+    endingImage?: string;
+    endingSound?: string;
     image?: string;
     sound?: string;
     archetype?: string;
@@ -46,6 +51,7 @@ interface CardDisplayData {
     dislikes?: string[];
     affinity?: { compatibleWith?: string[] };
     tags?: string[];
+    protagonistId?: string;
 }
 
 type BoardView = 'self' | 'opponent';
@@ -54,6 +60,11 @@ type QuickEventPresentation = {
     card: CardDisplayData;
     playerName: string;
     isOpponent: boolean;
+};
+type MatchEndedPayload = {
+    winner: string;
+    reason: string;
+    summary?: MatchFinalSummary;
 };
 type FieldTheme = {
     id: string;
@@ -1059,6 +1070,10 @@ export class BattleScene extends Phaser.Scene {
                     costResource: card.costResource ?? 'SP',
                     description: card.description ?? card.desc ?? '',
                     backstory: card.extendedLore ?? card.backstory,
+                    endingTitle: card.endingTitle,
+                    endingLore: card.endingLore,
+                    endingImage: card.endingImage,
+                    endingSound: card.endingSound,
                     image: card.image,
                     sound: card.sound,
                     archetype: card.archetype,
@@ -1069,6 +1084,7 @@ export class BattleScene extends Phaser.Scene {
                     dislikes: card.dislikes ?? card.likesData?.dislikes ?? [],
                     affinity: card.affinity,
                     tags: card.tags ?? [],
+                    protagonistId: card.protagonistId,
                 };
             });
         } catch (error) {
@@ -1708,6 +1724,7 @@ export class BattleScene extends Phaser.Scene {
         const readyEvent = eventIds
             .map(id => this.getCardDisplayData(id))
             .find(card => this.isEventType(card.type) && this.canActivateEventCard(card.id));
+        block.setClimaxPathPulse(this.isClimaxPathOpen(player));
         if (!readyEvent) {
             block.setRequirementGlow([], false);
             return;
@@ -2024,7 +2041,13 @@ export class BattleScene extends Phaser.Scene {
             }
             case 'climax_revealed':
                 this.playLocationChangeEffect('final');
+                this.emitParticleBurst(this.scale.width / 2, this.scale.height / 2, 0xffd166, 72);
                 this.enqueueBanner('CLIMAX', `${entry.player} desata ${entry.details ?? 'su desenlace'}`, 'final');
+                break;
+            case 'climax_complete':
+                this.playLocationChangeEffect('final');
+                this.emitParticleBurst(this.scale.width / 2, this.scale.height / 2, 0xffd166, 96);
+                this.enqueueBanner('CLIMAX COMPLETADO', `${entry.player} cierra el desenlace`, 'final');
                 break;
             case 'climax_pending':
                 this.enqueueBanner('CLIMAX PENDIENTE', 'El rival puede responder con Plot-Twist', 'danger');
@@ -2034,6 +2057,7 @@ export class BattleScene extends Phaser.Scene {
                 break;
             case 'plot_twist_complete':
                 this.playLocationChangeEffect('danger');
+                this.emitParticleBurst(this.scale.width / 2, this.scale.height / 2, 0xe94560, 64);
                 this.enqueueBanner('PLOT-TWIST', `${entry.player} altera el desenlace`, 'danger');
                 break;
             case 'act_checkpoint':
@@ -2135,6 +2159,8 @@ export class BattleScene extends Phaser.Scene {
                 return `${player} comienza su historia como ${cardName}.`;
             case 'climax_revealed':
                 return `${player} alcanza su Climax con ${cardName}.`;
+            case 'climax_complete':
+                return `${player} completa el Climax y el desenlace queda sellado.`;
             case 'climax_pending':
                 return `El Climax de ${player} queda pendiente: el rival busca un Plot-Twist.`;
             case 'plot_twist_offered':
@@ -2282,6 +2308,19 @@ export class BattleScene extends Phaser.Scene {
 
         const positions = (matched.length > 0 ? matched : occupied).map(slot => slot.position as SlotPosition);
         return Array.from(new Set(positions));
+    }
+
+    private isClimaxPathOpen(player: PlayerState): boolean {
+        const climaxCards = Object.values(CARD_DB).filter(card =>
+            card.type === 'CLIMAX_EVENT'
+            && (!card.protagonistId || card.protagonistId === player.protagonistId)
+        );
+        return climaxCards.some(card => {
+            const prereqs = card.prereqs || [];
+            if (prereqs.length > 0) return prereqs.every(eventId => player.completedEvents.includes(eventId));
+            const normalEventsCompleted = player.completedEvents.filter(eventId => this.getCardDisplayData(eventId).type === 'EVENT').length;
+            return normalEventsCompleted >= Math.max(1, (player.protagonistTotalEvents || 1) - 1);
+        });
     }
 
     private showFieldEffectMarker(playerName: string, message: string, tone: BannerTone): void {
@@ -2552,6 +2591,7 @@ export class BattleScene extends Phaser.Scene {
             requirements: [],
             effects: [],
             tags: [],
+            protagonistId: '',
         };
     }
 
@@ -2570,32 +2610,160 @@ export class BattleScene extends Phaser.Scene {
         return type === 'EVENT' || type === 'EVENT_KEY' || type === 'EVENT_FINAL' || type === 'CLIMAX_EVENT' || type === 'PLOT_TWIST_EVENT';
     }
 
-    private showGameOver(payload: { winner: string; reason: string }): void {
+    private showGameOver(payload: MatchEndedPayload): void {
         const { width, height } = this.scale;
         const isWinner = payload.winner === this.myUsername;
+        const summary = payload.summary ?? this.buildFallbackFinalSummary(payload);
+        const climaxCard = summary.climaxCardId ? this.getCardDisplayData(summary.climaxCardId) : undefined;
+        const plotTwistCard = summary.plotTwistCardId ? this.getCardDisplayData(summary.plotTwistCardId) : undefined;
+        const endingCard = isWinner ? climaxCard : (plotTwistCard || climaxCard);
         const configuredImage = isWinner ? this.uiSettings.victoryImage : this.uiSettings.defeatImage;
-        this.playConfiguredSound(isWinner ? this.uiSettings.victorySound : this.uiSettings.defeatSound);
+        const configuredSound = isWinner ? this.uiSettings.victorySound : this.uiSettings.defeatSound;
+        this.playConfiguredSound(endingCard?.endingSound || configuredSound);
         this.playConfiguredEffect(isWinner ? this.uiSettings.victoryEffect : this.uiSettings.defeatEffect, isWinner ? 'final' : 'danger');
-        this.add.rectangle(0, 0, width, height, 0x000000, 0.9).setOrigin(0).setDepth(2800);
-        if (configuredImage) this.addConfiguredEndImage(configuredImage, width / 2, height / 2 - 126);
-        this.add.text(width / 2, height / 2 - 44, isWinner ? 'VICTORIA' : 'DERROTA', {
-            fontSize: '48px',
-            color: isWinner ? '#4ecdc4' : '#e94560',
+
+        const tone: BannerTone = isWinner ? 'final' : 'danger';
+        this.emitParticleBurst(width / 2, height / 2, this.getBannerColor(tone), isWinner ? 90 : 34);
+        const overlay = this.add.rectangle(0, 0, width, height, isWinner ? 0x020609 : 0x050506, 0)
+            .setOrigin(0)
+            .setDepth(2800);
+        this.tweens.add({ targets: overlay, alpha: isWinner ? 0.94 : 0.9, duration: 420, ease: 'Sine.Out' });
+
+        const panelWidth = Math.min(width - 28, 860);
+        const panelHeight = Math.min(height - 36, height < 720 ? 560 : 640);
+        const panel = this.add.container(width / 2, height / 2 + (height < 640 ? 8 : 0))
+            .setDepth(2801)
+            .setAlpha(0)
+            .setScale(0.94);
+        const bg = this.add.rectangle(0, 0, panelWidth, panelHeight, isWinner ? 0x08111f : 0x151518, 0.96)
+            .setStrokeStyle(3, isWinner ? 0xffd166 : 0x6b7280, 0.95);
+        panel.add(bg);
+
+        const imageSource = endingCard?.endingImage || configuredImage;
+        if (imageSource) this.addConfiguredEndImage(imageSource, width / 2, height / 2 - panelHeight / 2 + 82);
+
+        const resultTitle = isWinner ? 'VICTORIA' : 'DERROTA';
+        panel.add(this.add.text(0, -panelHeight / 2 + 44, resultTitle, {
+            fontSize: width < 560 ? '34px' : '52px',
+            color: isWinner ? '#ffed9a' : '#c8c8c8',
             fontStyle: 'bold',
-        }).setOrigin(0.5).setDepth(2801);
-        this.add.text(width / 2, height / 2 + 18, `Razon: ${payload.reason}`, {
-            fontSize: '16px',
-            color: '#d7dee9',
-        }).setOrigin(0.5).setDepth(2801);
-        this.addGameOverButton(width / 2 - 170, height / 2 + 82, 'REMATCH', () => {
+            align: 'center',
+        }).setOrigin(0.5));
+        panel.add(this.add.text(0, -panelHeight / 2 + 88, isWinner ? 'GOOD ENDING' : 'BAD ENDING', {
+            fontSize: width < 560 ? '15px' : '18px',
+            color: isWinner ? '#4ecdc4' : '#9ca3af',
+            fontStyle: 'bold',
+        }).setOrigin(0.5));
+
+        const flags = [
+            summary.climaxCompleted ? 'Climax completado!' : '',
+            summary.plotTwistOccurred ? 'Ocurrio un Plot-twist!' : '',
+        ].filter(Boolean).join('  ');
+        panel.add(this.add.text(0, -panelHeight / 2 + 120, flags || this.getReadableWinReason(payload.reason), {
+            fontSize: width < 560 ? '13px' : '16px',
+            color: '#ffffff',
+            align: 'center',
+            wordWrap: { width: panelWidth - 44 },
+        }).setOrigin(0.5));
+
+        const scoreY = -panelHeight / 2 + (imageSource ? 230 : 172);
+        const scoreSpacing = width < 560 ? 0 : Math.min(250, panelWidth / 3.2);
+        summary.players.forEach((player, index) => {
+            const x = width < 560 ? 0 : (index === 0 ? -scoreSpacing : scoreSpacing);
+            const y = width < 560 ? scoreY + index * 104 : scoreY;
+            panel.add(this.createScorePanel(x, y, player.username, player.storyPoints, player.fillerPoints, player.isWinner));
+        });
+
+        const endingText = this.resolveEndingText(isWinner, climaxCard, plotTwistCard);
+        panel.add(this.createEndingTextPanel(0, scoreY + (width < 560 ? 230 : 126), panelWidth - 52, endingText));
+
+        this.tweens.add({
+            targets: panel,
+            alpha: 1,
+            scale: 1,
+            duration: 360,
+            ease: 'Back.Out',
+        });
+
+        const buttonY = height / 2 + panelHeight / 2 - 44;
+        const mobileButtons = width < 560;
+        this.addGameOverButton(width / 2 + (mobileButtons ? -92 : -170), buttonY, 'REMATCH', () => {
             window.location.href = '/match.html';
         });
-        this.addGameOverButton(width / 2, height / 2 + 82, 'BUILDER', () => {
+        this.addGameOverButton(width / 2 + (mobileButtons ? 92 : 0), buttonY, 'BUILDER', () => {
             window.location.href = '/build.html';
         });
-        this.addGameOverButton(width / 2 + 170, height / 2 + 82, 'GUARDAR LOG', () => {
+        this.addGameOverButton(width / 2 + (mobileButtons ? 0 : 170), buttonY + (mobileButtons ? 46 : 0), 'GUARDAR LOG', () => {
             this.saveMatchLog();
         });
+    }
+
+    private buildFallbackFinalSummary(payload: MatchEndedPayload): MatchFinalSummary {
+        const players = (this.matchState?.players || []).map(player => ({
+            username: player.username,
+            storyPoints: player.storyPoints,
+            fillerPoints: player.fillerPoints,
+            netScore: player.storyPoints - player.fillerPoints,
+            isWinner: payload.winner === player.username,
+        }));
+        return {
+            winner: payload.winner,
+            reason: (payload.reason as MatchFinalSummary['reason']) || 'climax',
+            climaxCompleted: payload.reason === 'climax',
+            plotTwistOccurred: false,
+            players,
+        };
+    }
+
+    private createScorePanel(x: number, y: number, username: string, sp: number, fp: number, highlighted: boolean): Phaser.GameObjects.Container {
+        const container = this.add.container(x, y);
+        const color = highlighted ? 0xffd166 : 0x64748b;
+        const bg = this.add.rectangle(0, 0, 210, 92, 0x030712, 0.9).setStrokeStyle(2, color, 0.95);
+        const name = this.add.text(0, -30, username, {
+            fontSize: '13px',
+            color: highlighted ? '#fff7c2' : '#e5e7eb',
+            fontStyle: 'bold',
+        }).setOrigin(0.5);
+        const values = this.add.text(0, 15, `SP ${sp}   FP ${fp}`, {
+            fontSize: '26px',
+            color: '#ffffff',
+            fontStyle: 'bold',
+            fontFamily: 'Arial, Helvetica, sans-serif',
+        }).setOrigin(0.5);
+        container.add([bg, name, values]);
+        return container;
+    }
+
+    private createEndingTextPanel(x: number, y: number, width: number, text: string): Phaser.GameObjects.Container {
+        const container = this.add.container(x, y);
+        const height = this.scale.width < 560 ? 106 : 118;
+        const bg = this.add.rectangle(0, 0, width, height, 0x000000, 0.46).setStrokeStyle(1, 0xffffff, 0.22);
+        const label = this.add.text(0, 0, text, {
+            fontSize: this.scale.width < 560 ? '13px' : '15px',
+            color: '#f8fafc',
+            align: 'center',
+            wordWrap: { width: width - 28 },
+        }).setOrigin(0.5);
+        container.add([bg, label]);
+        return container;
+    }
+
+    private resolveEndingText(isWinner: boolean, climax?: CardDisplayData, plotTwist?: CardDisplayData): string {
+        const primary = isWinner ? climax : (plotTwist || climax);
+        const fallback = isWinner
+            ? 'El Climax cierra la temporada con un final luminoso. La historia encuentra su resolucion y el publico queda de pie.'
+            : 'La historia termina con ecos amargos. El rival impuso su cierre y queda una deuda narrativa para la proxima revancha.';
+        const title = primary?.endingTitle || (isWinner ? 'Good Ending' : 'Bad Ending');
+        const body = primary?.endingLore || primary?.backstory || fallback;
+        const twist = plotTwist && !isWinner ? `\nPlot-Twist: ${plotTwist.endingLore || plotTwist.description}` : '';
+        return `${title}\n${body}${twist}`;
+    }
+
+    private getReadableWinReason(reason: string): string {
+        if (reason === 'surrender') return 'Victoria por abandono';
+        if (reason === 'timeout') return 'Victoria por tiempo';
+        if (reason === 'draw') return 'Empate total';
+        return 'Resultado final';
     }
 
     private addGameOverButton(x: number, y: number, label: string, onClick: () => void): void {

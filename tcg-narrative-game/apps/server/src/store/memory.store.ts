@@ -76,6 +76,10 @@ export interface PrebuiltDeckSettings {
 export type PersistedCardData = CardData & {
     sound?: string;
     extendedLore?: string;
+    endingTitle?: string;
+    endingLore?: string;
+    endingImage?: string;
+    endingSound?: string;
     likes?: string[];
     dislikes?: string[];
 };
